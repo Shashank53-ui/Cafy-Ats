@@ -6,12 +6,27 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ingest": "tsx src/scripts/ingestJobs.ts",
+    "sync": "tsx src/scripts/syncAll.ts"
   },
   "dependencies": {
+    "@mendable/firecrawl-js": "^4.15.1",
+    "@supabase/ssr": "^0.9.0",
+    "@supabase/supabase-js": "^2.98.0",
+    "cheerio": "^1.2.0",
+    "crawlee": "^3.16.0",
+    "date-fns": "^4.1.0",
+    "fast-xml-parser": "^5.4.2",
+    "lucide-react": "^0.576.0",
     "next": "16.1.6",
+    "playwright": "^1.58.2",
+    "puppeteer": "^24.37.5",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -19,9 +34,11 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "dotenv": "^17.3.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

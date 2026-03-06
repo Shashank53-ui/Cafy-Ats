@@ -1,0 +1,266 @@
+{
+  "accenture": {
+    "ats": "workday_enterprise",
+    "token": "accenture/accenturecareers"
+  },
+  "ferovinum": {
+    "ats": "ashby",
+    "token": "Ferovinum"
+  },
+  "mazedesign": {
+    "ats": "ashby",
+    "token": "mazedesign"
+  },
+  "liltcorporate": {
+    "ats": "ashby",
+    "token": "lilt-corporate"
+  },
+  "perk": {
+    "ats": "ashby",
+    "token": "Perk"
+  },
+  "agreena": {
+    "ats": "ashby",
+    "token": "agreena"
+  },
+  "raycast": {
+    "ats": "ashby",
+    "token": "raycast"
+  },
+  "gaiafamily": {
+    "ats": "ashby",
+    "token": "gaiafamily"
+  },
+  "relationrx": {
+    "ats": "ashby",
+    "token": "relationrx"
+  },
+  "appier": {
+    "ats": "greenhouse",
+    "token": "appier"
+  },
+  "deepmind": {
+    "ats": "greenhouse",
+    "token": "deepmind"
+  },
+  "costar": {
+    "ats": "workday_enterprise",
+    "token": "costar/CoStarCareers"
+  },
+  "moneyboxapp": {
+    "ats": "lever",
+    "token": "moneyboxapp"
+  },
+  "cordtechnologies": {
+    "ats": "lever",
+    "token": "CordTechnologies"
+  },
+  "vivacitylabs": {
+    "ats": "lever",
+    "token": "vivacitylabs"
+  },
+  "octoenergy": {
+    "ats": "lever",
+    "token": "octoenergy"
+  },
+  "antaretechnology1748341798": {
+    "ats": "teamtailor",
+    "token": "antaretechnology-1748341798"
+  },
+  "praktika": {
+    "ats": "teamtailor",
+    "token": "praktika"
+  },
+  "hybridairvehicleslimited": {
+    "ats": "teamtailor",
+    "token": "hybridairvehicleslimited"
+  },
+  "breathebatterytechnologies": {
+    "ats": "teamtailor",
+    "token": "breathebatterytechnologies"
+  },
+  "advancedelectricmachines": {
+    "ats": "bamboohr",
+    "token": "advancedelectricmachines"
+  },
+  "civicaukltd1": {
+    "ats": "workable",
+    "token": "civica-uk-ltd-1"
+  },
+  "lickhomeltd": {
+    "ats": "workable",
+    "token": "lick-home-ltd"
+  },
+  "joinblink": {
+    "ats": "workable",
+    "token": "joinblink"
+  },
+  "dicefmcareers": {
+    "ats": "greenhouse",
+    "token": "dicefm-careers"
+  },
+  "foundersforum": {
+    "ats": "workable",
+    "token": "foundersforum"
+  },
+  "hacktheboxltd": {
+    "ats": "workable",
+    "token": "hack-the-box-ltd"
+  },
+  "itg": {
+    "ats": "workable",
+    "token": "itg"
+  },
+  "mentionmeltd": {
+    "ats": "workable",
+    "token": "mention-me-ltd"
+  },
+  "oakengage": {
+    "ats": "workable",
+    "token": "oakengage"
+  },
+  "raftai": {
+    "ats": "workable",
+    "token": "raftai"
+  },
+  "recraft": {
+    "ats": "ashby",
+    "token": "recraft"
+  },
+  "subseacraft": {
+    "ats": "bamboohr",
+    "token": "subseacraft"
+  },
+  "asos": {
+    "ats": "smartrecruiters",
+    "token": "ASOS"
+  },
+  "anddigital": {
+    "ats": "workable",
+    "token": "and-digital"
+  },
+  "addepar1": {
+    "ats": "greenhouse",
+    "token": "addepar1"
+  },
+  "addisonlee": {
+    "ats": "teamtailor",
+    "token": "addisonlee"
+  },
+  "adobe": {
+    "ats": "workday_enterprise",
+    "token": "adobe/external_experienced"
+  },
+  "diageo": {
+    "ats": "workday_enterprise",
+    "token": "diageo/Diageo_Careers"
+  },
+  "kantar": {
+    "ats": "workday_enterprise",
+    "token": "kantar/KANTAR"
+  },
+  "darktrace": {
+    "ats": "workday_enterprise",
+    "token": "darktrace/DarktaceExternal"
+  },
+  "linklaters": {
+    "ats": "workday_enterprise",
+    "token": "linklaters/Linklaters"
+  },
+  "cancerresearchuk": {
+    "ats": "workday_enterprise",
+    "token": "cancerresearchuk/External_Careers"
+  },
+  "alphawave": {
+    "ats": "workday_enterprise",
+    "token": "alphawave/Alphawave_External"
+  },
+  "athene": {
+    "ats": "workday_enterprise",
+    "token": "athene/Apollo_Careers"
+  },
+  "aqa": {
+    "ats": "workday_enterprise",
+    "token": "aqa/AQA"
+  },
+  "broadridge": {
+    "ats": "workday_enterprise",
+    "token": "broadridge/Careers"
+  },
+  "dynata": {
+    "ats": "workday_enterprise",
+    "token": "dynata/careers"
+  },
+  "harbourvest": {
+    "ats": "workday_enterprise",
+    "token": "harbourvest/HVP"
+  },
+  "icg": {
+    "ats": "workday_enterprise",
+    "token": "icg/external_careers"
+  },
+  "intapp": {
+    "ats": "workday_enterprise",
+    "token": "intapp/Intapp"
+  },
+  "interdigital": {
+    "ats": "workday_enterprise",
+    "token": "interdigital/InterDigital_Career"
+  },
+  "cdpq": {
+    "ats": "workday_enterprise",
+    "token": "cdpq/CDPQ"
+  },
+  "livenation": {
+    "ats": "workday_enterprise",
+    "token": "livenation/LNExternalSite"
+  },
+  "marshall": {
+    "ats": "workday_enterprise",
+    "token": "marshall/Marshall_Group"
+  },
+  "nvent": {
+    "ats": "workday_enterprise",
+    "token": "nvent/nVent"
+  },
+  "railpen": {
+    "ats": "workday_enterprise",
+    "token": "railpen/Railpen"
+  },
+  "kcura": {
+    "ats": "workday_enterprise",
+    "token": "kcura/External_Career_Site"
+  },
+  "11fsgroupltd": {
+    "ats": "rippling",
+    "token": "11fs-group-ltd"
+  },
+  "10xbanking": {
+    "ats": "workable",
+    "token": "10xbanking"
+  },
+  "1global": {
+    "ats": "workable",
+    "token": "1global"
+  },
+  "32co": {
+    "ats": "lever",
+    "token": "32Co"
+  },
+  "a24": {
+    "ats": "greenhouse",
+    "token": "a24"
+  },
+  "abmcareers": {
+    "ats": "workable",
+    "token": "abm-careers"
+  },
+  "claylabs": {
+    "ats": "ashby",
+    "token": "claylabs"
+  },
+  "https": {
+    "ats": "oracle_taleo",
+    "token": "https://eckb.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=all&finder=findReqs;siteNumber=CX_1018,limit=25"
+  }
+}

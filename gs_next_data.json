@@ -1,0 +1,19 @@
+{
+  "props": {
+    "pageProps": {
+      "initialApolloState": {}
+    },
+    "__N_SSP": true
+  },
+  "page": "/results",
+  "query": {
+    "LOCATION": "Birmingham|London",
+    "page": "1",
+    "sort": "RELEVANCE"
+  },
+  "buildId": "540ba11fb53fcc60c69907f6c87b1417b72ec385",
+  "isFallback": false,
+  "isExperimentalCompile": false,
+  "gssp": true,
+  "scriptLoader": []
+}
