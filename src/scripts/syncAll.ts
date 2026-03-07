@@ -671,7 +671,31 @@ async function fetchICIMS(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-// ─── Dispatcher ───────────────────────────────────────────────────────────────
+async function fetchRippling(token: string): Promise<Job[]> {
+    // Rippling uses Next.js - job data is embedded in __NEXT_DATA__ script tag
+    try {
+        const url = `https://ats.rippling.com/${token}/jobs`;
+        const r = await fetch(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' }
+        });
+        if (!r.ok) return [];
+        const html = await r.text();
+        const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+        if (!match) return [];
+        const data = JSON.parse(match[1]);
+        // Job data is nested in dehydratedState queries
+        const queries = data?.props?.pageProps?.dehydratedState?.queries || [];
+        const items: any[] = queries.flatMap((q: any) => q?.state?.data?.items || []);
+        return items.map((j: any) => ({
+            title: j.name || '',
+            location: (j.locations || []).map((l: any) => l.name || l.city || '').join(', '),
+            url: j.url || `https://ats.rippling.com/${token}/jobs/${j.id}`,
+            department: j.department?.name || ''
+        }));
+    } catch { return []; }
+}
+
+
 
 const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     greenhouse: fetchGreenhouse,
@@ -694,6 +718,7 @@ const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     wipro: fetchWipro,
     icims: fetchICIMS,
     breezyhr: fetchBreezy,
+    rippling: fetchRippling,
 };
 
 // Providers that return UK-only results natively (no keyword filter needed)
