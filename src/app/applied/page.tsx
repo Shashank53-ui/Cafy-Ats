@@ -27,36 +27,8 @@ export default async function AppliedJobsPage() {
 
     return (
         <div className="min-h-screen bg-[var(--background)]">
-            {/* Same Navigation Bar from Jobs page - Solid Black Branding */}
-            <nav className="fixed top-0 w-full z-50 glass border-b border-[var(--border)]">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-                    <Link href="/" className="flex items-center gap-2">
-                        <div className="text-brand-600">
-                            <Logo className="w-8 h-8" />
-                        </div>
-                        <span className="text-2xl font-bold text-slate-900 dark:text-white">
-                            Getlanded
-                        </span>
-                    </Link>
-                    <div className="flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-300">
-                        <Link href="/jobs" className="hover:text-brand-600 transition-colors">Jobs</Link>
-                        <Link href="/companies" className="hover:text-brand-600 transition-colors">Companies</Link>
-                        <Link href="/applied" className="text-brand-600 font-semibold border-b-2 border-brand-600 pb-1">Applied</Link>
-                        {user ? (
-                            <Link href="/account/profile" className="bg-slate-100 hover:bg-slate-200 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 px-5 py-2 flex items-center gap-2 rounded-none transition-colors border border-[var(--border)] font-medium">
-                                Account
-                            </Link>
-                        ) : (
-                            <Link href="/login" className="hover:text-brand-600 transition-colors">Sign in</Link>
-                        )}
-                        <form action="/auth/signout" method="post">
-                            <button type="submit" className="hover:text-brand-600 transition-colors">Sign out</button>
-                        </form>
-                    </div>
-                </div>
-            </nav>
 
-            <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
+            <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-32">
                 <div className="mb-8 pl-4 lg:pl-0">
                     <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2">Tracked Applications</h1>
                     <p className="text-slate-500">Jobs you have marked as applied to keep track of your sponsorships journey.</p>

@@ -1,56 +1,14 @@
-import { Briefcase, Building, ChevronRight, CheckCircle, Search, Star, ArrowRight, Users } from 'lucide-react';
+import { Briefcase, Building, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { createClient } from '../utils/supabase/server';
-import Logo from '../components/Logo';
-import HomeCarousel from '../components/HomeCarousel';
 import PhraseCarousel from '../components/PhraseCarousel';
-import * as motion from "framer-motion/client";
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  const serverSupabase = await createClient();
-  const { data: { user } } = await serverSupabase.auth.getUser();
-
   return (
     <div className="min-h-screen bg-white selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-sm border-b border-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex flex-1"
-          >
-            <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="text-brand-600 transition-transform group-hover:scale-110">
-                <Logo className="w-9 h-9" />
-              </div>
-              <span className="text-2xl font-black text-slate-900 tracking-tighter">
-                Getlanded
-              </span>
-            </Link>
-          </motion.div>
-
-          <div className="hidden md:flex items-center gap-10 text-sm font-bold text-slate-500">
-            <Link href="/jobs" className="hover:text-slate-900 transition-colors">Jobs</Link>
-            <Link href="/companies" className="hover:text-slate-900 transition-colors">Companies</Link>
-            <Link href="/applied" className="hover:text-slate-900 transition-colors">Applied</Link>
-            {user ? (
-              <Link href="/account/profile" className="text-slate-900 px-6 py-2.5 rounded-full border border-slate-200 hover:bg-slate-50 transition-all font-bold">
-                Account
-              </Link>
-            ) : (
-              <Link href="/login" className="bg-slate-900 text-white px-7 py-2.5 rounded-full hover:bg-slate-800 transition-all font-bold">
-                Sign in
-              </Link>
-            )}
-          </div>
-        </div>
-      </nav>
-
       {/* Hero Section */}
-      <main className="min-h-screen pt-20 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 relative overflow-hidden bg-white">
+      <main className="min-h-screen pt-16 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 relative overflow-hidden bg-white">
         <div className="w-full max-w-5xl flex flex-col items-center">
 
           {/* Text Carousel Hero */}

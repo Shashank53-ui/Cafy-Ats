@@ -2,6 +2,7 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { ALLOWED_JOB_TYPES, ALLOWED_LOCATIONS, ALLOWED_SECTORS } from '@/lib/constants'
 
 export async function savePreferences(formData: FormData) {
     const supabase = await createClient()
@@ -11,13 +12,12 @@ export async function savePreferences(formData: FormData) {
         return { success: false, error: 'Not authenticated' }
     }
 
-    // Parse multi-select values (pill buttons)
-    const jobTypes = formData.getAll('job_types') as string[]
-    const locations = formData.getAll('locations') as string[]
+    // Whitelist-validate all inputs against allowed values
+    const jobTypes = formData.getAll('job_types').filter(t => (ALLOWED_JOB_TYPES as readonly string[]).includes(t as string))
+    const locations = formData.getAll('locations').filter(l => (ALLOWED_LOCATIONS as readonly string[]).includes(l as string))
+    const sectors = formData.getAll('sectors').filter(s => (ALLOWED_SECTORS as readonly string[]).includes(s as string))
     const sponsorshipNeededStr = formData.get('sponsorship_needed') as string
     const sponsorshipNeeded = sponsorshipNeededStr === 'true'
-
-    const sectors = formData.getAll('sectors') as string[]
 
     const { error } = await supabase
         .from('user_preferences')

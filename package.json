@@ -1,5 +1,5 @@
 {
-  "name": "poli-clone",
+  "name": "GetLandedJOBS",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,6 +11,7 @@
     "sync": "tsx src/scripts/syncAll.ts"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "^1.4.2",
     "@mendable/firecrawl-js": "^4.15.1",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",

@@ -39,11 +39,9 @@ export default async function ProfilePage() {
             </div>
 
             <div className="border-t border-[var(--border)] pt-8">
-                <h2 className="text-xl font-bold text-red-600 dark:text-red-500 mb-2">Danger Zone</h2>
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
-                    Permanently delete your account and all associated data from Getlanded. This action is irreversible.
-                </p>
+               
                 <DeleteAccountButton />
+               
             </div>
         </div>
     );

@@ -1,7 +1,6 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
-import { createClient } from '@/utils/supabase/server';
+import { createClient } from '../../utils/supabase/server';
 
 export interface Job {
     id: string;
@@ -34,13 +33,16 @@ export async function getJobs(params: {
     excludedJobIds?: string[];
     excludedCompanyIds?: number[];
     company_id?: number;
+    sort?: string;
 } = {}) {
     const PAGE_SIZE = 5;
     const page = params.page || 1;
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
-    let query = supabase
+    const supabaseServer = await createClient();
+
+    let query = supabaseServer
         .from('jobs')
         .select('*, level, company:companies!inner(*)', { count: 'exact' });
 
@@ -55,14 +57,32 @@ export async function getJobs(params: {
         query = query.eq('company_id', params.company_id);
     }
 
-    // 1. Text Search
-    if (params.q) {
-        query = query.or(`title.ilike.%${params.q}%, company.trading_name.ilike.%${params.q}%`);
+    // 1. Text Search (Two-step for robustness)
+    if (params.q?.trim()) {
+        // Sanitise: cap length and strip PostgREST special characters to prevent filter injection
+        const searchTerm = params.q.trim().slice(0, 100).replace(/[(),]/g, '');
+
+        // Find matching companies first
+        const { data: matchedCompanies } = await supabaseServer
+            .from('companies')
+            .select('id')
+            .ilike('trading_name', `%${searchTerm}%`);
+
+        const companyIds = matchedCompanies?.map(c => c.id) || [];
+
+        // Build OR conditions
+        const orConditions = [`title.ilike.%${searchTerm}%`];
+        if (companyIds.length > 0) {
+            orConditions.push(`company_id.in.(${companyIds.join(',')})`);
+        }
+
+        query = query.or(orConditions.join(','));
     }
 
     // 2. City Filter
-    if (params.loc) {
-        query = query.ilike('location', `%${params.loc}%`);
+    if (params.loc?.trim()) {
+        const locTerm = params.loc.trim();
+        query = query.ilike('location', `%${locTerm}%`);
     }
 
     // 3. Dropdown Checkbox Locations
@@ -72,7 +92,7 @@ export async function getJobs(params: {
             const locFilter = locArray.map(l => `location.ilike.%${l}%`).join(',');
             query = query.or(locFilter);
         }
-    } else if (!params.q && !params.loc && params.userPrefs?.locations?.length > 0) {
+    } else if (!params.q && !params.loc && (params.userPrefs?.locations && params.userPrefs.locations.length > 0)) {
         const expandedLocations: string[] = [];
         params.userPrefs.locations.forEach((l: string) => {
             if (l === 'Rest of UK' || l === 'Rest of the UK') {
@@ -157,8 +177,17 @@ export async function getJobs(params: {
         }
     }
 
-    // Stable sorting: created_at desc, then id desc
-    query = query.order('created_at', { ascending: false }).order('id', { ascending: false });
+    // Stable sorting
+    if (params.sort === 'oldest') {
+        query = query.order('created_at', { ascending: true }).order('id', { ascending: true });
+    } else if (params.sort === 'title_asc') {
+        query = query.order('title', { ascending: true }).order('id', { ascending: false });
+    } else if (params.sort === 'title_desc') {
+        query = query.order('title', { ascending: false }).order('id', { ascending: false });
+    } else {
+        // Default: newest first
+        query = query.order('created_at', { ascending: false }).order('id', { ascending: false });
+    }
 
     let rawJobs;
     let count;
@@ -170,9 +199,11 @@ export async function getJobs(params: {
         rawJobs = result.data;
         count = result.count;
     } else {
-        // Fetch a larger batch to handle diversity filtering
-        // Since we are excluding IDs, we always fetch from index 0 of the remaining set
         const result = await query.range(0, 49);
+        if (result.error) {
+            console.error('getJobs error:', result.error);
+            return { jobs: [], totalPages: 0 };
+        }
         rawJobs = result.data;
         count = result.count;
     }

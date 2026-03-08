@@ -188,7 +188,7 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
                             <span className="text-sm text-slate-400 italic">No sectors selected</span>
                         )}
                     </div>
-                    <div className="border-t border-[var(--border)] pt-4 grid grid-cols-1 sm:grid-cols-2 gap-1 overflow-y-auto max-h-48">
+                    <div className="border-t border-[var(--border)] pt-4 grid grid-cols-1 sm:grid-cols-2 gap-1 overflow-y-auto max-h-48 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                         {SECTORS.map(sector => {
                             const isSelected = selectedSectors.includes(sector);
                             return (

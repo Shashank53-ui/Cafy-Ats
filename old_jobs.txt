@@ -1,0 +1,163 @@
+﻿import Link from 'next/link';
+import { createClient } from '../../utils/supabase/server';
+import Logo from '../../components/Logo';
+import JobFeed from '../../components/JobFeed';
+import { getJobs } from '../actions/jobActions';
+
+export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE = 5;
+
+// Fix known bad URL patterns (SmartRecruiters API URL -> public page)
+function fixJobUrl(url: string): string {
+  if (!url) return '#';
+  if (url.includes('api.smartrecruiters.com')) {
+    const match = url.match(/\/companies\/([^/]+)\/postings\/([^/?#]+)/);
+    if (match) return `https://jobs.smartrecruiters.com/${match[1]}/${match[2]}`;
+  }
+  return url;
+}
+
+export default async function JobsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ json?: string, page?: string, q?: string, loc?: string, tier2?: string, locs?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page || '1'));
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  // Try to get logged-in user preferences
+  const serverSupabase = await createClient();
+  const { data: { user } } = await serverSupabase.auth.getUser();
+
+  let userPrefs = null;
+  const initialAppliedJobs: Record<string, string> = {};
+  if (user) {
+    const { data: prefs } = await serverSupabase
+      .from('user_preferences')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+    userPrefs = prefs;
+
+    const { data: applied } = await serverSupabase
+      .from('user_applied_jobs')
+      .select('job_id, created_at')
+      .eq('user_id', user.id);
+
+    if (applied) {
+      applied.forEach(a => {
+        initialAppliedJobs[a.job_id] = a.created_at;
+      });
+    }
+  }
+
+  // Use the shared getJobs action for the initial load
+  // This ensures stable sorting and company diversity
+  const { jobs, totalPages } = await getJobs({
+    page,
+    q: params.q,
+    loc: params.loc,
+    tier2: params.tier2,
+    locs: params.locs,
+    userPrefs: userPrefs
+  });
+
+  const jobList = jobs || [];
+
+
+  return (
+    <div className="min-h-screen bg-[var(--background)]">
+      {/* Navigation */}
+      <nav className="fixed top-0 w-full z-50 glass border-b border-[var(--border)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="text-brand-600">
+              <Logo className="w-8 h-8" />
+            </div>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white">
+              Getlanded
+            </span>
+          </div>
+          <div className="flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-300">
+            <Link href="/jobs" className="text-brand-600 font-semibold">Jobs</Link>
+            <Link href="/companies" className="hover:text-brand-600 transition-colors">Companies</Link>
+            <Link href="/applied" className="hover:text-brand-600 transition-colors">Applied</Link>
+            {user ? (
+              <Link href="/account/profile" className="bg-slate-100 hover:bg-slate-200 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 px-5 py-2 flex items-center gap-2 rounded-none transition-colors border border-[var(--border)] font-medium">
+                Account
+              </Link>
+            ) : (
+              <Link href="/login" className="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2 rounded-none transition-colors shadow-sm font-medium">
+                Sign in
+              </Link>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="pt-24 pb-16 px-4 max-w-[1400px] mx-auto">
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+
+          {/* Left Sidebar */}
+          <div className="hidden lg:block lg:col-span-1 space-y-6">
+            <div className="space-y-1">
+              <Link href="/jobs" className="w-full text-left px-4 py-2.5 font-semibold text-slate-900 shadow-sm bg-white rounded-md flex items-center gap-3 border border-[var(--border)]">
+                <span className="w-4 h-4 flex items-center justify-center">Γ£¿</span> For you
+              </Link>
+              <Link href="/applied" className="w-full text-left px-4 py-2.5 font-medium text-slate-600 hover:bg-slate-50 rounded-md flex items-center gap-3">
+                <span className="w-4 h-4 flex items-center justify-center">≡ƒôä</span> Applied
+              </Link>
+            </div>
+
+            <div className="bg-[#137cdb] text-white p-5 rounded-md shadow-sm">
+              <h3 className="font-semibold mb-3">Missing a company or role?</h3>
+              <p className="text-sm text-white/90 mb-5 leading-relaxed">
+                Know a UK visa sponsor that's not listed here? Help us keep the database accurate and complete.
+              </p>
+              <button className="w-full bg-white text-[#137cdb] font-semibold py-2 rounded-sm hover:bg-slate-50 transition-colors text-sm">
+                Suggest a company
+              </button>
+            </div>
+          </div>
+
+          {/* Job Feed Area (Middle + Right) */}
+          <div className="lg:col-span-3 flex flex-col">
+
+            {/* Banner */}
+            <div className="bg-[#F8F5EE] border border-amber-100 text-[#6B5A40] text-sm px-4 py-3 mb-6 flex items-center rounded-sm">
+              {user
+                ? <>You're seeing jobs that match your preferences. You can <Link href="/account/preferences" className="underline font-medium ml-1">change these here</Link>.</>
+                : <>You're seeing a preview of jobs. <Link href="/signup" className="underline font-medium ml-1">Create a free account</Link> to get a personalised feed and track applications.</>}
+            </div>
+
+            <div className="flex items-center justify-end mb-4">
+              <div className="text-sm text-slate-500 flex items-center gap-1 cursor-pointer hover:text-slate-800">
+                Sorted by <span className="font-semibold text-slate-800">date added</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+            </div>
+
+            <JobFeed
+              initialJobs={jobList as any}
+              initialTotalPages={totalPages}
+              initialAppliedJobs={initialAppliedJobs}
+              isGuest={!user}
+              searchParams={{
+                q: params.q,
+                loc: params.loc,
+                tier2: params.tier2,
+                locs: params.locs,
+                userPrefs: userPrefs
+              }}
+            />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

@@ -31,7 +31,7 @@ const phrases = [
     }
 ];
 
-export default function PhraseCarousel() {
+export default function PhraseCarousel({ dark = false }: { dark?: boolean }) {
     const [index, setIndex] = useState(0);
 
     useEffect(() => {
@@ -42,7 +42,7 @@ export default function PhraseCarousel() {
     }, []);
 
     return (
-        <div className="relative h-[360px] flex items-center justify-center overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-12">
             <AnimatePresence mode="wait">
                 <motion.div
                     key={index}
@@ -50,11 +50,11 @@ export default function PhraseCarousel() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -100 }}
                     transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-                    className="text-center max-w-5xl px-4"
+                    className="text-center max-w-5xl px-4 mb-10"
                 >
-                    <h2 className="text-4xl md:text-5xl lg:text-6xl font-black text-slate-900 leading-[1.2] tracking-tight mb-8 italic font-sans">
+                    <h2 className={`text-4xl md:text-5xl lg:text-6xl font-black leading-[1.2] tracking-tight mb-8 italic font-sans ${dark ? 'text-white' : 'text-slate-900'}`}>
                         {phrases[index].main}<br />
-                        <span className="text-brand-600">
+                        <span className={dark ? 'text-[#3B41FF]' : 'text-brand-600'}>
                             {phrases[index].highlight}
                         </span>
                     </h2>
@@ -62,7 +62,7 @@ export default function PhraseCarousel() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.3, duration: 1 }}
-                        className="text-xl md:text-2xl text-slate-500 font-medium max-w-3xl mx-auto leading-relaxed italic"
+                        className={`text-xl md:text-2xl font-medium max-w-3xl mx-auto leading-relaxed italic ${dark ? 'text-white/60' : 'text-slate-500'}`}
                     >
                         {phrases[index].sub}
                     </motion.p>
@@ -70,11 +70,11 @@ export default function PhraseCarousel() {
             </AnimatePresence>
 
             {/* Progress indicators */}
-            <div className="absolute bottom-4 flex gap-2">
+            <div className="flex gap-2">
                 {phrases.map((_, i) => (
                     <div
                         key={i}
-                        className={`h-1 transition-all duration-500 rounded-full ${i === index ? 'w-8 bg-brand-600' : 'w-2 bg-slate-200'}`}
+                        className={`h-1 transition-all duration-500 rounded-full ${i === index ? `w-8 ${dark ? 'bg-[#3B41FF]' : 'bg-brand-600'}` : `w-2 ${dark ? 'bg-white/20' : 'bg-slate-200'}`}`}
                     />
                 ))}
             </div>

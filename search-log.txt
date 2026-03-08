@@ -1,0 +1,13 @@
+Testing Two-Step Search for: "Samsara"
+Step 1: Finding matching companies...
+  -> Found 1 matching companies.
+
+Step 2: Searching jobs (Title OR Company IDs)...
+  -> Success! Found 41 jobs total.
+- [12828] Sales Recruiter - EMEA (AE & ADR Focus) @ Samsara
+- [3005] Senior Product Manager - Developer Platform @ Samsara
+- [12833] Senior Product Manager - Developer Platform @ Samsara
+- [12835] Senior Product Manager - Safety AI @ Samsara
+- [12812] Associate Sales Engineer @ Samsara
+
+Done.

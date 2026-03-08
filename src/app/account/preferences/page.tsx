@@ -18,13 +18,13 @@ export default async function PreferencesPage() {
     }
 
     return (
-        <div className="max-w-3xl">
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-                    Your job preferences
+        <div className="w-full">
+            <div className="mb-12 text-center max-w-2xl mx-auto">
+                <h1 className="text-4xl font-black text-[#1A1C36] mb-4">
+                    Complete your profile
                 </h1>
-                <p className="text-slate-500 dark:text-slate-400">
-                    Customize your feed to see the roles that match your career goals.
+                <p className="text-slate-500 font-medium text-lg">
+                    Tell us what you're looking for so we can find the perfect UK sponsor for you.
                 </p>
             </div>
 

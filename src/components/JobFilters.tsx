@@ -1,11 +1,13 @@
 'use client';
 
 import { useTransition, useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { ShieldCheck, MapPin, ChevronDown } from 'lucide-react';
 
 export default function JobFilters() {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const pathname = usePathname();
     const [isPending, startTransition] = useTransition();
 
     const [tier2, setTier2] = useState(searchParams.get('tier2') === 'true');
@@ -28,7 +30,7 @@ export default function JobFilters() {
         params.set('page', '1');
 
         startTransition(() => {
-            router.push(`/?${params.toString()}`);
+            router.push(`${pathname}?${params.toString()}`);
         });
     };
 
@@ -47,34 +49,55 @@ export default function JobFilters() {
     };
 
     return (
-        <aside className={`lg:col-span-1 border border-[var(--border)] rounded-3xl p-6 bg-[var(--card)] shadow-sm h-fit sticky top-24 transition-opacity ${isPending ? 'opacity-50' : 'opacity-100'}`}>
-            <h3 className="font-semibold text-lg mb-4">Filters</h3>
+        <div className={`flex flex-wrap items-center justify-center gap-x-10 gap-y-4 py-6 px-4 transition-opacity ${isPending ? 'opacity-50' : 'opacity-100'}`}>
 
-            <div className="space-y-6">
-                <div>
-                    <h4 className="text-sm font-medium text-slate-500 mb-3">Visa Sponsorship</h4>
-                    <label className="flex items-center gap-3 cursor-pointer group" onClick={(e) => { e.preventDefault(); handleTier2(); }}>
-                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${tier2 ? 'bg-brand-500 border-brand-500' : 'border-slate-300 group-hover:border-brand-500'}`}>
-                            {tier2 && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
-                        </div>
-                        <span className="text-sm">Tier 2 Sponsor List (UK)</span>
-                    </label>
-                </div>
-
-                <div>
-                    <h4 className="text-sm font-medium text-slate-500 mb-3">Job Location</h4>
-                    <div className="space-y-3 text-sm">
-                        {['London', 'Remote', 'Manchester', 'Edinburgh', 'Cambridge', 'Bristol'].map(loc => (
-                            <label key={loc} className="flex items-center gap-3 cursor-pointer group">
-                                <div className={`w-4 h-4 rounded-sm border flex items-center justify-center transition-colors ${locations.includes(loc) ? 'bg-brand-500 border-brand-500' : 'border-slate-300 group-hover:border-brand-500'}`}>
-                                    {locations.includes(loc) && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
-                                </div>
-                                <input type="checkbox" className="hidden" checked={locations.includes(loc)} onChange={() => handleLocation(loc)} /> {loc}
-                            </label>
-                        ))}
-                    </div>
-                </div>
+            {/* Visa Toggle */}
+            <div className="flex items-center">
+                <button
+                    onClick={handleTier2}
+                    className={`flex items-center gap-3 px-6 py-2.5 transition-all active:scale-95 group border ${tier2 ? 'bg-[#0066FF] border-[#0066FF] shadow-2xl shadow-[#0066FF]/20' : 'bg-white/40 border-slate-200 hover:border-[#0066FF]/40'}`}
+                >
+                    <ShieldCheck className={`w-4 h-4 ${tier2 ? 'text-white' : 'text-[#0066FF]'}`} />
+                    <span className={`text-[11px] font-black uppercase tracking-[0.1em] ${tier2 ? 'text-white' : 'text-slate-600 group-hover:text-[#0066FF]'}`}>
+                        Visa Sponsorship Only
+                    </span>
+                    <div className={`w-1.5 h-1.5 rounded-none ${tier2 ? 'bg-white' : 'bg-slate-200 group-hover:bg-[#0066FF]/30'}`}></div>
+                </button>
             </div>
-        </aside>
+
+            <div className="hidden lg:block w-[1px] h-8 bg-slate-200/50"></div>
+
+            {/* Location Quick Filters */}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+                {['London', 'Remote', 'Manchester', 'Remote (UK)'].map(loc => {
+                    const isSelected = locations.includes(loc);
+                    return (
+                        <button
+                            key={loc}
+                            onClick={() => handleLocation(loc)}
+                            className={`px-5 py-2.5 border text-[10px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 group flex items-center gap-2 ${isSelected
+                                ? 'bg-[#111827] border-[#111827] text-white shadow-xl'
+                                : 'bg-white/40 border-slate-200 text-slate-500 hover:border-[#0066FF] hover:text-[#0066FF]'}`}
+                        >
+                            <MapPin className={`w-3 h-3 ${isSelected ? 'text-[#0066FF]' : 'text-slate-300 group-hover:text-[#0066FF]'}`} />
+                            {loc}
+                        </button>
+                    );
+                })}
+            </div>
+
+            <div className="hidden xl:block w-[1px] h-8 bg-slate-200/50"></div>
+
+            {/* Status Indicator */}
+            <div className="hidden sm:flex items-center gap-3 px-4">
+                <div className="relative">
+                    <div className="w-1.5 h-1.5 bg-[#0066FF] rounded-none"></div>
+                    <div className="absolute inset-0 w-1.5 h-1.5 bg-[#0066FF] rounded-none animate-ping opacity-40"></div>
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+                    Sponsor Database Live
+                </span>
+            </div>
+        </div>
     );
 }

@@ -38,10 +38,20 @@ export async function getCompanies(params: {
 
     let query = supabase
         .from('companies')
-        .select(favoritesOnly ? '*, user_favorite_companies!inner(user_id)' : '*', { count: 'exact' });
+        .select('*', { count: 'exact' });
 
     if (favoritesOnly && user) {
-        query = query.eq('user_favorite_companies.user_id', user.id);
+        const { data: favs, error: favError } = await supabaseServer!
+            .from('user_favorite_companies')
+            .select('company_id')
+            .eq('user_id', user.id);
+
+        if (favError || !favs || favs.length === 0) {
+            return { companies: [], totalPages: 0 };
+        }
+
+        const favIds = favs.map(f => f.company_id);
+        query = query.in('id', favIds);
     }
 
     if (params.excludedCompanyIds && params.excludedCompanyIds.length > 0) {
@@ -77,14 +87,8 @@ export async function getCompanies(params: {
         return { companies: [], totalPages: 0 };
     }
 
-    // Map back to Company[] to remove the joined data if it exists
-    const cleanCompanies = (rawCompanies || []).map(c => {
-        if (favoritesOnly) {
-            const { user_favorite_companies, ...rest } = c as any;
-            return rest as unknown as Company;
-        }
-        return c as unknown as Company;
-    });
+    // Map back to Company[]
+    const cleanCompanies = (rawCompanies || []).map(c => c as unknown as Company);
 
     const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 0;
 

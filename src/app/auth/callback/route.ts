@@ -4,12 +4,16 @@ import { createClient } from '@/utils/supabase/server'
 export async function GET(request: Request) {
     const { searchParams, origin } = new URL(request.url)
     const code = searchParams.get('code')
-    const next = searchParams.get('next') ?? '/preferences'
+    // Validate next is a safe relative path only (prevents open redirect)
+    const rawNext = searchParams.get('next') ?? '/'
+    const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/'
 
     if (code) {
         const supabase = await createClient()
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
+            // If checking for recovery explicitly is needed, we could do it here
+            // but standard exchange handles the session.
             return NextResponse.redirect(`${origin}${next}`)
         }
     }

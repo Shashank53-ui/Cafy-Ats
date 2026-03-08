@@ -28,7 +28,38 @@ export async function updateSession(request: NextRequest) {
     )
 
     // This will refresh session if expired
-    await supabase.auth.getUser()
+    const {
+        data: { user },
+    } = await supabase.auth.getUser()
+
+    // Auth guard logic
+    const { pathname } = request.nextUrl
+
+    // Core auth pages that should NOT require authentication
+    // but should redirect authenticated users away
+    const isAuthPage =
+        pathname === '/login' ||
+        pathname === '/signup' ||
+        pathname === '/forgot-password' ||
+        pathname === '/reset-password'
+
+    const isCallback = pathname.startsWith('/auth/callback')
+
+    if (!user) {
+        // If they are not logged in and not on an auth page/callback, redirect to login
+        if (!isAuthPage && !isCallback) {
+            const url = request.nextUrl.clone()
+            url.pathname = '/login'
+            return NextResponse.redirect(url)
+        }
+    } else {
+        // If they are logged in but trying to hit an auth page, redirect to home
+        if (isAuthPage) {
+            const url = request.nextUrl.clone()
+            url.pathname = '/'
+            return NextResponse.redirect(url)
+        }
+    }
 
     return supabaseResponse
 }
