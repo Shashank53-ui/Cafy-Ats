@@ -61,12 +61,7 @@ export default async function Home() {
             </div>
           </div>
 
-          {/* Background decoration */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -z-10 opacity-[0.02] select-none pointer-events-none overflow-hidden w-full text-center">
-            <span className="text-[280px] font-black leading-none whitespace-nowrap tracking-tighter">
-              UK SPONSORSHIP
-            </span>
-          </div>
+          {/* Background decoration - Removed for pure white look */}
         </div>
       </main>
     </div>

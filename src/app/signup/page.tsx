@@ -287,11 +287,9 @@ export default function SignupPage({
                 </div>
 
                 {/* Right Side: Carousel */}
-                <div className="hidden lg:flex lg:w-1/2 bg-[#1A1C36] relative flex-col items-center justify-center overflow-hidden h-full">
-                    <div className="absolute top-[-10%] right-[-10%] w-[400px] h-[400px] bg-[#3B41FF]/20 rounded-full blur-[100px]"></div>
-                    <div className="absolute bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-[#3B41FF]/10 rounded-full blur-[80px]"></div>
+                <div className="hidden lg:flex lg:w-1/2 bg-white relative flex-col items-center justify-center overflow-hidden h-full border-l border-slate-100">
                     <div className="relative z-10 w-full px-12">
-                        <PhraseCarousel dark />
+                        <PhraseCarousel />
                     </div>
                 </div>
             </motion.div>

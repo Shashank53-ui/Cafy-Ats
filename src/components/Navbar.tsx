@@ -5,7 +5,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Logo from './Logo';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, MessageSquare } from 'lucide-react';
 
 interface NavbarProps {
     user: any;
@@ -57,6 +57,16 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
 
                     {/* Desktop Navigation */}
                     <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-300">
+                        <a
+                            href="https://getlanded.canny.io/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-semibold text-slate-400 hover:text-[#0066FF] transition-colors flex items-center gap-1.5"
+                        >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            Report a bug or suggest a feature
+                        </a>
+                        <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1"></div>
                         {navLinks.map((link) => (
                             <Link
                                 key={link.href}
@@ -149,6 +159,16 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
                                     Sign in
                                 </Link>
                             )}
+
+                            <a
+                                href="https://getlanded.canny.io/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-4 px-4 py-3 rounded-xl text-sm font-semibold text-slate-500 hover:text-[#0066FF] hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors flex items-center gap-2"
+                            >
+                                <MessageSquare className="w-4 h-4" />
+                                Report a bug or suggest a feature
+                            </a>
                         </div>
                     </div>
                 </div>

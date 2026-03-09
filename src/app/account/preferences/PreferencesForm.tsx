@@ -98,13 +98,13 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
         <form onSubmit={handleSubmit} className="space-y-12">
             {/* Job Types */}
             <div className="space-y-4">
-                <h3 className="text-lg font-medium text-slate-900 dark:text-white">What types of jobs are you looking for?</h3>
-                <div className="border border-[var(--border)] p-4 bg-white dark:bg-slate-900 shadow-sm relative min-h-[50px]">
+                <h3 className="text-lg font-medium text-slate-900">What types of jobs are you looking for?</h3>
+                <div className="border border-[var(--border)] p-4 bg-white shadow-sm relative min-h-[50px]">
                     <div className="flex flex-wrap gap-2 mb-4">
                         {selectedJobTypes.map(type => (
-                            <div key={type} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium">
+                            <div key={type} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 text-sm font-medium">
                                 {type}
-                                <button type="button" onClick={() => toggleJobType(type)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                <button type="button" onClick={() => toggleJobType(type)} className="text-slate-400 hover:text-slate-600">
                                     <X className="w-3.5 h-3.5" />
                                 </button>
                             </div>
@@ -116,7 +116,7 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
                                 key={type}
                                 type="button"
                                 onClick={() => toggleJobType(type)}
-                                className="block w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                                className="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                             >
                                 {type}
                             </button>
@@ -127,8 +127,8 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
 
             {/* Locations */}
             <div className="space-y-4">
-                <h3 className="text-lg font-medium text-slate-900 dark:text-white">Where are you interested in working?</h3>
-                <div className="flex flex-wrap gap-2 p-4 bg-white dark:bg-slate-900 border border-[var(--border)] shadow-sm">
+                <h3 className="text-lg font-medium text-slate-900">Where are you interested in working?</h3>
+                <div className="flex flex-wrap gap-2 p-4 bg-white border border-[var(--border)] shadow-sm">
                     {LOCATIONS.map(loc => {
                         const isSelected = selectedLocations.includes(loc);
                         return (
@@ -136,7 +136,7 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
                                 key={loc}
                                 type="button"
                                 onClick={() => toggleLocation(loc)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border ${isSelected ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-transparent' : 'bg-transparent text-slate-600 dark:text-slate-400 border-[var(--border)] hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border ${isSelected ? 'bg-slate-100 text-slate-700 border-transparent' : 'bg-transparent text-slate-600 border-[var(--border)] hover:bg-slate-50'}`}
                             >
                                 {loc}
                                 {isSelected && <X className="w-3 h-3 text-slate-400" />}
@@ -148,12 +148,12 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
 
             {/* Sponsorship */}
             <div className="space-y-4">
-                <h3 className="text-lg font-medium text-slate-900 dark:text-white">Do you want immediate sponsorship?</h3>
+                <h3 className="text-lg font-medium text-slate-900">Do you want immediate sponsorship?</h3>
                 <div className="relative">
                     <select
                         value={sponsorshipNeeded ? 'true' : 'false'}
                         onChange={(e) => setSponsorshipNeeded(e.target.value === 'true')}
-                        className="appearance-none block w-full px-4 py-3 bg-white dark:bg-slate-900 border border-[var(--border)] text-slate-900 dark:text-white text-base focus:outline-none focus:ring-1 focus:ring-brand-500 shadow-sm pr-10"
+                        className="appearance-none block w-full px-4 py-3 bg-white border border-[var(--border)] text-slate-900 text-base focus:outline-none focus:ring-1 focus:ring-brand-500 shadow-sm pr-10"
                     >
                         <option value="true">Yes, I need to be sponsored immediately</option>
                         <option value="false">No</option>
@@ -161,9 +161,9 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
                 </div>
                 {!sponsorshipNeeded && (
-                    <div className="bg-brand-50 dark:bg-brand-900/10 border border-brand-100 dark:border-brand-800 p-4 mt-2">
-                        <h4 className="font-semibold text-slate-900 dark:text-white mb-1">What does this mean?</h4>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm">
+                    <div className="bg-brand-50 border border-brand-100 p-4 mt-2">
+                        <h4 className="font-semibold text-slate-900 mb-1">What does this mean?</h4>
+                        <p className="text-slate-600 text-sm">
                             If you choose "No", we will match you with jobs that won't be sponsored straight away but will at least help you get your foot in the door with a <span className="font-semibold underline underline-offset-2">licensed sponsor</span>.
                         </p>
                     </div>
@@ -172,14 +172,14 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
 
             {/* Sector */}
             <div className="space-y-4">
-                <h3 className="text-lg font-medium text-slate-900 dark:text-white">What sectors are you interested in?</h3>
-                <div className="border border-[var(--border)] p-4 bg-white dark:bg-slate-900 shadow-sm">
+                <h3 className="text-lg font-medium text-slate-900">What sectors are you interested in?</h3>
+                <div className="border border-[var(--border)] p-4 bg-white shadow-sm">
                     <div className="flex flex-wrap gap-2 mb-4">
                         {selectedSectors.length > 0 ? (
                             selectedSectors.map(sector => (
-                                <div key={sector} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium">
+                                <div key={sector} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 text-sm font-medium">
                                     {sector}
-                                    <button type="button" onClick={() => toggleSector(sector)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                    <button type="button" onClick={() => toggleSector(sector)} className="text-slate-400 hover:text-slate-600">
                                         <X className="w-3.5 h-3.5" />
                                     </button>
                                 </div>
@@ -196,7 +196,7 @@ export default function PreferencesForm({ initialData }: { initialData: any }) {
                                     key={sector}
                                     type="button"
                                     onClick={() => toggleSector(sector)}
-                                    className={`text-left px-3 py-1.5 text-xs transition-colors ${isSelected ? 'text-brand-600 font-semibold bg-brand-50 dark:bg-brand-900/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                    className={`text-left px-3 py-1.5 text-xs transition-colors ${isSelected ? 'text-brand-600 font-semibold bg-brand-50' : 'text-slate-600 hover:bg-slate-50'}`}
                                 >
                                     {isSelected ? '✓ ' : '+ '}{sector}
                                 </button>

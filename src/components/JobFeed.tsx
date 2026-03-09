@@ -345,28 +345,25 @@ export default function JobFeed({ initialJobs, initialTotalPages, initialApplied
                             </div>
                         </div>
                     ) : !isPro && jobs.length >= 5 ? (
-                        <div className="mt-8">
-                            <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-lg p-8 shadow-2xl relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                    <ShieldCheck className="w-32 h-32 text-white rotate-12" />
-                                </div>
+                        <div className="mt-8 bg-white">
+                            <div className="bg-white border-2 border-[#0066FF] rounded-none p-8 relative overflow-hidden group shadow-lg">
                                 <div className="relative z-10 text-center sm:text-left">
                                     <div className="flex flex-col sm:flex-row items-center gap-4 mb-4">
-                                        <div className="p-3 bg-brand-500 rounded-xl shadow-lg shadow-brand-500/20">
-                                            <TrendingUp className="w-6 h-6 text-white" />
+                                        <div className="p-3 bg-blue-50 rounded-xl">
+                                            <TrendingUp className="w-6 h-6 text-[#0066FF]" />
                                         </div>
-                                        <h3 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">Unlock 20,000+ More Jobs</h3>
+                                        <h3 className="text-xl sm:text-2xl font-black text-black uppercase tracking-tight">Unlock 20,000+ More Jobs</h3>
                                     </div>
-                                    <p className="text-slate-300 mb-8 max-w-md leading-relaxed text-sm sm:text-base">
-                                        You've reached the limit of the Free Plan. Upgrade to Pro for just <span className="text-brand-400 font-bold">£0.99/week</span> to see every visa-sponsored job in the UK.
+                                    <p className="text-slate-600 mb-8 max-w-md leading-relaxed text-sm sm:text-base">
+                                        You've reached the limit of the Free Plan. Upgrade to Pro for just <span className="text-[#0066FF] font-black">£0.99/week</span> to see every visa-sponsored job in the UK.
                                     </p>
                                     <Link
                                         href="/account/subscription"
-                                        className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-brand-500 hover:bg-brand-400 text-white font-black uppercase tracking-widest text-xs transition-all shadow-xl active:scale-95 w-full sm:w-auto rounded-none"
+                                        className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-[#0066FF] hover:bg-[#0052CC] text-white font-black uppercase tracking-widest text-xs transition-all active:scale-95 w-full sm:w-auto rounded-none"
                                     >
                                         Upgrade to Pro Plan <ArrowRight className="w-4 h-4" />
                                     </Link>
-                                    <p className="text-slate-500 text-[10px] mt-4 uppercase tracking-[0.2em] font-bold">Cancel anytime • Secure payment via Stripe</p>
+                                    <p className="text-slate-400 text-[10px] mt-4 uppercase tracking-[0.2em] font-bold">Cancel anytime • Secure via Stripe</p>
                                 </div>
                             </div>
                         </div>

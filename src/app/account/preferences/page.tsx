@@ -20,7 +20,7 @@ export default async function PreferencesPage() {
     return (
         <div className="w-full">
             <div className="mb-12 text-center max-w-2xl mx-auto">
-                <h1 className="text-4xl font-black text-[#1A1C36] mb-4">
+                <h1 className="text-4xl font-black text-black mb-4">
                     Complete your profile
                 </h1>
                 <p className="text-slate-500 font-medium text-lg">

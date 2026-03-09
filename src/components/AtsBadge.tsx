@@ -26,7 +26,6 @@ export default function AtsBadge({ provider }: { provider?: string }) {
     return (
         <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md font-medium border ${badge.color} relative overflow-hidden group/badge`}>
             {badge.label}
-            <div className="absolute inset-0 -translate-x-[150%] bg-gradient-to-r from-transparent via-white/50 to-transparent group-hover/badge:animate-[shimmer_1.5s_infinite]"></div>
         </div>
     );
 }

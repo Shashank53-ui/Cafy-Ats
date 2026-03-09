@@ -91,8 +91,8 @@ export default function ForgotPasswordPage({
                                     type="submit"
                                     disabled={!isTurnstileSolved}
                                     className={`w-full py-4 px-4 rounded-[40px] text-sm font-bold text-white transition-all shadow-lg hover:shadow-[#3B41FF]/30 active:scale-[0.98] ${isTurnstileSolved
-                                            ? 'bg-[#3B41FF] hover:bg-[#2F34E0]'
-                                            : 'bg-slate-300 cursor-not-allowed shadow-none'
+                                        ? 'bg-[#3B41FF] hover:bg-[#2F34E0]'
+                                        : 'bg-slate-300 cursor-not-allowed shadow-none'
                                         }`}
                                 >
                                     Reset password
@@ -102,22 +102,11 @@ export default function ForgotPasswordPage({
                     </div>
                 </div>
 
-                {/* Right Side: Illustration & Marketing */}
-                <div className="hidden lg:flex lg:w-1/2 bg-[#1A1C36] relative p-12 lg:p-16 flex-col justify-between overflow-hidden h-full">
-                    <div className="absolute inset-0 opacity-40">
-                        <img
-                            src="/auth-bg.png"
-                            alt="Background"
-                            className="w-full h-full object-cover"
-                        />
-                    </div>
-                    {/* Decorative Blobs */}
-                    <div className="absolute top-[-10%] right-[-10%] w-[400px] h-[400px] bg-[#3B41FF]/20 rounded-full blur-[100px]"></div>
-                    <div className="absolute bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-[#3B41FF]/10 rounded-full blur-[80px]"></div>
-
+                {/* Right Side: Marketing */}
+                <div className="hidden lg:flex lg:w-1/2 bg-white relative p-12 lg:p-16 flex-col justify-between overflow-hidden h-full border-l border-slate-100">
                     <div className="relative z-10">
-                        <Logo className="w-12 h-12 text-white/90 mb-6" />
-                        <h3 className="text-4xl font-bold text-white leading-tight mb-6">
+                        <Logo className="w-12 h-12 text-[#0066FF] mb-6" />
+                        <h3 className="text-4xl font-bold text-slate-900 leading-tight mb-6">
                             Security<br />
                             is our top<br />
                             <span className="text-[#3B41FF]">priority.</span>
@@ -125,16 +114,16 @@ export default function ForgotPasswordPage({
                     </div>
 
                     <div className="relative z-10">
-                        <div className="p-8 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl">
-                            <p className="text-white/80 italic text-lg leading-relaxed">
+                        <div className="p-8 bg-slate-50 border border-slate-100 rounded-3xl">
+                            <p className="text-slate-600 italic text-lg leading-relaxed">
                                 "GetLanded ensures your data is protected while you focus on landing your dream UK role with visa sponsorship."
                             </p>
                         </div>
 
                         <div className="flex gap-2 mt-8 justify-center">
-                            <div className="w-1.5 h-1.5 bg-white/20 rounded-full"></div>
+                            <div className="w-1.5 h-1.5 bg-slate-200 rounded-full"></div>
                             <div className="w-8 h-1.5 bg-[#3B41FF] rounded-full"></div>
-                            <div className="w-1.5 h-1.5 bg-white/20 rounded-full"></div>
+                            <div className="w-1.5 h-1.5 bg-slate-200 rounded-full"></div>
                         </div>
                     </div>
                 </div>

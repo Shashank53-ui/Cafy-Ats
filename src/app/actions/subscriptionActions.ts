@@ -1,8 +1,9 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
+import { cache } from 'react';
 
-export async function getSubscriptionStatus() {
+export const getSubscriptionStatus = cache(async () => {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -27,4 +28,4 @@ export async function getSubscriptionStatus() {
         isPro: !!subscription,
         subscription: subscription || null,
     };
-}
+});

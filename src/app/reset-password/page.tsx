@@ -168,17 +168,15 @@ export default function ResetPasswordPage({
                 </div>
 
                 {/* Right Side */}
-                <div className="hidden lg:flex lg:w-1/2 bg-[#1A1C36] relative flex-col items-center justify-center overflow-hidden h-full">
-                    <div className="absolute top-[-10%] right-[-10%] w-[400px] h-[400px] bg-[#3B41FF]/20 rounded-full blur-[100px]"></div>
-                    <div className="absolute bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-[#3B41FF]/10 rounded-full blur-[80px]"></div>
+                <div className="hidden lg:flex lg:w-1/2 bg-white relative flex-col items-center justify-center overflow-hidden h-full border-l border-slate-100">
                     <div className="relative z-10 px-16 text-center">
-                        <Logo className="w-12 h-12 text-white/90 mx-auto mb-6" />
-                        <h3 className="text-4xl font-bold text-white leading-tight mb-4">
+                        <Logo className="w-12 h-12 text-[#0066FF] mx-auto mb-6" />
+                        <h3 className="text-4xl font-bold text-slate-900 leading-tight mb-4">
                             Protecting<br />
                             your privacy<br />
                             <span className="text-[#3B41FF]">always.</span>
                         </h3>
-                        <p className="text-white/50 text-sm mt-4">
+                        <p className="text-slate-500 text-sm mt-4">
                             Updating your password regularly keeps your sponsorship journey secure.
                         </p>
                     </div>
