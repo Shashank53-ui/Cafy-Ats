@@ -4,8 +4,8 @@ import { CheckCircle2, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getSubscriptionStatus } from '../../actions/subscriptionActions';
 
-// TO DO: Replace with your actual Stripe Price ID
-const PRO_PRICE_ID = 'price_1T8phzEj3rV8qCmFGviBCokH';
+// Replace with your actual Stripe Price ID from .env.local
+const PRO_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID || 'price_1T96jGEj3rV8qCmFJNfF09yR';
 
 export default function SubscriptionPage() {
     const [isPro, setIsPro] = useState(false);

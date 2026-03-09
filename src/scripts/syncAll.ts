@@ -1061,7 +1061,32 @@ async function syncAll() {
                 } else {
                     result.saved = rows.length;
                     totalSaved += rows.length;
+
+                    // ─── Cleanup: Delete stale jobs ───
+                    // Remove any jobs for this company that NOT in the list we just fetched.
+                    const currentUrls = uniqueJobs.map(j => j.url);
+                    const { error: delErr, count: delCount } = await supabase
+                        .from('jobs')
+                        .delete()
+                        .eq('company_id', id)
+                        .not('url', 'in', `(${currentUrls.map(u => `"${u}"`).join(',')})`);
+
+                    if (delErr) {
+                        console.error(`  ⚠️ Cleanup error: ${delErr.message}`);
+                    } else if (delCount) {
+                        console.log(`  🧹 Cleaned up ${delCount} stale jobs`);
+                    }
                 }
+            } else {
+                // Special case: If the fetcher returned 0 jobs AND it was successful (not an error),
+                // we should probably clear out old jobs for this company too.
+                console.log(`0 total → 0 UK. Clearing old jobs...`);
+                const { error: delErr } = await supabase
+                    .from('jobs')
+                    .delete()
+                    .eq('company_id', id);
+
+                if (delErr) console.error(`  ⚠️ Clear error: ${delErr.message}`);
             }
 
             // Calculate exact active jobs count directly from DB
