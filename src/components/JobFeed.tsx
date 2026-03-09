@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Database, Briefcase, MapPin, Building, ChevronRight, Check, CheckCircle2, Link as LinkIcon, Linkedin, FileText, ArrowRight, ShieldCheck, TrendingUp, ThumbsDown } from 'lucide-react';
+import { Database, Briefcase, MapPin, Building, ChevronRight, Check, CheckCircle2, Link as LinkIcon, Linkedin, FileText, ArrowRight, ShieldCheck, TrendingUp, ThumbsDown, AlertTriangle } from 'lucide-react';
 import { getJobs, Job, markJobAsApplied } from '../app/actions/jobActions';
 import { reportJobAction } from '../app/actions/reportActions';
 import { getSubscriptionStatus } from '../app/actions/subscriptionActions';
@@ -57,6 +57,12 @@ export default function JobFeed({ initialJobs, initialTotalPages, initialApplied
         Object.entries(initialAppliedJobs).forEach(([id, ts]) => m.set(id, ts));
         return m;
     });
+
+    // Report Modal State
+    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const [reportingJobId, setReportingJobId] = useState<string | null>(null);
+    const [reportReason, setReportReason] = useState('');
+    const [isReporting, setIsReporting] = useState(false);
 
     useEffect(() => {
         getSubscriptionStatus().then(res => setIsPro(res.isPro));
@@ -155,27 +161,29 @@ export default function JobFeed({ initialJobs, initialTotalPages, initialApplied
         }
     };
 
-    const handleReportClick = async (e: React.MouseEvent, jobId: string) => {
+    const handleReportClick = (e: React.MouseEvent, jobId: string) => {
         e.stopPropagation();
         if (reportedJobIds.has(jobId)) return;
 
-        const reason = window.prompt("Why are you reporting this job? (e.g., Expired, Wrong location, etc.)\n\nYour feedback helps us keep GetLanded accurate for everyone! 🙏");
+        setReportingJobId(jobId);
+        setReportReason('');
+        setIsReportModalOpen(true);
+    };
 
-        // If user cancels or gives empty reason, we can still report or skip. 
-        // Let's require a reason or just proceed if they hit OK with empty.
-        if (reason === null) return; // User cancelled
+    const confirmReport = async () => {
+        if (!reportingJobId) return;
 
-        setReportedJobIds(prev => new Set(prev).add(jobId));
+        setIsReporting(true);
+        const res = await reportJobAction(Number(reportingJobId), reportReason.trim() || undefined);
 
-        const res = await reportJobAction(Number(jobId), reason.trim() || undefined);
-        if (!res.success) {
-            setReportedJobIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(jobId);
-                return newSet;
-            });
+        if (res.success) {
+            setReportedJobIds(prev => new Set(prev).add(reportingJobId));
+            setIsReportModalOpen(false);
+            setReportingJobId(null);
+        } else {
             alert(res.error || 'Failed to report job');
         }
+        setIsReporting(false);
     };
 
     const handleDismissClick = (e: React.MouseEvent, jobId: string) => {
@@ -477,6 +485,62 @@ export default function JobFeed({ initialJobs, initialTotalPages, initialApplied
                     )}
                 </div>
             </div>
+
+            {/* Custom Report Modal */}
+            {isReportModalOpen && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200"
+                    onClick={() => setIsReportModalOpen(false)}
+                >
+                    <div
+                        className="bg-white w-full max-w-md rounded-none border border-[var(--border)] shadow-2xl p-6 sm:p-8 animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 bg-orange-50 rounded-md">
+                                <AlertTriangle className="w-5 h-5 text-orange-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Report this job</h3>
+                                <p className="text-xs text-slate-500 font-medium">Help us keep GetLanded accurate</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Reason (Optional)</label>
+                                <textarea
+                                    autoFocus
+                                    value={reportReason}
+                                    onChange={(e) => setReportReason(e.target.value)}
+                                    placeholder="e.g. This job has expired or the link is broken..."
+                                    className="w-full bg-slate-50 border border-[var(--border)] rounded-none p-4 text-sm text-slate-700 focus:outline-none focus:border-[#0066FF] focus:ring-1 focus:ring-[#0066FF] min-h-[120px] resize-none transition-all"
+                                />
+                            </div>
+
+                            <p className="text-[12px] text-slate-500 leading-relaxed italic">
+                                "Your contribution makes the job search better for everyone. Thank you! 🙏"
+                            </p>
+
+                            <div className="flex gap-3 pt-4 border-t border-slate-100">
+                                <button
+                                    onClick={() => setIsReportModalOpen(false)}
+                                    className="flex-1 px-4 py-3 border border-slate-200 text-slate-600 font-bold uppercase tracking-widest text-[11px] hover:bg-slate-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmReport}
+                                    disabled={isReporting}
+                                    className="flex-1 px-4 py-3 bg-[#0066FF] hover:bg-[#0052CC] text-white font-black uppercase tracking-widest text-[11px] shadow-lg shadow-[#0066FF]/20 transition-all active:scale-95 disabled:opacity-50"
+                                >
+                                    {isReporting ? 'Submitting...' : 'Submit Report'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
