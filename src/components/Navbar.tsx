@@ -30,6 +30,7 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
     const navLinks = [
         { name: 'Jobs', href: '/jobs' },
         { name: 'Companies', href: '/companies' },
+        { name: 'Sponsorship Hub', href: '/sponsorship-hub' },
         { name: 'Applied', href: '/applied' },
     ];
 
@@ -43,7 +44,7 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
 
     return (
         <>
-            <nav ref={navRef} className="fixed top-0 w-full z-50 glass border-b border-[var(--border)]">
+            <nav ref={navRef} className="fixed top-0 w-full z-50 glass border-b border-(--border)">
                 <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-12 h-16 flex items-center justify-between">
                     {/* Logo */}
                     <Link href="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
@@ -66,7 +67,7 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
                             <MessageSquare className="w-3.5 h-3.5" />
                             Report a bug or suggest a feature
                         </a>
-                        <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                        <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
                         {navLinks.map((link) => (
                             <Link
                                 key={link.href}
@@ -110,7 +111,7 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
 
                 {/* Mobile Drawer — slides down below navbar */}
                 <div
-                    className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out border-t border-[var(--border)] ${mobileOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'
+                    className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out border-t border-(--border) ${mobileOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'
                         } glass`}
                 >
                     <div className="px-4 py-4 flex flex-col gap-1">
@@ -128,7 +129,7 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
                             </Link>
                         ))}
 
-                        <div className="border-t border-[var(--border)] mt-2 pt-3 flex flex-col gap-2">
+                        <div className="border-t border-(--border) mt-2 pt-3 flex flex-col gap-2">
                             {user ? (
                                 <>
                                     <Link
