@@ -199,9 +199,9 @@ const SponsorshipHub: React.FC = () => {
   }
 
   return (
-    <div className="bg-slate-50 flex-1 flex flex-col h-full overflow-y-auto pb-20 scrollbar-hide">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
-        <div className="mb-12 space-y-8">
+    <div className="bg-slate-50 flex-1 flex flex-col min-h-screen pb-20 w-full overflow-x-hidden">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+        <div className="mb-12 space-y-8 w-full">
           <div className="text-center space-y-4">
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-slate-900">
               UK Visa Sponsor Register
@@ -329,14 +329,14 @@ const SponsorshipHub: React.FC = () => {
                 </AnimatePresence>
 
                 {filteredCompanies.length > displayLimit && (
-                  <div className="mt-12 flex flex-col items-center justify-center gap-6">
-                    <div className="flex items-center gap-1 sm:gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="mt-12 flex flex-col items-center justify-center gap-6 w-full max-w-full">
+                    <div className="flex items-center gap-1 sm:gap-2 bg-white p-1.5 sm:p-2 rounded-2xl border border-slate-200 shadow-sm w-[95%] sm:w-auto max-w-full overflow-x-auto scrollbar-hide flex-nowrap">
                       <button
                         onClick={() =>
                           setCurrentPage((prev) => Math.max(1, prev - 1))
                         }
                         disabled={currentPage === 1}
-                        className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center"
+                        className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center shrink-0"
                         title="Previous Page"
                       >
                         <ChevronLeft size={20} />
@@ -349,7 +349,7 @@ const SponsorshipHub: React.FC = () => {
                         ).map((page: string | number, i: number) => (
                           <React.Fragment key={i}>
                             {page === "..." ? (
-                              <span className="w-10 h-10 flex items-center justify-center text-slate-400 font-medium">
+                              <span className="w-8 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-slate-400 font-medium shrink-0">
                                 ...
                               </span>
                             ) : (
@@ -357,7 +357,7 @@ const SponsorshipHub: React.FC = () => {
                                 onClick={() =>
                                   setCurrentPage(Number(page))
                                 }
-                                className={`w-10 h-10 flex items-center justify-center rounded-xl text-sm font-bold transition-all ${
+                                className={`w-9 h-9 sm:w-10 sm:h-10 shrink-0 flex items-center justify-center rounded-xl text-sm font-bold transition-all ${
                                   currentPage === page
                                     ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105"
                                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -385,7 +385,7 @@ const SponsorshipHub: React.FC = () => {
                           currentPage ===
                           Math.ceil(filteredCompanies.length / displayLimit)
                         }
-                        className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center"
+                        className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center shrink-0"
                         title="Next Page"
                       >
                         <ChevronRight size={20} />
@@ -564,7 +564,7 @@ const CompanyDetailModal: React.FC<{
         <div className="sticky top-0 bg-white border-b border-slate-200 p-4 sm:p-6 flex items-start justify-between gap-3 z-10">
           <div className="flex-1 min-w-0 pr-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-              <h2 className="text-base sm:text-lg md:text-xl font-bold text-slate-900 wrap-break-word leading-tight">
+              <h2 className="text-base sm:text-lg md:text-xl font-bold text-slate-900 break-words leading-tight">
                 {company.organisationName}
               </h2>
               {isARating && (
@@ -607,36 +607,36 @@ const CompanyDetailModal: React.FC<{
                     "Licensed UK visa sponsor company"}
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div className="bg-slate-100 p-3 rounded-lg border border-slate-200">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-4">
+                  <div className="bg-slate-100 p-2.5 sm:p-3 rounded-lg border border-slate-200">
+                    <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
                       Company Number
                     </p>
-                    <p className="text-slate-900 font-mono text-sm font-semibold break-all">
+                    <p className="text-slate-900 font-mono text-xs sm:text-sm font-semibold break-all">
                       {companyDetails?.registrationNumber || "N/A"}
                     </p>
                   </div>
-                  <div className="bg-slate-100 p-3 rounded-lg border border-slate-200">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                  <div className="bg-slate-100 p-2.5 sm:p-3 rounded-lg border border-slate-200">
+                    <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
                       Founded
                     </p>
-                    <p className="text-slate-900 text-sm font-semibold">
+                    <p className="text-slate-900 text-xs sm:text-sm font-semibold">
                       {companyDetails?.foundedYear || "N/A"}
                     </p>
                   </div>
-                  <div className="bg-slate-100 p-3 rounded-lg border border-slate-200">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                  <div className="bg-slate-100 p-2.5 sm:p-3 rounded-lg border border-slate-200">
+                    <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
                       Size
                     </p>
-                    <p className="text-slate-900 text-sm font-semibold">
+                    <p className="text-slate-900 text-xs sm:text-sm font-semibold">
                       {companyDetails?.employees || "N/A"}
                     </p>
                   </div>
-                  <div className="bg-slate-100 p-3 rounded-lg border border-slate-200">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                  <div className="bg-slate-100 p-2.5 sm:p-3 rounded-lg border border-slate-200">
+                    <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
                       Visa Route
                     </p>
-                    <p className="text-slate-900 text-sm font-semibold">
+                    <p className="text-slate-900 text-xs sm:text-sm font-semibold">
                       {company.route}
                     </p>
                   </div>
@@ -709,28 +709,28 @@ const CompanyDetailModal: React.FC<{
               <h3 className="text-lg font-semibold text-slate-900 mb-4">
                 Salary Range (GBP)
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="bg-slate-100 rounded-xl p-4 border border-slate-200">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+              <div className="grid grid-cols-1 gap-2 sm:gap-3">
+                <div className="bg-slate-100 rounded-xl p-3 sm:p-4 border border-slate-200 flex justify-between items-center sm:block">
+                  <p className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0 sm:mb-1">
                     Entry Level
                   </p>
-                  <p className="text-slate-900 font-bold">
+                  <p className="text-slate-900 font-bold text-sm sm:text-base">
                     {companyDetails.salaryBreakdown.entry}
                   </p>
                 </div>
-                <div className="bg-slate-100 rounded-xl p-4 border border-slate-200">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+                <div className="bg-slate-100 rounded-xl p-3 sm:p-4 border border-slate-200 flex justify-between items-center sm:block">
+                  <p className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0 sm:mb-1">
                     Mid Level
                   </p>
-                  <p className="text-slate-900 font-bold">
+                  <p className="text-slate-900 font-bold text-sm sm:text-base">
                     {companyDetails.salaryBreakdown.mid}
                   </p>
                 </div>
-                <div className="bg-slate-100 rounded-xl p-4 border border-slate-200">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+                <div className="bg-slate-100 rounded-xl p-3 sm:p-4 border border-slate-200 flex justify-between items-center sm:block">
+                  <p className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0 sm:mb-1">
                     Senior Level
                   </p>
-                  <p className="text-slate-900 font-bold">
+                  <p className="text-slate-900 font-bold text-sm sm:text-base">
                     {companyDetails.salaryBreakdown.senior}
                   </p>
                 </div>
@@ -845,8 +845,8 @@ const RoleDetailModal: React.FC<{
                   className="text-indigo-700 sm:w-6 sm:h-6"
                 />
               </div>
-              <div className="min-w-0">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1 wrap-break-word">
+              <div className="min-w-0 shrink">
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1 break-words">
                   {role.name}
                 </h2>
                 <span className="text-[10px] sm:text-sm font-mono text-slate-700 font-bold bg-slate-100 px-2 sm:px-2.5 py-1 rounded border border-slate-300 shadow-sm inline-block">
@@ -914,9 +914,9 @@ const RoleDetailModal: React.FC<{
             <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-3 sm:mb-4 flex items-center gap-2">
               Visa Sponsorship Criteria
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4">
               <div
-                className={`rounded-xl p-5 border shadow-sm ${
+                className={`rounded-xl p-4 flex flex-col sm:p-5 border shadow-sm ${
                   role.skilled_status === "Higher Skilled"
                     ? "bg-white border-emerald-200 ring-1 ring-emerald-100"
                     : role.skilled_status === "Ineligible"
@@ -924,24 +924,26 @@ const RoleDetailModal: React.FC<{
                       : "bg-white border-indigo-200"
                 }`}
               >
-                <p className="text-xs font-bold uppercase tracking-wide opacity-70 mb-2">
-                  Skill Level
-                </p>
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      role.skilled_status === "Higher Skilled"
-                        ? "bg-emerald-600"
-                        : role.skilled_status === "Ineligible"
-                          ? "bg-rose-600"
-                          : "bg-indigo-600"
-                    }`}
-                  />
-                  <p className="text-lg font-bold text-slate-900">
-                    {role.skilled_status}
+                <div className="flex justify-between items-start mb-2 sm:mb-0">
+                  <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wide opacity-70 mb-1 sm:mb-2">
+                    Skill Level
                   </p>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div
+                      className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${
+                        role.skilled_status === "Higher Skilled"
+                          ? "bg-emerald-600"
+                          : role.skilled_status === "Ineligible"
+                            ? "bg-rose-600"
+                            : "bg-indigo-600"
+                      }`}
+                    />
+                    <p className="text-sm sm:text-lg font-bold text-slate-900">
+                      {role.skilled_status}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-sm text-slate-600">
+                <p className="text-xs sm:text-sm text-slate-600 mt-1">
                   {role.skilled_status === "Higher Skilled"
                     ? "Eligible for Skilled Worker visa (RQF Level 6+)"
                     : role.skilled_status === "Ineligible"
@@ -950,69 +952,75 @@ const RoleDetailModal: React.FC<{
                 </p>
               </div>
 
-              <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-                  PhD Points
-                </p>
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      role.eligible_phd === "Yes"
-                        ? "bg-purple-600"
-                        : "bg-slate-300"
-                    }`}
-                  />
-                  <p className="text-lg font-bold text-slate-900">
-                    {role.eligible_phd === "Yes" ? "Eligible" : "Not Eligible"}
+              <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm flex flex-col">
+                <div className="flex justify-between items-start mb-2 sm:mb-0">
+                  <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 sm:mb-2">
+                    PhD Points
                   </p>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div
+                      className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${
+                        role.eligible_phd === "Yes"
+                          ? "bg-purple-600"
+                          : "bg-slate-300"
+                      }`}
+                    />
+                    <p className="text-sm sm:text-lg font-bold text-slate-900">
+                      {role.eligible_phd === "Yes" ? "Eligible" : "Not Eligible"}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-sm text-slate-600">
+                <p className="text-xs sm:text-sm text-slate-600 mt-1">
                   {role.eligible_phd === "Yes"
                     ? "Qualifies for tradeable points with relevant PhD"
                     : "Standard points system applies"}
                 </p>
               </div>
 
-              <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-                  Salary List (ISL)
-                </p>
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      role.eligible_isl === "Yes"
-                        ? "bg-amber-500"
-                        : "bg-slate-300"
-                    }`}
-                  />
-                  <p className="text-lg font-bold text-slate-900">
-                    {role.eligible_isl === "Yes" ? "On the List" : "Not Listed"}
+              <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm flex flex-col">
+                <div className="flex justify-between items-start mb-2 sm:mb-0">
+                  <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 sm:mb-2">
+                    Salary List (ISL)
                   </p>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div
+                      className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${
+                        role.eligible_isl === "Yes"
+                          ? "bg-amber-500"
+                          : "bg-slate-300"
+                      }`}
+                    />
+                    <p className="text-sm sm:text-lg font-bold text-slate-900">
+                      {role.eligible_isl === "Yes" ? "On the List" : "Not Listed"}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-sm text-slate-600">
+                <p className="text-xs sm:text-sm text-slate-600 mt-1">
                   {role.eligible_isl === "Yes"
                     ? "Eligible for reduced salary threshold (70% of rate)"
                     : "Standard salary threshold applies"}
                 </p>
               </div>
 
-              <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-                  Salary Scale
-                </p>
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      role.salary_scale === "Yes"
-                        ? "bg-blue-600"
-                        : "bg-slate-300"
-                    }`}
-                  />
-                  <p className="text-lg font-bold text-slate-900">
-                    {role.salary_scale === "Yes" ? "Standard Rate" : "Variable"}
+              <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm flex flex-col">
+                <div className="flex justify-between items-start mb-2 sm:mb-0">
+                  <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 sm:mb-2">
+                    Salary Scale
                   </p>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div
+                      className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${
+                        role.salary_scale === "Yes"
+                          ? "bg-blue-600"
+                          : "bg-slate-300"
+                      }`}
+                    />
+                    <p className="text-sm sm:text-lg font-bold text-slate-900">
+                      {role.salary_scale === "Yes" ? "Standard Rate" : "Variable"}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-sm text-slate-600">
+                <p className="text-xs sm:text-sm text-slate-600 mt-1">
                   {role.salary_scale === "Yes"
                     ? "Going rate must be met for sponsorship"
                     : "See specific government guidance"}
@@ -1153,14 +1161,14 @@ const RoleSearchSection: React.FC<{
       </div>
 
       {filteredRoles.length > displayLimit && (
-        <div className="mt-12 flex flex-col items-center justify-center gap-6">
-          <div className="flex items-center gap-1 sm:gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="mt-12 flex flex-col items-center justify-center gap-6 w-full max-w-full">
+          <div className="flex items-center gap-1 sm:gap-2 bg-white p-1.5 sm:p-2 rounded-2xl border border-slate-200 shadow-sm w-[95%] sm:w-auto max-w-full overflow-x-auto scrollbar-hide flex-nowrap">
             <button
               onClick={() =>
                 setCurrentRolePage((prev) => Math.max(1, prev - 1))
               }
               disabled={currentRolePage === 1}
-              className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center"
+              className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center shrink-0"
               title="Previous Page"
             >
               <ChevronLeft size={20} />
@@ -1171,13 +1179,13 @@ const RoleSearchSection: React.FC<{
                 (page: string | number, i: number) => (
                   <React.Fragment key={i}>
                     {page === "..." ? (
-                      <span className="w-10 h-10 flex items-center justify-center text-slate-400 font-medium">
+                      <span className="w-8 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-slate-400 font-medium shrink-0">
                         ...
                       </span>
                     ) : (
                       <button
                         onClick={() => setCurrentRolePage(Number(page))}
-                        className={`w-10 h-10 flex items-center justify-center rounded-xl text-sm font-bold transition-all ${
+                        className={`w-9 h-9 sm:w-10 sm:h-10 shrink-0 flex items-center justify-center rounded-xl text-sm font-bold transition-all ${
                           currentRolePage === page
                             ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105"
                             : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -1196,7 +1204,7 @@ const RoleSearchSection: React.FC<{
                 setCurrentRolePage((prev) => Math.min(totalRolePages, prev + 1))
               }
               disabled={currentRolePage === totalRolePages}
-              className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center"
+              className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center shrink-0"
               title="Next Page"
             >
               <ChevronRight size={20} />

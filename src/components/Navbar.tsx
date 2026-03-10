@@ -41,8 +41,8 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
 
     const navLinks = [
         { name: 'Jobs', href: '/jobs' },
+        { name: 'Sponsorship', href: '/sponsorship-hub' },
         { name: 'Companies', href: '/companies' },
-        { name: 'Sponsorship Hub', href: '/sponsorship-hub' },
         { name: 'Applied', href: '/applied' },
     ];
 
@@ -56,7 +56,7 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
 
     return (
         <>
-            <nav ref={navRef} className="fixed top-0 w-full z-50 glass border-b border-(--border)">
+            <nav ref={navRef} className="fixed top-0 w-full z-50 glass border-b border-[var(--border)]">
                 <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-12 h-16 flex items-center justify-between">
                     {/* Logo */}
                     <Link href="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
@@ -79,7 +79,7 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
                             <MessageSquare className="w-3.5 h-3.5" />
                             Report a bug or suggest a feature
                         </a>
-                        <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                        <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1"></div>
                         {navLinks.map((link) => (
                             <Link
                                 key={link.href}
@@ -121,29 +121,22 @@ const Navbar: React.FC<NavbarProps> = ({ user }) => {
                     </button>
                 </div>
 
-                {/* Mobile Drawer — slides down below navbar */}
-                <div
-                    className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out border-t border-(--border) ${mobileOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'
-                        } glass`}
-                >
-                    <div className="px-4 py-4 flex flex-col gap-1">
-                        {navLinks.map((link) => (
-                            <Link
-                                key={link.href}
-                                href={link.href}
-                                onClick={() => setMobileOpen(false)}
-                                className={`px-4 py-3 rounded-xl text-sm font-semibold transition-colors ${isActive(link.href)
-                                    ? 'text-[#0066FF] bg-blue-50 dark:bg-blue-900/20'
-                                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                    }`}
-                            >
-                                {link.name}
-                            </Link>
-                        ))}
+                {/* Mobile Drawer — fullscreen overlay with menu panel */}
+                {mobileOpen && (
+                    <div className="fixed inset-0 z-40 md:hidden bg-white overflow-y-auto">
+                        {/* Full-screen mobile menu */}
+                        <button
+                            onClick={() => setMobileOpen(false)}
+                            className="absolute top-5 right-4 z-10 p-2 rounded-full text-slate-500 hover:bg-slate-100 active:scale-95 transition-colors"
+                            aria-label="Close menu"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
 
-                        <div className="border-t border-(--border) mt-2 pt-3 flex flex-col gap-2">
-                            {user ? (
-                                <>
+                        <div className="h-full flex flex-col items-center justify-center gap-8 px-6 py-10">
+                            {/* Navigation links */}
+                            <div className="w-full max-w-sm flex flex-col gap-3 text-center">
+                                {navLinks.map((link) => (
                                     <Link
                                         key={link.href}
                                         href={link.href}

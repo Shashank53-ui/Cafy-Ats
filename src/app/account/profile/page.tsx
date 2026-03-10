@@ -30,11 +30,6 @@ export default async function ProfilePage() {
                         <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Full Name</p>
                         <p className="text-slate-900 dark:text-white mt-1">{name}</p>
                     </div>
-                    <div className="pt-2">
-                        <p className="text-slate-500 dark:text-slate-400 text-sm">
-                            You are authenticated via Supabase. Email and password changes can be managed via your provider.
-                        </p>
-                    </div>
                 </div>
             </div>
 

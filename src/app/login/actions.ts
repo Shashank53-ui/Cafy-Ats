@@ -113,9 +113,6 @@ export async function signup(formData: FormData) {
         redirect(`/signup?error=${encodeURIComponent(friendlyAuthError(error.message))}`)
     }
 
-    if (!authData.session) {
-        redirect(`/signup?message=${encodeURIComponent('please verify email to get logged in')}`)
-    }
 
     revalidatePath('/', 'layout')
     // Redirect to home upon first sign up
