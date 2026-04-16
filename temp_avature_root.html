@@ -1,0 +1,25 @@
+﻿<html>
+<head>
+<meta name="robots" content="noindex">
+<script type="text/javascript">function redirect() {
+    var loginServer = "https:\/\/siemens.avature.net:443\/Login\/"
+    var urlHash = encodeURI(window.location.hash);
+    var url = loginServer + urlHash;
+    var redirectLink = document.createElement('a');
+    if (window.location.href.lastIndexOf('/dashboard') != -1) {
+        document.cookie="relayState=#dashboard; secure; sameSite=lax; path=/";
+    } else if (urlHash != '') {
+        document.cookie="relayState=" + "" + urlHash + "; secure; sameSite=lax; path=/";
+    }
+    window.location.href = url;
+}
+
+window.onload = redirect;
+</script>
+<noscript>
+    <div id="noJavascript" style="padding: 5em; font-weight: bold">You need to enable JavaScript to use this website.</div>
+</noscript>
+</head>
+<body>
+</body>
+</html>

@@ -1,0 +1,21 @@
+company_id,trading_name,url,careers_url_found,old_provider,old_token,new_provider,new_token,status,probe_status_code,source,notes
+138,Nomo Bank,https://www.nomobank.com/,https://jobs.jobvite.com/__assets__/lib/pdfjs/web/locale/eo/viewer.properties,jobvite,__assets,jobvite,__assets__,bad_token,404,search,invalid_token:__assets__
+490,Palta,https://palta.com/,https://palta.teamtailor.com/,teamtailor,palta,teamtailor,palta,bad_token,404,search,search_link:https://palta.teamtailor.com/
+583,Garrison,https://www.garrison.com/,https://apply.workable.com/garrison/,bamboohr,www,workable,garrison,ok,200,search,search_link:https://apply.workable.com/garrison/
+614,Trouva,https://www.trouva.com/,https://www.bamboohr.com/product-updates/cancel-or-restart-eor-onboarding-and-rehire-eor-employees-in-bamboohr,bamboohr,www,bamboohr,www,bad_token,404,search,invalid_token:www
+703,Luminance,https://www.luminance.com/,https://apply.workable.com/luminance-1/j/EB7A90D271/,workable,luminance-1,workable,luminance-1,ok,200,search,search_link:https://apply.workable.com/luminance-1/j/EB7A90D271/
+744,Heroes,https://makeheroes.co/,https://heroes-1713787424.teamtailor.com/connect/login,teamtailor,heroes-1713787424,teamtailor,heroes-1713787424,bad_token,404,search,search_link:https://heroes-1713787424.teamtailor.com/connect/login
+1054,WorldFirst EU,https://www.worldfirst.com/eu/,https://jobs.jobvite.com/worldfirst-review/job,jobvite,__assets,jobvite,worldfirst-review,dead,,search,search_link:https://jobs.jobvite.com/worldfirst-review/job
+1251,Virtex,https://www.virtexstadium.com/,,,,,,dead,,crawl,homepage_fetch_failed
+1386,Wildstone,https://www.wildstone.co.uk/,https://www.bamboohr.com/product-updates/cancel-or-restart-eor-onboarding-and-rehire-eor-employees-in-bamboohr,bamboohr,www,bamboohr,www,bad_token,404,search,invalid_token:www
+1402,Yoti,https://www.yoti.com/,https://apply.workable.com/yoti/,workable,yoti,workable,yoti,ok,200,search,search_link:https://apply.workable.com/yoti/
+1424,Piclo,https://www.piclo.energy/,https://www.bamboohr.com/product-updates/cancel-or-restart-eor-onboarding-and-rehire-eor-employees-in-bamboohr,bamboohr,www,bamboohr,www,bad_token,404,search,invalid_token:www
+1454,TotallyMoney,https://www.totallymoney.com/,https://apply.workable.com/totallymoney/,workable,totallymoney,workable,totallymoney,ok,200,search,search_link:https://apply.workable.com/totallymoney/
+1514,Evonetix,https://www.evonetix.com/,,,,,,dead,,crawl,homepage_fetch_failed
+1593,OpenBet,https://www.openbet.com/,https://apply.workable.com/openbet-1/,workable,openbet-1,workable,openbet-1,ok,200,search,search_link:https://apply.workable.com/openbet-1/
+1607,Delinian,https://www.delinian.com/,https://the-luminos-fund.breezy.hr/p/16fed6a257f6-people-team-hr-coordinator-or-manager,,,breezy,the-luminos-fund,ok,200,search,search_link:https://the-luminos-fund.breezy.hr/p/16fed6a257f6-people-team-hr-coordinator-or-manager
+1651,Bacsol,https://www.bacsol.co.uk/,https://boards.greenhouse.io/appliedintuition/jobs/4486320005,,,greenhouse,appliedintuition,ok,200,search,search_link:https://boards.greenhouse.io/appliedintuition/jobs/4486320005
+1675,Poli,https://withpoli.com,https://www.bamboohr.com/product-updates/cancel-or-restart-eor-onboarding-and-rehire-eor-employees-in-bamboohr,,,bamboohr,www,bad_token,404,search,invalid_token:www
+1817,Wolseley,https://www.wolseley.co.uk,https://www.bamboohr.com/product-updates/expand-or-collapse-onboarding-and-offboarding-lists,,,bamboohr,www,bad_token,404,search,invalid_token:www
+1834,Superbeam,https://www.superbeam.agency,https://the-luminos-fund.breezy.hr/p/16fed6a257f6-people-team-hr-coordinator-or-manager,,,breezy,the-luminos-fund,ok,200,search,search_link:https://the-luminos-fund.breezy.hr/p/16fed6a257f6-people-team-hr-coordinator-or-manager
+1848,wamo,https://wamo.io,https://skims.pinpointhq.com/postings/688a2b7c-4e5e-4b15-b107-ec474026e014,,,pinpoint,skims,ok,200,search,search_link:https://skims.pinpointhq.com/postings/688a2b7c-4e5e-4b15-b107-ec474026e014

@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-jobs",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/detect-ats",
+      "schedule": "30 2 * * *"
+    }
+  ]
+}

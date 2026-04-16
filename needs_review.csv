@@ -1,0 +1,349 @@
+company_id,company_name,careers_url,old_ats_provider,reason
+8,Productboard,https://www.productboard.com/,smartrecruiters,resolver_no_match
+11,Sylvera,https://www.sylvera.com/,lever,resolver_no_match
+19,Porsche,https://www.porsche.com/international/,smartrecruiters,resolver_no_match
+34,eduMe,https://www.edume.com/,greenhouse,resolver_no_match
+39,Addison Lee,https://www.addisonlee.com/,teamtailor,resolver_no_match
+40,Aize,https://www.aize.io/,teamtailor,resolver_no_match
+42,Sweatcoin,https://sweatco.in/,teamtailor,resolver_no_match
+48,Vyne,https://www.payvyne.com/,smartrecruiters,resolver_no_match
+51,Lightricks,https://lightricks.com,greenhouse,resolver_no_match
+68,Ravelin,https://www.ravelin.com/,teamtailor,resolver_no_match
+70,Sciensus,https://www.sciensus.com/,teamtailor,resolver_no_match
+71,Chip,https://www.getchip.uk/,teamtailor,resolver_no_match
+82,Simmons & Simmons,https://www.simmons-simmons.com/,teamtailor,resolver_no_match
+96,Let's Do This,https://www.letsdothis.com/gb,teamtailor,resolver_no_match
+97,Breathe,https://breathebatteries.com/,teamtailor,resolver_no_match
+98,Employment Hero,https://employmenthero.com/uk/,teamtailor,resolver_no_match
+101,Bark,https://www.bark.com/,teamtailor,resolver_no_match
+111,Peppy,https://peppy.health/,teamtailor,resolver_no_match
+113,Creditspring,https://www.creditspring.co.uk/,teamtailor,resolver_no_match
+117,BEL Engineering,https://www.belengineering.co.uk/,smartrecruiters,resolver_no_match
+119,Shieldpay,https://www.shieldpay.com/,teamtailor,resolver_no_match
+124,Lunio,https://lunio.ai/,smartrecruiters,resolver_no_match
+139,Supersolid,https://supersolid.com/,smartrecruiters,resolver_no_match
+143,Snowplow,https://snowplow.io/,lever,resolver_no_match
+153,FabricNano,https://fabricnano.com/,teamtailor,resolver_no_match
+154,Phoelex,https://phoelex.com/,greenhouse,resolver_no_match
+181,nudge Global,https://www.nudge-global.com/,smartrecruiters,resolver_no_match
+182,Gravity Sketch,https://www.gravitysketch.com/,ashby,resolver_no_match
+186,Octopus Group,https://octopusgroup.com/,smartrecruiters,resolver_no_match
+187,Seldon,https://www.seldon.io/,greenhouse,resolver_no_match
+188,Arm,https://www.arm.com/,workable,resolver_no_match
+193,Parkopedia,https://www.parkopedia.com/,teamtailor,resolver_no_match
+194,Lick,https://www.lick.com/uk,workable,resolver_no_match
+203,VMWare,https://www.vmware.com/uk.html,teamtailor,resolver_no_match
+205,Mintago,https://mintago.com/,teamtailor,resolver_no_match
+206,Plotly,https://plotly.com/,greenhouse,resolver_no_match
+212,Qogita,https://www.qogita.com/,teamtailor,resolver_no_match
+220,University of Nottingham,https://www.nottingham.ac.uk/,greenhouse,resolver_no_match
+221,Weavr,https://www.weavr.io/,smartrecruiters,resolver_no_match
+226,Elephant,https://ele.health/,workable,resolver_no_match
+228,Crestline,https://www.crestlineinvestors.com/,greenhouse,resolver_no_match
+239,Criteo,https://www.criteo.com/,smartrecruiters,resolver_no_match
+243,Continuum,https://www.continuum.industries/,lever,resolver_no_match
+244,Flash Pack,https://www.flashpack.com/,teamtailor,resolver_no_match
+258,Better.co.uk,https://better.co.uk/,lever,resolver_no_match
+266,Abatable,https://www.abatable.com/,workable,resolver_no_match
+267,Home Made,https://www.home-made.com/,teamtailor,resolver_no_match
+277,Lattice,https://lattice.com/,greenhouse,resolver_no_match
+279,Klarna,https://www.klarna.com/uk/,teamtailor,resolver_no_match
+280,Mixcloud,https://www.mixcloud.com/,workable,resolver_no_match
+289,Element,https://element.io/,workable,resolver_no_match
+303,The Office Group,https://www.theofficegroup.com/,smartrecruiters,resolver_no_match
+310,Open Cosmos,https://open-cosmos.com,teamtailor,resolver_no_match
+315,Stotles,https://www.stotles.com/,teamtailor,resolver_no_match
+319,Quantum Motion,https://quantummotion.tech/,teamtailor,resolver_no_match
+323,Prodigy Finance,https://prodigyfinance.com/,teamtailor,resolver_no_match
+325,Moneybox,https://moneyboxapp.com/,ashby,resolver_no_match
+327,MyTutor,https://www.mytutor.co.uk/,teamtailor,resolver_no_match
+328,Zilch,https://www.zilch.com/uk/,greenhouse,resolver_no_match
+341,iwoca,https://www.iwoca.co.uk/,teamtailor,resolver_no_match
+345,Demandbase,https://www.demandbase.com/,smartrecruiters,resolver_no_match
+347,Minor Figures,https://minorfigures.com/,teamtailor,resolver_no_match
+350,University of the West of England Bristol (UWE Bristol),https://www.uwe.ac.uk/,greenhouse,resolver_no_match
+366,MullenLowe UK,https://www.mullenlowe.co.uk/,greenhouse,resolver_no_match
+373,Taxfix,https://taxfix.com/,teamtailor,resolver_no_match
+375,University of Greenwich,https://www.gre.ac.uk/,greenhouse,resolver_no_match
+380,ai.io,https://www.ai.io/,bamboohr,resolver_no_match
+382,Omnipresent,https://omnipresent.com,greenhouse,resolver_no_match
+388,University of Reading,https://www.reading.ac.uk/,smartrecruiters,resolver_no_match
+408,Spendesk,https://www.spendesk.com/,lever,resolver_no_match
+415,Seedcamp,https://seedcamp.com,teamtailor,resolver_no_match
+422,Seenit,https://www.seenit.io/,teamtailor,resolver_no_match
+426,OakNorth Bank,https://oaknorth.co.uk/,lever,resolver_no_match
+437,Callsign,https://www.callsign.com/,smartrecruiters,resolver_no_match
+438,Hadean,https://hadean.com/,teamtailor,resolver_no_match
+445,Tokamak Energy,https://www.tokamakenergy.co.uk/,teamtailor,resolver_no_match
+467,Not On The High Street,https://www.notonthehighstreet.com/,smartrecruiters,resolver_no_match
+468,Borderless,https://www.getborderless.io/,teamtailor,resolver_no_match
+474,Bank of Baroda,https://www.bankofbarodauk.com/,smartrecruiters,resolver_no_match
+484,bp,https://www.bp.com/,smartrecruiters,resolver_no_match
+497,BlueOptima,https://www.blueoptima.com/,smartrecruiters,resolver_no_match
+499,Resi,https://resi.co.uk/,teamtailor,resolver_no_match
+522,Nurole,https://www.nurole.com/,smartrecruiters,resolver_no_match
+525,Zero Gravity,https://www.zerogravity.co.uk/,smartrecruiters,resolver_no_match
+548,Deliveroo,https://deliveroo.co.uk/,smartrecruiters,resolver_no_match
+555,FYLD,https://www.fyld.ai/,teamtailor,resolver_no_match
+562,OVO,https://company.ovo.com/,greenhouse,resolver_no_match
+594,Miro,https://miro.com/,teamtailor,resolver_no_match
+597,Zinc,https://zincwork.com/,smartrecruiters,resolver_no_match
+601,STITCH Editing,https://stitchediting.tv/,greenhouse,resolver_no_match
+602,Amp X,https://ampx.energy/,teamtailor,resolver_no_match
+603,Intent HQ,https://intenthq.com/,teamtailor,resolver_no_match
+622,Genesis,https://genesis.global/,greenhouse,resolver_no_match
+624,Sharkmob,https://sharkmob.com,ashby,resolver_no_match
+628,Sessions,https://sessions.co.uk/,teamtailor,resolver_no_match
+642,Aztec,https://aztec.network/,greenhouse,resolver_no_match
+653,Kepler Interactive,https://kepler-interactive.com/,teamtailor,resolver_no_match
+654,Tallarium,https://www.tallarium.com/,lever,resolver_no_match
+660,Thought Machine,https://www.thoughtmachine.net,smartrecruiters,resolver_no_match
+665,Hanson Wade Group,https://hansonwadegroup.com/,smartrecruiters,resolver_no_match
+675,Simply Business,https://www.simplybusiness.co.uk/,lever,resolver_no_match
+684,Freshworks,https://www.freshworks.com/,smartrecruiters,resolver_no_match
+690,flatfair,https://flatfair.co.uk/,smartrecruiters,resolver_no_match
+692,Backbase,https://www.backbase.com/,greenhouse,resolver_no_match
+696,Bolt,https://bolt.eu/,teamtailor,resolver_no_match
+697,Deskpro,https://www.deskpro.com/,teamtailor,resolver_no_match
+701,Kegstar,https://kegstar.com/,greenhouse,resolver_no_match
+709,University of Bath,https://www.bath.ac.uk/,greenhouse,resolver_no_match
+716,Featurespace,https://www.featurespace.com/,greenhouse,resolver_no_match
+726,Volt,https://www.volt.io/,smartrecruiters,resolver_no_match
+743,Shopify,https://www.shopify.com/uk,smartrecruiters,resolver_no_match
+762,Legl,https://legl.com/,teamtailor,resolver_no_match
+793,JOB TODAY,https://jobtoday.com/gb,smartrecruiters,resolver_no_match
+797,Dyson,https://dyson.com,smartrecruiters,resolver_no_match
+805,OpenGamma,https://opengamma.com/,greenhouse,resolver_no_match
+808,Context,https://context.ai/,ashby,resolver_no_match
+814,Globacap,https://globacap.com/,teamtailor,resolver_no_match
+821,Antavo,https://antavo.com/,teamtailor,resolver_no_match
+824,Mojo Mortgages,https://mojomortgages.com/,teamtailor,resolver_no_match
+825,Capital One,https://www.capitalone.co.uk/,teamtailor,resolver_no_match
+826,Sky,https://sky.com,smartrecruiters,resolver_no_match
+829,Method,https://www.method.com/,greenhouse,resolver_no_match
+836,Moody's,https://www.moodys.com/,smartrecruiters,resolver_no_match
+842,zeroheight,https://zeroheight.com/,smartrecruiters,resolver_no_match
+848,Squire Technologies,https://www.squire-technologies.co.uk/,smartrecruiters,resolver_no_match
+863,Influencer,https://www.influencer.com/,teamtailor,resolver_no_match
+868,University of Oxford,https://www.ox.ac.uk/,greenhouse,resolver_no_match
+869,GLMX,https://www.glmx.com/,greenhouse,resolver_no_match
+876,Lightyear,https://lightyear.com/gb,smartrecruiters,resolver_no_match
+881,Unmade,https://www.unmade.com/,teamtailor,resolver_no_match
+920,Phasecraft,https://www.phasecraft.io/,teamtailor,resolver_no_match
+925,Better Origin,https://betterorigin.co.uk/,workable,resolver_no_match
+928,NetJets,https://www.netjets.com/,smartrecruiters,resolver_no_match
+932,Credit Benchmark,https://www.creditbenchmark.com/,smartrecruiters,resolver_no_match
+946,Impala,https://impala.travel/,teamtailor,resolver_no_match
+951,Inflection,https://inflection.ai/,smartrecruiters,resolver_no_match
+959,Sonovate,https://www.sonovate.com/,teamtailor,resolver_no_match
+962,Isla,https://isla.health/,teamtailor,resolver_no_match
+968,Cognizant,https://www.cognizant.com/,smartrecruiters,resolver_no_match
+972,Emitwise,https://emitwise.com,lever,resolver_no_match
+977,Amnesty International,https://www.amnesty.org/,smartrecruiters,resolver_no_match
+1015,Refeyn,https://www.refeyn.com/,greenhouse,resolver_no_match
+1033,Beauty Pie,https://www.beautypie.com/,smartrecruiters,resolver_no_match
+1058,techUK,https://www.techuk.org/,smartrecruiters,resolver_no_match
+1062,Mission Zero Technologies,https://www.missionzero.tech/,smartrecruiters,resolver_no_match
+1065,Capitolis,https://capitolis.com/,greenhouse,resolver_no_match
+1068,Atlassian,https://www.atlassian.com/,lever,resolver_no_match
+1069,TransferRoom,https://www.transferroom.com/,teamtailor,resolver_no_match
+1074,GuestReady,https://www.guestready.com/,teamtailor,resolver_no_match
+1078,Bloom & Wild,https://www.bloomandwild.com/,greenhouse,resolver_no_match
+1084,Pact Coffee,https://www.pactcoffee.com/,teamtailor,resolver_no_match
+1088,Talogy,https://www.talogy.com/,smartrecruiters,resolver_no_match
+1090,Noda,https://noda.live/,teamtailor,resolver_no_match
+1107,Artlogic,https://artlogic.net/,greenhouse,resolver_no_match
+1154,Nourished,https://get-nourished.com/,smartrecruiters,resolver_no_match
+1156,Pasta Evangelists,https://pastaevangelists.com,teamtailor,resolver_no_match
+1187,Oxa,https://oxa.tech/,teamtailor,resolver_no_match
+1205,Koru Kids,https://www.korukids.co.uk/,smartrecruiters,resolver_no_match
+1215,Adzuna,https://www.adzuna.co.uk/,smartrecruiters,resolver_no_match
+1216,WNS,https://www.wns.com/,smartrecruiters,resolver_no_match
+1217,Captify,https://www.captifytechnologies.com/,smartrecruiters,resolver_no_match
+1222,Roli,https://roli.com/,teamtailor,resolver_no_match
+1229,Universal Quantum,https://universalquantum.com/,teamtailor,resolver_no_match
+1235,Huboo,https://www.huboo.com/,teamtailor,resolver_no_match
+1247,Papaya,https://papayadash.com/,greenhouse,resolver_no_match
+1254,Zaptic,https://zaptic.com/,teamtailor,resolver_no_match
+1256,Sonos,https://www.sonos.com/en-gb/home,smartrecruiters,resolver_no_match
+1259,Sage,https://www.sage.com/en-gb/,greenhouse,resolver_no_match
+1263,Currencycloud,https://www.currencycloud.com/,smartrecruiters,resolver_no_match
+1272,Thingtrax,https://thingtrax.com/,teamtailor,resolver_no_match
+1279,Zeal,https://www.zeal.app/,teamtailor,resolver_no_match
+1280,Token,https://token.io/,lever,resolver_no_match
+1296,ClimeTrek,https://climetrek.com/,ashby,resolver_no_match
+1298,SSE,https://www.sse.com/,smartrecruiters,resolver_no_match
+1311,Unibuddy,https://unibuddy.com/,teamtailor,resolver_no_match
+1315,Elvie,https://www.elvie.com/,greenhouse,resolver_no_match
+1320,ev.energy,https://www.ev.energy/,smartrecruiters,resolver_no_match
+1335,Homebox,https://www.homebox.co.uk/,teamtailor,resolver_no_match
+1336,Starling Bank,https://www.starlingbank.com/,teamtailor,resolver_no_match
+1346,Napier AI,https://www.napier.ai/,smartrecruiters,resolver_no_match
+1352,Instanda,https://instanda.com/,teamtailor,resolver_no_match
+1366,Brsk,https://www.brsk.co.uk/,teamtailor,resolver_no_match
+1369,Revalue,https://revalue.earth,teamtailor,resolver_no_match
+1373,DNA Payments,https://www.dnapayments.com/,teamtailor,resolver_no_match
+1377,Cynergy Bank,https://www.cynergybank.co.uk/,smartrecruiters,resolver_no_match
+1405,Ampersand Partners,https://www.ampersand.partners/,greenhouse,resolver_no_match
+1415,AviadoBio,https://aviadobio.com/,workable,resolver_no_match
+1428,Seat Unique,https://www.seatunique.com/,smartrecruiters,resolver_no_match
+1435,Resolution Therapeutics,https://resolution-tx.com/,smartrecruiters,resolver_no_match
+1464,Medefer,https://medefer.com/,teamtailor,resolver_no_match
+1467,Gresham House,https://greshamhouse.com/,smartrecruiters,resolver_no_match
+1480,Omeda Studios,https://omedastudios.com/,teamtailor,resolver_no_match
+1503,The Thinking Traveller,https://www.thethinkingtraveller.com/,teamtailor,resolver_no_match
+1511,Paragraf,https://www.paragraf.com/,teamtailor,resolver_no_match
+1522,7bridges,https://www.the7bridges.com/,bamboohr,resolver_no_match
+1524,Contilio,https://www.contilio.com/index.html,teamtailor,resolver_no_match
+1545,Forefront RF,https://www.forefrontrf.com/,smartrecruiters,resolver_no_match
+1561,Quotient Sciences,https://www.quotientsciences.com/,greenhouse,resolver_no_match
+1569,Black Swan Data,https://www.blackswan.com/,greenhouse,resolver_no_match
+1572,Anton,https://antoncorp.com/,smartrecruiters,resolver_no_match
+1575,LivaNova,https://www.livanova.com/en-us,smartrecruiters,resolver_no_match
+1577,Hived,https://www.hived.space/,teamtailor,resolver_no_match
+1587,Miller Insurance,https://www.miller-insurance.com/,teamtailor,resolver_no_match
+1589,Open Health Group,https://www.openhealthgroup.com/,teamtailor,resolver_no_match
+1598,Mountain Warehouse,https://www.mountainwarehouse.com/,teamtailor,resolver_no_match
+1621,Fdm Group,https://www.fdmgroup.com/,smartrecruiters,resolver_no_match
+1622,The Workshop,https://www.theworkshop.com/,smartrecruiters,resolver_no_match
+1627,Rapyd,https://www.rapyd.net/,teamtailor,resolver_no_match
+1633,Minviro,https://www.minviro.com/,teamtailor,resolver_no_match
+1634,Earlybird VC,https://earlybird.com/,lever,resolver_no_match
+1635,Quanteam UK,https://www.quanteam.co.uk/,teamtailor,resolver_no_match
+1636,AXA UK,https://www.axa-im.co.uk/,smartrecruiters,resolver_no_match
+1638,Deloitte,https://www.deloitte.com/uk/en.html,smartrecruiters,resolver_no_match
+1645,KPMG,https://kpmg.com/xx/en/home.html,lever,resolver_no_match
+1647,Skanska,https://www.skanska.co.uk/,smartrecruiters,resolver_no_match
+1648,SLR Consulting,https://www.slrconsulting.com/,teamtailor,resolver_no_match
+1652,EY,https://www.ey.com/en_uk,smartrecruiters,resolver_no_match
+1653,NTT Data,https://uk.nttdata.com/,bamboohr,resolver_no_match
+1660,McKinsey & Company,https://www.mckinsey.com/,smartrecruiters,resolver_no_match
+1661,Morgan Stanley,https://www.morganstanley.com/,smartrecruiters,resolver_no_match
+1665,Wells Fargo,https://www.wellsfargo.com/,smartrecruiters,resolver_no_match
+1676,Oxford University Press,https://corp.oup.com/,greenhouse,resolver_no_match
+1679,Rocket Software,https://www.rocketsoftware.com/,smartrecruiters,resolver_no_match
+1687,Cleantech Group,https://www.cleantech.com/,smartrecruiters,resolver_no_match
+1689,Jaguar Land Rover (JLR),https://www.jaguarlandrover.com/,smartrecruiters,resolver_no_match
+1690,NHS,https://nhs.uk,teamtailor,resolver_no_match
+1691,DNEG,https://www.dneg.com/,jobvite,resolver_no_match
+1697,Oracle,https://www.oracle.com/,bamboohr,resolver_no_match
+1701,SAP,https://www.sap.com/uk/index.html,smartrecruiters,resolver_no_match
+1706,Moneycorp,https://www.moneycorp.com,jobvite,resolver_no_match
+1715,Metro Bank,https://www.metrobankonline.co.uk/,avature,resolver_no_match
+1722,Fortinet,https://www.fortinet.com/,smartrecruiters,resolver_no_match
+1723,CityFibre,https://cityfibre.com/,smartrecruiters,resolver_no_match
+1725,Meta,https://meta.com,smartrecruiters,resolver_no_match
+1729,Samsung Electronics,https://samsung.com,smartrecruiters,resolver_no_match
+1732,Apple,https://apple.com,smartrecruiters,resolver_no_match
+1742,SmartestEnergy,https://www.smartestenergy.com/,teamtailor,resolver_no_match
+1750,Experian,https://www.experian.co.uk,smartrecruiters,resolver_no_match
+1756,NVIDIA,https://www.nvidia.com/,smartrecruiters,resolver_no_match
+1762,Booking.com,https://booking.com/,smartrecruiters,resolver_no_match
+1767,Expedia Group,https://www.expediagroup.com,smartrecruiters,resolver_no_match
+1771,AbbVie,https://www.abbvie.co.uk/,smartrecruiters,resolver_no_match
+1772,AJ Bell,https://www.ajbell.co.uk/group/,smartrecruiters,resolver_no_match
+1779,Save the Children,https://www.savethechildren.net/,smartrecruiters,resolver_no_match
+1780,Next,https://www.next.co.uk/,teamtailor,resolver_no_match
+1782,Anglo American,https://www.angloamerican.com/,smartrecruiters,resolver_no_match
+1783,Babcock,https://www.babcockinternational.com/,smartrecruiters,resolver_no_match
+1786,Unum UK,https://www.unum.co.uk/,smartrecruiters,resolver_no_match
+1790,Insight,https://uk.insight.com/en_GB/home.html,smartrecruiters,resolver_no_match
+1799,Healf,https://healf.com/,teamtailor,resolver_no_match
+1800,MOTORS,https://www.motors.co.uk/,teamtailor,resolver_no_match
+1801,IVC Evidensia,https://ivcevidensia.co.uk/,teamtailor,resolver_no_match
+1805,Praktika.ai,https://praktika.ai/,teamtailor,resolver_no_match
+1816,Marketbridge,https://www.marketbridge.com,smartrecruiters,resolver_no_match
+1818,FundApps,https://www.fundapps.co,smartrecruiters,resolver_no_match
+1828,Cardo,http://cardogroup.co.uk,smartrecruiters,resolver_no_match
+1829,Cura Terrae,https://www.et.co.uk,smartrecruiters,resolver_no_match
+1849,Mimo,https://www.mimohq.com,teamtailor,resolver_no_match
+1850,AFS Group,https://afsgroup.uk,smartrecruiters,resolver_no_match
+1856,S&W,https://www.swgroup.com,smartrecruiters,resolver_no_match
+1865,Castle Fine Art,https://www.castlefineart.com,smartrecruiters,resolver_no_match
+1872,Dometic,https://www.dometic.com/,teamtailor,resolver_no_match
+1887,Lead Edge Capital,https://leadedge.com,greenhouse,resolver_no_match
+1898,Gravita,https://www.gravita.com,teamtailor,resolver_no_match
+1925,MRG Studio,https://www.mrgstudio.co.uk,smartrecruiters,resolver_no_match
+1928,Vision Launch,https://www.visionlaunch.co.uk,smartrecruiters,resolver_no_match
+1945,Hybrid Air Vehicles,https://www.hybridairvehicles.com,teamtailor,resolver_no_match
+1952,Brindisa,https://brindisa.com,teamtailor,resolver_no_match
+1959,Leap Labs,https://www.leap-labs.com,greenhouse,resolver_no_match
+1967,Penta Precision,https://www.pentaprecision.co.uk,teamtailor,resolver_no_match
+1987,Snap Inc.,https://www.snap.com/,smartrecruiters,resolver_no_match
+1997,Vitrue Health,https://www.vitruehealth.com,teamtailor,resolver_no_match
+2018,Lime,https://www.li.me/en-gb,ashby,resolver_no_match
+2048,Ascend Studio,https://ascendstudio.co.uk,greenhouse,resolver_no_match
+2050,Biaco,https://www.biaco.energy,smartrecruiters,resolver_no_match
+2052,Cloudorizon,https://www.cloudorizon.com,smartrecruiters,resolver_no_match
+2054,Fair Finance,https://fairfinance.org.uk,teamtailor,resolver_no_match
+2086,Clearer.io,https://www.clearer.io,lever,resolver_no_match
+2109,Project London,https://projectlondon.co.uk,bamboohr,resolver_no_match
+2126,Open Cages,https://opencages.org,smartrecruiters,resolver_no_match
+2131,Street Crane,https://streetcrane.com,smartrecruiters,resolver_no_match
+2134,Atlantica,https://atlantica.com/,smartrecruiters,resolver_no_match
+2141,Handshake,https://joinhandshake.co.uk,greenhouse,resolver_no_match
+2150,Hughes Fowler Carruthers,https://hfclaw.com,smartrecruiters,resolver_no_match
+2161,Yahoo,https://www.yahooinc.com/,smartrecruiters,resolver_no_match
+2165,Restrata,https://www.restrata.com,smartrecruiters,resolver_no_match
+2167,Side,https://side.inc,teamtailor,resolver_no_match
+2191,Omega,https://omg.one,smartrecruiters,resolver_no_match
+2202,Alcatel-Lucent Enterprise,https://www.al-enterprise.com,smartrecruiters,resolver_no_match
+2233,RoslinCT,https://www.roslinct.com,teamtailor,resolver_no_match
+2238,Champion Communications,https://championcomms.com,greenhouse,resolver_no_match
+2249,IHSS,https://ihss.co.uk,smartrecruiters,resolver_no_match
+2257,AddSecure,https://www.addsecure.com,teamtailor,resolver_no_match
+2259,Daisy Communications,http://www.daisygroup.co.uk,smartrecruiters,resolver_no_match
+2263,BIC,https://eu.bic.com/en-gb,smartrecruiters,resolver_no_match
+2267,Agio Ratings,https://www.agioratings.io,greenhouse,resolver_no_match
+2271,Bracket,https://www.bracket.co.uk,smartrecruiters,resolver_no_match
+2288,RTL Deutschland,https://company.rtl.com/en/homepage/index.html,greenhouse,resolver_no_match
+2297,Scissero,https://www.scissero.com/,teamtailor,resolver_no_match
+2298,Premier Dental Clinic,https://premierdentalclinic.co.uk/,smartrecruiters,resolver_no_match
+2303,UCR Group,https://www.ucrgroup.co/,smartrecruiters,resolver_no_match
+2329,Accent Catering,https://accentcatering.co.uk,smartrecruiters,resolver_no_match
+2332,Medical Connections,https://www.medicalconnections.co.uk,smartrecruiters,resolver_no_match
+2334,Qargo,https://www.qargo.com,teamtailor,resolver_no_match
+2338,Empower Translate,https://www.empowertranslate.com,smartrecruiters,resolver_no_match
+2346,BSA,https://www.bsacompany.co.uk,smartrecruiters,resolver_no_match
+2348,Centra,https://centra.com,teamtailor,resolver_no_match
+2352,Open Hydro,https://openhydro.net,smartrecruiters,resolver_no_match
+2353,Pfizer,https://www.pfizer.co.uk,smartrecruiters,resolver_no_match
+2359,CSM Architects,https://www.csmarchitects.co.uk,smartrecruiters,resolver_no_match
+2368,Premier Marinas,https://www.premiermarinas.com,smartrecruiters,resolver_no_match
+2369,St. George’s Crypt,https://www.stgeorgescrypt.org.uk,teamtailor,resolver_no_match
+2372,ADEC Innovations,https://www.adec-innovations.com,smartrecruiters,resolver_no_match
+2378,Indefi,https://indefi.com,teamtailor,resolver_no_match
+2388,Panache,https://www.panache-lingerie.com/,smartrecruiters,resolver_no_match
+2397,Curve Games,https://curvegames.com,teamtailor,resolver_no_match
+2415,Mirion,https://www.mirion.com,teamtailor,resolver_no_match
+2426,UST HealthProof,https://usthealthproof.com,smartrecruiters,resolver_no_match
+2462,Barron McCann,https://barronmccann.com,smartrecruiters,resolver_no_match
+2473,Titania,https://www.titania.com,teamtailor,resolver_no_match
+2480,LLC Global,https://www.llccars.co.uk/,smartrecruiters,resolver_no_match
+2497,brown + company,https://www.brownandcompany.uk,smartrecruiters,resolver_no_match
+2516,ClearRoute,https://www.clearroute.io,teamtailor,resolver_no_match
+2532,Candy Kittens,https://candykittens.co.uk/,teamtailor,resolver_no_match
+2536,La Nouvelle Garde,https://lanouvellegarde.com/en/,teamtailor,resolver_no_match
+2544,Options,https://optionsempowers.org.uk,smartrecruiters,resolver_no_match
+2547,Mike Kogan Consulting,https://mikekoganconsulting.com,smartrecruiters,resolver_no_match
+2553,Chase Buchanan,https://chasebuchanan.com,smartrecruiters,resolver_no_match
+2572,Clarity Sensors,https://www.claritysensors.com,greenhouse,resolver_no_match
+2577,Lumivero,https://lumivero.com,lever,resolver_no_match
+2584,"Contec, Inc.",https://emea.contecinc.com,greenhouse,resolver_no_match
+2598,Antare,https://antare.com,teamtailor,resolver_no_match
+2615,Catalyst Event Production Services,https://catalyst-eps.com,smartrecruiters,resolver_no_match
+2616,Compact Syngas Solutions,https://www.syngas-solutions.co.uk,smartrecruiters,resolver_no_match
+2623,Norgine UK & Ireland,https://norgine.co.uk,smartrecruiters,resolver_no_match
+2624,Novus Power,https://www.novus-power.com,smartrecruiters,resolver_no_match
+2625,Showcase,https://www.showcase.co,teamtailor,resolver_no_match
+2627,Alpha & Omega Semiconductor,https://www.aosmd.com,smartrecruiters,resolver_no_match
+2641,Walker Morris LLP,https://www.walkermorris.co.uk,smartrecruiters,resolver_no_match
+2642,Act Build Change,https://actbuildchange.com,lever,resolver_no_match
+2643,Alaris Antennas,https://alaris.tech/,smartrecruiters,resolver_no_match
+2645,CNBC,https://www.cnbc.com/,smartrecruiters,resolver_no_match
+2646,eEnergy,https://www.eenergy.com,teamtailor,resolver_no_match
+2691,Fifth Dimension,https://www.fifthdimensionai.com,teamtailor,resolver_no_match
+2692,London EV Company (LEVC),https://www.levc.com,teamtailor,resolver_no_match
+2706,Swap,https://www.swap-commerce.com,greenhouse,resolver_no_match
+2717,Oak Engage,https://www.oak.com,workable,resolver_no_match
+3003,Nouvelle Garde Groupe,https://www.nouvellegardegroupe.com,teamtailor,resolver_no_match

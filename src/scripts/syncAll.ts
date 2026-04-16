@@ -22,6 +22,7 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 import { chromium } from 'playwright';
@@ -33,6 +34,26 @@ const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+const SERPER_API_KEY = process.env.SERPER_API_KEY?.trim() || '';
+let serperCallCount = 0;
+let serperHitCount = 0;
+let serperDisabled = false;
+const SERPER_DISCOVERY_SITE_HINTS = [
+    'site:boards.greenhouse.io',
+    'site:job-boards.eu.greenhouse.io',
+    'site:jobs.lever.co',
+    'site:jobs.ashbyhq.com',
+    'site:apply.workable.com',
+    'site:jobs.smartrecruiters.com',
+    'site:jobs.personio.de',
+    'site:jobs.personio.com',
+    'site:pinpointhq.com',
+    'site:breezy.hr',
+    'site:recruitee.com',
+    'site:myworkdayjobs.com',
+    'site:jobs.jobvite.com',
+];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +72,22 @@ interface SyncResult {
     ukJobs: number;
     saved: number;
     error?: string;
+}
+
+interface CompanyRow {
+    id: number;
+    trading_name: string;
+    ats_provider: string;
+    ats_board_token: string;
+    careers_url?: string | null;
+}
+
+interface AtsOverrideRow {
+    company_id: number;
+    sync_provider?: string | null;
+    provider_raw?: string | null;
+    board_token_raw?: string | null;
+    careers_url_raw?: string | null;
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -73,8 +110,8 @@ async function fetchWithTimeout(url: string, options: any = {}, timeout = 15000)
     }
 }
 
-const UK_COUNTRIES = ["uk", "united kingdom", "gb", "gbr", "great britain"];
-const UK_NATIONS = ["england", "scotland", "wales", "northern ireland"];
+const UK_COUNTRIES = ["uk", "united kingdom", "gb", "gbr", "gbi", "gbre", "great britain"];
+const UK_NATIONS = ["scotland", "wales", "northern ireland"];
 const UK_CITIES = [
     "london", "manchester", "birmingham", "leeds", "glasgow", "edinburgh",
     "bristol", "liverpool", "nottingham", "sheffield", "cardiff", "belfast",
@@ -84,6 +121,25 @@ const UK_CITIES = [
     "luton", "swindon", "warrington", "bolton", "rochdale", "sunderland"
 ];
 
+const NON_UK_LOCATION_PHRASES = [
+    "united states", "usa", "u.s.", "us", "canada", "india", "australia", "new zealand",
+    "new york", "new jersey", "san francisco", "los angeles", "seattle", "chicago", "boston",
+    "singapore", "hong kong", "tokyo", "sydney", "melbourne", "berlin", "munich", "paris",
+    "amsterdam", "madrid", "barcelona", "dublin", "toronto", "vancouver"
+];
+
+const UK_URL_HINTS = [
+    "/uk/", "united-kingdom", "country=gb", "country=uk", "location=uk", "locale=en-gb",
+    "city=london", "city=manchester", "city=birmingham", "city=leeds", "city=bristol", "city=liverpool",
+    "city=edinburgh", "city=glasgow", "city=cardiff", "city=belfast"
+];
+
+const NON_UK_URL_HINTS = [
+    "country=us", "country=usa", "country=ca", "country=au", "country=sg", "country=in",
+    "location=united-states", "location=usa", "location=us",
+    "city=new-york", "city=san-francisco", "city=seattle", "city=toronto", "city=singapore"
+];
+
 function normalizeLocation(str: string): string {
     return String(str || '')
         .toLowerCase()
@@ -91,6 +147,14 @@ function normalizeLocation(str: string): string {
         .replace(/[\/\-_|,]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+        chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
 }
 
 function isUKLocation(loc: any): boolean {
@@ -126,6 +190,11 @@ function isUKLocation(loc: any): boolean {
         }
     }
 
+    // Word-boundary match for "england" to avoid false positives like "New England"
+    if (/\bengland\b/i.test(normalized)) {
+        return true;
+    }
+
     // Multi-word exact phrase match fallback
     const multiWords = [...UK_COUNTRIES, ...UK_NATIONS, ...UK_CITIES].filter(w => w.includes(' '));
     for (const phrase of multiWords) {
@@ -137,8 +206,584 @@ function isUKLocation(loc: any): boolean {
     return false;
 }
 
+function hasAnyHint(text: string, hints: string[]): boolean {
+    return hints.some((hint) => text.includes(hint));
+}
+
+function isLikelyUKJob(job: Job): boolean {
+    const locationNorm = normalizeLocation(job.location || '');
+    const titleNorm = normalizeLocation(job.title || '');
+    const urlNorm = String(job.url || '').toLowerCase();
+    const combinedNorm = `${locationNorm} ${titleNorm}`.trim();
+
+    // Hard block on clear non-UK signals unless Northern Ireland is explicit.
+    const hasNonUkPhrase = NON_UK_LOCATION_PHRASES.some((p) => combinedNorm.includes(p));
+    if (hasNonUkPhrase && !combinedNorm.includes('northern ireland')) {
+        return false;
+    }
+    if (hasAnyHint(urlNorm, NON_UK_URL_HINTS)) {
+        return false;
+    }
+
+    // Primary decision from normalized location.
+    if (isUKLocation(locationNorm)) {
+        return true;
+    }
+
+    // Secondary signals from title and URL metadata.
+    if (/\b(uk|united kingdom|england|scotland|wales|northern ireland)\b/i.test(`${titleNorm} ${urlNorm}`)) {
+        return true;
+    }
+    if (hasAnyHint(urlNorm, UK_URL_HINTS)) {
+        return true;
+    }
+
+    // Last fallback: known UK city mention in title or URL.
+    const ukCityRegex = /\b(london|manchester|birmingham|leeds|bristol|liverpool|edinburgh|glasgow|cardiff|belfast|newcastle|cambridge|oxford)\b/i;
+    if (ukCityRegex.test(`${titleNorm} ${urlNorm}`)) {
+        return true;
+    }
+
+    return false;
+}
+
 function safeStr(s: any, maxLen = 500): string {
     return String(s || '').slice(0, maxLen);
+}
+
+function normalizeProviderName(value: string | null | undefined): string | null {
+    if (!value) return null;
+    return String(value).trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function normalizeCareersUrl(value: string | null | undefined): string | null {
+    if (!value) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return null;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+}
+
+type FetchAttempt = {
+    provider: string;
+    token: string;
+    source: 'primary' | 'fallback' | 'serper';
+};
+
+function inferAtsFromCareersUrl(url: string | null | undefined): { provider: string; token: string } | null {
+    const normalizedUrl = normalizeCareersUrl(url);
+    if (!normalizedUrl) return null;
+
+    try {
+        const parsed = new URL(normalizedUrl);
+        const host = parsed.hostname.toLowerCase();
+        const parts = parsed.pathname.split('/').filter(Boolean);
+
+        if (host === 'boards.greenhouse.io' || host === 'job-boards.eu.greenhouse.io') {
+            const token = parts[0] || parsed.searchParams.get('for') || '';
+            return token ? { provider: 'greenhouse', token } : null;
+        }
+        if (host.includes('ashbyhq.com')) {
+            const token = parts[0] || '';
+            return token ? { provider: 'ashby', token } : null;
+        }
+        if (host.includes('lever.co')) {
+            const token = parts[0] || '';
+            return token ? { provider: 'lever', token } : null;
+        }
+        if (host.includes('workable.com')) {
+            const token = parts[0] || host.split('.')[0] || '';
+            return token ? { provider: 'workable', token } : null;
+        }
+        if (host.includes('teamtailor.com')) {
+            const token = host.split('.')[0] || '';
+            return token ? { provider: 'teamtailor', token } : null;
+        }
+        if (host.includes('bamboohr.com')) {
+            const token = host.split('.')[0] || '';
+            return token ? { provider: 'bamboohr', token } : null;
+        }
+        if (host.includes('smartrecruiters.com')) {
+            const token = parts[0] || host.split('.')[0] || '';
+            return token ? { provider: 'smartrecruiters', token } : null;
+        }
+        if (host.includes('pinpointhq.com')) {
+            const token = host.split('.')[0] || '';
+            return token ? { provider: 'pinpoint', token } : null;
+        }
+        if (host.includes('breezy.hr')) {
+            const token = host.split('.')[0] || '';
+            return token ? { provider: 'breezy', token } : null;
+        }
+        if (host.includes('recruitee.com')) {
+            const token = host.split('.')[0] || '';
+            return token ? { provider: 'recruitee', token } : null;
+        }
+        if (host.includes('jobs.personio.de') || host.includes('jobs.personio.com')) {
+            const token = host.split('.')[0] || '';
+            return token ? { provider: 'personio', token } : null;
+        }
+        if (host.includes('icims.com')) {
+            const token = host.split('.')[0] || '';
+            return token ? { provider: 'icims', token } : null;
+        }
+        if (host.includes('myworkdayjobs.com')) {
+            const site = parts[0] || '';
+            const token = site ? `${parsed.protocol}//${parsed.host}/${site}` : '';
+            return token ? { provider: 'workday', token } : null;
+        }
+    } catch {
+        return null;
+    }
+
+    return { provider: 'generic_careers', token: normalizedUrl };
+}
+
+async function serperSearchLinks(query: string, num = 8): Promise<string[]> {
+    if (!SERPER_API_KEY || serperDisabled) return [];
+    serperCallCount++;
+
+    try {
+        const res = await fetchWithTimeout('https://google.serper.dev/search', {
+            method: 'POST',
+            headers: {
+                'X-API-KEY': SERPER_API_KEY,
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0',
+            },
+            body: JSON.stringify({ q: query, num, gl: 'gb' }),
+        }, 12000);
+
+        if (!res.ok) {
+            if (res.status === 401 || res.status === 403) {
+                serperDisabled = true;
+                console.warn(`[SERPER] disabled after auth failure (${res.status})`);
+            }
+            return [];
+        }
+
+        const data: any = await res.json();
+        const links: string[] = [];
+        const seen = new Set<string>();
+
+        const pushLink = (value: any): void => {
+            const normalized = String(value || '').trim();
+            if (!/^https?:\/\//i.test(normalized)) return;
+            if (seen.has(normalized)) return;
+            seen.add(normalized);
+            links.push(normalized);
+        };
+
+        for (const item of data?.organic || []) {
+            pushLink(item?.link);
+        }
+
+        pushLink(data?.answerBox?.link);
+        pushLink(data?.answerBox?.website);
+        pushLink(data?.knowledgeGraph?.website);
+        pushLink(data?.knowledgeGraph?.descriptionLink);
+
+        if (links.length > 0) serperHitCount++;
+        return links;
+    } catch {
+        return [];
+    }
+}
+
+function buildSerperDiscoveryQueries(company: CompanyRow): string[] {
+    const name = company.trading_name.trim();
+    const escapedName = name.replace(/\"/g, '');
+    const queries = [
+        `"${escapedName}" careers`,
+        `"${escapedName}" jobs`,
+        `"${escapedName}" apply`,
+        `"${escapedName}" hiring careers`,
+        `"${escapedName}" work with us`,
+        `"${escapedName}" careers UK`,
+        `"${escapedName}" jobs UK`,
+    ];
+
+    try {
+        if (company.url) {
+            const host = new URL(company.url).hostname.toLowerCase().replace(/^www\./, '');
+            if (host) {
+                queries.unshift(`site:${host} careers`);
+                queries.unshift(`"${escapedName}" site:${host}`);
+            }
+        }
+    } catch {
+        // Ignore malformed company URLs.
+    }
+
+    for (const siteHint of SERPER_DISCOVERY_SITE_HINTS) {
+        queries.push(`"${escapedName}" ${siteHint}`);
+    }
+
+    return Array.from(new Set(queries)).slice(0, 16);
+}
+
+function isLikelyCareersDiscoveryUrl(url: string, company: CompanyRow): boolean {
+    try {
+        const parsed = new URL(url);
+        const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+        const path = `${parsed.pathname} ${parsed.search}`.toLowerCase();
+
+        if (
+            host.includes('greenhouse.io') ||
+            host.includes('lever.co') ||
+            host.includes('ashbyhq.com') ||
+            host.includes('workable.com') ||
+            host.includes('smartrecruiters.com') ||
+            host.includes('teamtailor.com') ||
+            host.includes('personio.') ||
+            host.includes('pinpointhq.com') ||
+            host.includes('breezy.hr') ||
+            host.includes('recruitee.com') ||
+            host.includes('myworkdayjobs.com') ||
+            host.includes('jobvite.com')
+        ) {
+            return true;
+        }
+
+        if (company.url) {
+            const companyHost = new URL(company.url).hostname.toLowerCase().replace(/^www\./, '');
+            if (companyHost && host === companyHost) {
+                return true;
+            }
+        }
+
+        return /careers?|jobs?|vacanc|opportunit|apply|join|talent|work-with-us|open-roles/.test(path);
+    } catch {
+        return false;
+    }
+}
+
+async function discoverCareersUrlsWithSerper(company: CompanyRow): Promise<string[]> {
+    if (!SERPER_API_KEY || serperDisabled) return [];
+
+    const queries = buildSerperDiscoveryQueries(company);
+
+    const found = new Set<string>();
+    for (const query of queries) {
+        const links = await serperSearchLinks(query, 10);
+        for (const link of links) {
+            const normalized = normalizeCareersUrl(link);
+            if (!normalized) continue;
+            if (!isLikelyCareersDiscoveryUrl(normalized, company)) continue;
+            found.add(normalized);
+        }
+        if (found.size >= 8) break;
+    }
+
+    return Array.from(found).slice(0, 8);
+}
+
+function absoluteUrlFromBase(base: string, href: string): string {
+    try {
+        return new URL(href, base).toString();
+    } catch {
+        return href;
+    }
+}
+
+async function fetchGenericCareersPage(url: string): Promise<Job[]> {
+    const target = normalizeCareersUrl(url);
+    if (!target) return [];
+
+    try {
+        const res = await fetchWithTimeout(target, {
+            headers: {
+                'Accept': 'text/html,application/xhtml+xml',
+                'User-Agent': 'Mozilla/5.0',
+            },
+        }, 15000);
+
+        if (!res.ok) return [];
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        const jobs: Job[] = [];
+
+        $('script[type="application/ld+json"]').each((_, el) => {
+            const text = $(el).text().trim();
+            if (!text) return;
+            try {
+                const parsed = JSON.parse(text);
+                const entries = Array.isArray(parsed) ? parsed : [parsed];
+                for (const entry of entries) {
+                    if (!entry || entry['@type'] !== 'JobPosting') continue;
+                    const locationObj = entry.jobLocation?.address || {};
+                    const location = [
+                        locationObj.addressLocality,
+                        locationObj.addressRegion,
+                        locationObj.addressCountry,
+                    ].filter(Boolean).join(', ');
+
+                    jobs.push({
+                        title: String(entry.title || '').trim(),
+                        location: String(location || '').trim(),
+                        url: String(entry.url || target).trim(),
+                        department: '',
+                        salary: undefined,
+                    });
+                }
+            } catch {
+                // ignore invalid JSON-LD blocks
+            }
+        });
+
+        const selectors = ['a[href*="/jobs/"]', 'a[href*="/job/"]', 'a[href*="/careers/"]'];
+        const seen = new Set<string>();
+
+        for (const selector of selectors) {
+            $(selector).each((_, el) => {
+                const anchor = $(el);
+                const href = String(anchor.attr('href') || '').trim();
+                const title = anchor.text().replace(/\s+/g, ' ').trim();
+                if (!href || !title || title.length < 3) return;
+
+                const jobUrl = absoluteUrlFromBase(target, href);
+                if (seen.has(jobUrl)) return;
+                seen.add(jobUrl);
+
+                const cardText = anchor.closest('li,article,div,tr').text().replace(/\s+/g, ' ').trim();
+                let location = '';
+                const locMatch = cardText.match(/(London|United Kingdom|UK|Manchester|Birmingham|Leeds|Remote[^,.]*UK)/i);
+                if (locMatch) location = locMatch[0];
+
+                jobs.push({
+                    title,
+                    location,
+                    url: jobUrl,
+                    department: '',
+                    salary: undefined,
+                });
+            });
+        }
+
+        const deduped = Array.from(new Map(jobs.filter(j => j.title && j.url).map(j => [j.url, j])).values());
+        return deduped.slice(0, 500);
+    } catch {
+        return [];
+    }
+}
+
+async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOnly?: boolean }): Promise<{
+    jobs: Job[];
+    provider: string;
+    token: string;
+    source: 'primary' | 'fallback' | 'serper';
+    fallbackUsed: boolean;
+}> {
+    const primaryProvider = normalizeProviderName(company.ats_provider) || company.ats_provider;
+    const primaryToken = String(company.ats_board_token || '').trim();
+    const fallbackPlan = inferAtsFromCareersUrl(company.careers_url);
+
+    const attempts: FetchAttempt[] = [];
+    const fallbackOnly = !!options?.fallbackOnly;
+
+    if (!fallbackOnly && primaryProvider && FETCHERS[primaryProvider] && primaryToken) {
+        attempts.push({ provider: primaryProvider, token: primaryToken, source: 'primary' });
+    }
+
+    if (fallbackPlan && FETCHERS[fallbackPlan.provider]) {
+        const alreadyPrimary =
+            primaryProvider === fallbackPlan.provider &&
+            primaryToken === fallbackPlan.token;
+
+        if (!alreadyPrimary) {
+            attempts.push({ provider: fallbackPlan.provider, token: fallbackPlan.token, source: 'fallback' });
+        }
+    }
+
+    if (attempts.length === 0) {
+        return {
+            jobs: [],
+            provider: primaryProvider || '',
+            token: primaryToken,
+            source: 'primary',
+            fallbackUsed: false,
+        };
+    }
+
+    const errors: string[] = [];
+    for (const attempt of attempts) {
+        const fetcher = FETCHERS[attempt.provider];
+        if (!fetcher) continue;
+
+        try {
+            const jobs = await fetcher(attempt.token);
+            if (jobs.length > 0) {
+                return {
+                    jobs,
+                    provider: attempt.provider,
+                    token: attempt.token,
+                    source: attempt.source,
+                    fallbackUsed: attempt.source === 'fallback',
+                };
+            }
+
+            errors.push(`${attempt.provider}:${attempt.source}=0`);
+        } catch (error: any) {
+            errors.push(`${attempt.provider}:${attempt.source}=${error?.message || 'error'}`);
+        }
+    }
+
+    const serperUrls = await discoverCareersUrlsWithSerper(company);
+    for (const discoveredUrl of serperUrls) {
+        const inferred = inferAtsFromCareersUrl(discoveredUrl);
+        if (!inferred) continue;
+
+        const fetcher = FETCHERS[inferred.provider];
+        if (!fetcher) continue;
+
+        try {
+            const jobs = await fetcher(inferred.token);
+            if (jobs.length > 0) {
+                return {
+                    jobs,
+                    provider: inferred.provider,
+                    token: inferred.token,
+                    source: 'serper',
+                    fallbackUsed: true,
+                };
+            }
+            errors.push(`${inferred.provider}:serper=0`);
+        } catch (error: any) {
+            errors.push(`${inferred.provider}:serper=${error?.message || 'error'}`);
+        }
+    }
+
+    if (errors.length > 0) {
+        console.log(`  [FALLBACK] ${company.trading_name} — ${errors.join(' | ')}`);
+    }
+
+    const bestAttempt = attempts[attempts.length - 1];
+    return {
+        jobs: [],
+        provider: bestAttempt.provider,
+        token: bestAttempt.token,
+        source: bestAttempt.source,
+        fallbackUsed: bestAttempt.source === 'fallback',
+    };
+}
+
+async function loadAtsOverrides(companyIds: number[]): Promise<Map<number, AtsOverrideRow>> {
+    const overrides = new Map<number, AtsOverrideRow>();
+    const pageSize = 500;
+
+    for (let i = 0; i < companyIds.length; i += pageSize) {
+        const chunk = companyIds.slice(i, i + pageSize);
+
+        let query = supabase
+            .from('ats_import_audit')
+            .select('company_id, sync_provider, provider_raw, board_token_raw, careers_url_raw')
+            .in('company_id', chunk);
+
+        let { data, error } = await query;
+
+        if (error) {
+            const legacy = await supabase
+                .from('ats_import_audit')
+                .select('company_id, provider_raw, board_token_raw, careers_url_raw')
+                .in('company_id', chunk);
+
+            data = (legacy.data || []) as any;
+            error = legacy.error;
+        }
+
+        if (error) {
+            console.warn(`Could not load ATS overrides for chunk ${i}-${i + chunk.length - 1}: ${error.message}`);
+            continue;
+        }
+
+        for (const row of (data || []) as AtsOverrideRow[]) {
+            overrides.set(row.company_id, row);
+        }
+    }
+
+    return overrides;
+}
+
+async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRow[]> {
+    if (specificIds && specificIds.length > 0) {
+        const { data, error } = await supabase
+            .from('companies')
+            .select('id, trading_name, ats_provider, ats_board_token')
+            .in('id', specificIds)
+            .order('trading_name');
+
+        if (error) {
+            throw new Error(`Could not load filtered companies: ${error.message}`);
+        }
+
+        const companies = (data || []) as CompanyRow[];
+        const overrides = await loadAtsOverrides(companies.map(c => c.id));
+
+        return companies.map(company => {
+            const override = overrides.get(company.id);
+            if (!override) return company;
+
+            return {
+                ...company,
+                ats_provider: normalizeProviderName(override.sync_provider || override.provider_raw) || company.ats_provider,
+                ats_board_token: override.board_token_raw?.trim() || company.ats_board_token,
+                careers_url: normalizeCareersUrl(override.careers_url_raw),
+            };
+        });
+    }
+
+    const pageSize = 1000;
+    let from = 0;
+    const all: CompanyRow[] = [];
+
+    while (true) {
+        const to = from + pageSize - 1;
+        const { data, error } = await supabase
+            .from('companies')
+            .select('id, trading_name, ats_provider, ats_board_token')
+            .order('id', { ascending: true })
+            .range(from, to);
+
+        if (error) {
+            throw new Error(`Could not load companies page ${from}-${to}: ${error.message}`);
+        }
+
+        const rows = (data || []) as CompanyRow[];
+        if (rows.length === 0) break;
+
+        all.push(...rows);
+
+        if (rows.length < pageSize) break;
+        from += pageSize;
+    }
+
+    const overrides = await loadAtsOverrides(all.map(c => c.id));
+
+    const merged = all.map(company => {
+        const override = overrides.get(company.id);
+        if (!override) return company;
+
+        return {
+            ...company,
+            ats_provider: normalizeProviderName(override.sync_provider || override.provider_raw) || company.ats_provider,
+            ats_board_token: override.board_token_raw?.trim() || company.ats_board_token,
+            careers_url: normalizeCareersUrl(override.careers_url_raw),
+        };
+    });
+
+    return merged.sort((a, b) => a.trading_name.localeCompare(b.trading_name));
+}
+
+function normalizeTeamtailorHtmlToken(token: string): string {
+    const trimmed = String(token || '').trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        return trimmed.replace(/\/$/, '');
+    }
+    if (trimmed.includes('.teamtailor.com')) {
+        return `https://${trimmed.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
+    }
+    return `https://${trimmed}.teamtailor.com/jobs`;
 }
 
 // ─── ATS Fetchers — each accepts (token: string) and returns Job[] ─────────
@@ -226,7 +871,7 @@ async function fetchWorkable(token: string): Promise<Job[]> {
     let nextToken = '';
     const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
-    for (let i = 0; i < 10; i++) { // Limit to 10 pages (~100-200 jobs)
+    while (true) {
         try {
             const body: any = { query: '', location: [], department: [], worktype: [], remote: [] };
             if (nextToken) body.next = nextToken;
@@ -304,7 +949,7 @@ async function fetchTeamtailor(token: string): Promise<Job[]> {
                 location: item.find('description').text().split('·')[1]?.trim() || 'UK',
                 url: item.find('link').text().trim(),
                 department: item.find('category').first().text().trim(),
-                salary: (typeof item !== 'undefined' && (item as any)?.salary) ? String(typeof (item as any).salary === 'object' ? JSON.stringify((item as any).salary) : (item as any).salary) : null
+                salary: (typeof item !== 'undefined' && (item as any)?.salary) ? String(typeof (item as any).salary === 'object' ? JSON.stringify((item as any).salary) : (item as any).salary) : undefined
             });
         });
         return jobs;
@@ -365,7 +1010,6 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
 
             if (content.length < 100) break;
             offset += 100;
-            if (offset > 1000) break; // Safety
             await sleep(500);
         } catch { break; }
     }
@@ -431,6 +1075,146 @@ async function fetchRecruitee(token: string): Promise<Job[]> {
             salary: undefined
         }));
     } catch { return []; }
+}
+
+async function fetchJobvite(token: string): Promise<Job[]> {
+    try {
+        const r = await fetchWithTimeout(`https://jobs.jobvite.com/api/company/${token}/jobs`, {
+            headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+        });
+        if (r.ok) {
+            const text = await r.text();
+            try {
+                const d = JSON.parse(text);
+                const apiJobs = (d.jobs || []).map((j: any) => ({
+                    title: j.title || j.jobTitle || '',
+                    location: j.location || '',
+                    url: j.applyUrl || j.url || `https://jobs.jobvite.com/${token}/job/${j.id || ''}`,
+                    department: j.category || j.department || '',
+                    salary: undefined
+                }));
+                if (apiJobs.length > 0) return apiJobs;
+            } catch {
+                // Some Jobvite tenants return HTML from this endpoint.
+            }
+        }
+
+        const htmlRes = await fetchWithTimeout(`https://jobs.jobvite.com/${token}/jobs`, {
+            headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0' }
+        });
+        if (!htmlRes.ok) return [];
+        const html = await htmlRes.text();
+        const $ = cheerio.load(html);
+        const jobs: Job[] = [];
+
+        $('a[href*="/job/"]').each((_, el) => {
+            const href = $(el).attr('href') || '';
+            const title = $(el).text().trim();
+            if (!href || !title) return;
+
+            const row = $(el).closest('li, tr, div');
+            const location = row.find('[class*="location"], [data-qa*="location"]').first().text().trim();
+            jobs.push({
+                title,
+                location,
+                url: href.startsWith('http') ? href : `https://jobs.jobvite.com${href}`,
+                department: '',
+                salary: undefined,
+            });
+        });
+
+        return Array.from(new Map(jobs.map((j) => [j.url, j])).values());
+    } catch {
+        return [];
+    }
+}
+
+async function fetchAvature(token: string): Promise<Job[]> {
+    try {
+        const subdomain = String(token || '').trim().replace(/^https?:\/\//, '').split('.')[0];
+        if (!subdomain) return [];
+        const r = await fetchWithTimeout(`https://${subdomain}.avature.net/api/rest/v1/jobs`, {
+            headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+        });
+        if (!r.ok) return [];
+        const d = await r.json();
+        return (d.items || []).map((j: any) => ({
+            title: j.jobTitle || j.title || '',
+            location: j.location || '',
+            url: j.detailUrl || j.url || `https://${subdomain}.avature.net/`,
+            department: j.category || j.department || '',
+            salary: undefined
+        }));
+    } catch {
+        return [];
+    }
+}
+
+async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
+    const startUrl = normalizeTeamtailorHtmlToken(token);
+    if (!startUrl) return [];
+
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 1080 }
+        });
+        const page = await context.newPage();
+        await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.waitForTimeout(2500);
+
+        const jobs = await page.evaluate(() => {
+            const seen = new Set<string>();
+            const output: Array<{ id: string; title: string; url: string; location: string }> = [];
+
+            const structuredRows = Array.from(document.querySelectorAll('[data-job-id]'));
+            for (const node of structuredRows) {
+                const element = node as HTMLElement;
+                const jobId = element.getAttribute('data-job-id') || '';
+                const anchor = element.querySelector('a') as HTMLAnchorElement | null;
+                const href = anchor?.href || '';
+                if (!href || seen.has(href)) continue;
+                const titleText = (anchor?.textContent || element.innerText || '').trim();
+                const locationNode = element.querySelector('[data-testid*="location"], .location, .job-location') as HTMLElement | null;
+                const locationText = (locationNode?.innerText || '').trim();
+                output.push({ id: jobId, title: titleText, url: href, location: locationText });
+                seen.add(href);
+            }
+
+            // Fallback pattern used by some Teamtailor pages: job links only.
+            const jobAnchors = Array.from(document.querySelectorAll('a[href*="/jobs/"]')) as HTMLAnchorElement[];
+            for (const anchor of jobAnchors) {
+                const href = anchor.href || '';
+                if (!href || seen.has(href)) continue;
+                const titleText = (anchor.textContent || '').trim();
+                if (!titleText) continue;
+                const card = anchor.closest('li, article, div, section') as HTMLElement | null;
+                const locationNode = card?.querySelector('[data-testid*="location"], .location, .job-location, [class*="location"]') as HTMLElement | null;
+                const locationText = (locationNode?.innerText || '').trim();
+                output.push({ id: '', title: titleText, url: href, location: locationText });
+                seen.add(href);
+            }
+
+            return output;
+        });
+
+        await browser.close();
+
+        return jobs
+            .filter((j: any) => j.title && j.url)
+            .map((j: any) => ({
+                title: j.title,
+                location: j.location || 'UK',
+                url: j.url,
+                department: '',
+                salary: undefined
+            }));
+    } catch {
+        if (browser) await browser.close();
+        return [];
+    }
 }
 
 async function fetchPersonio(token: string): Promise<Job[]> {
@@ -550,7 +1334,6 @@ async function fetchWorkday(token: string): Promise<Job[]> {
                     })));
 
                     offset += 20;
-                    if (offset >= 2000) break;
                     await sleep(300);
                 }
                 return allJobs;
@@ -623,7 +1406,6 @@ async function fetchWipro(token: string): Promise<Job[]> {
 
             if (results.length < 10) break; // Wipro seems to return 10 per page by default
             pageNumber++;
-            if (pageNumber > 100) break; // Safety
             await sleep(300);
         } catch { break; }
     }
@@ -660,7 +1442,6 @@ async function fetchSuccessFactors(token: string): Promise<Job[]> {
             });
             if (rows.length < 20) break;
             startrow += 20;
-            if (startrow > 200) break; // Limit for sync performance
             await sleep(500);
         } catch { break; }
     }
@@ -701,7 +1482,7 @@ async function fetchEightfold(token: string): Promise<Job[]> {
     let start = 0;
     const PAGE_SIZE = 10;
 
-    while (start < 300) { // Safety limit
+    while (true) {
         try {
             const countryFilter = country ? `&filter_country=${encodeURIComponent(country)}` : '';
             const url = `https://jobs.${domain}/api/pcsx/search?domain=${domain}&query=&location=&start=${start}&sort_by=timestamp${countryFilter}`;
@@ -723,7 +1504,7 @@ async function fetchEightfold(token: string): Promise<Job[]> {
                 location: p.locations?.[0] || p.standardizedLocations?.[0] || 'UK',
                 url: `https://jobs.${domain}${p.positionUrl}`,
                 department: p.department || '',
-                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : null
+                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
             })));
 
             if (positions.length < PAGE_SIZE) break;
@@ -762,7 +1543,6 @@ async function fetchICIMS(token: string): Promise<Job[]> {
 
             if (results.length < 10) break; // Arbitrary small page size check
             pr++;
-            if (pr > 20) break; // Safety break
         }
         return allJobs;
     } catch { return []; }
@@ -942,7 +1722,7 @@ async function fetchGoogle(token: string): Promise<Job[]> {
     return Array.from(uniqueMap.values());
 }
 
-const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
+export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     greenhouse: fetchGreenhouse,
     ashby: fetchAshby,
     lever: fetchLever,
@@ -968,6 +1748,10 @@ const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     goldmansachs: fetchGoldmanSachs,
     google: fetchGoogle,
     jpmc: fetchJPMorgan,
+    jobvite: fetchJobvite,
+    avature: fetchAvature,
+    teamtailor_html: fetchTeamtailorHtml,
+    generic_careers: fetchGenericCareersPage,
 };
 
 // Providers that return UK-only results natively (no keyword filter needed)
@@ -976,7 +1760,29 @@ const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-async function syncAll() {
+const ATS_FAILURE_THRESHOLD = 3;
+
+async function markCompanyFailure(companyId: number): Promise<void> {
+    const { data: current } = await supabase
+        .from('companies')
+        .select('ats_failure_count')
+        .eq('id', companyId)
+        .single();
+
+    const nextCount = (current?.ats_failure_count || 0) + 1;
+    const nextStatus = nextCount >= ATS_FAILURE_THRESHOLD ? 'needs_manual_review' : 'dead';
+
+    await supabase
+        .from('companies')
+        .update({
+            ats_status: nextStatus,
+            ats_failure_count: nextCount,
+            ats_last_validated: new Date().toISOString(),
+        })
+        .eq('id', companyId);
+}
+
+export async function syncAll() {
     const startTime = Date.now();
     const syncRunId = crypto.randomUUID();
     console.log('\n════════════════════════════════════════════════════');
@@ -986,52 +1792,119 @@ async function syncAll() {
     const args = process.argv.slice(2);
     const idIndex = args.indexOf('--ids');
     const specificIds = idIndex !== -1 ? args[idIndex + 1].split(',').map(id => parseInt(id.trim())) : null;
+    const fallbackOnlyDryRun = args.includes('--dry-run-custom-fallback');
 
-    let query = supabase
-        .from('companies')
-        .select('id, trading_name, ats_provider, ats_board_token')
-        .order('trading_name');
+    if (fallbackOnlyDryRun) {
+        console.log('Running in custom fallback DRY RUN mode (no DB writes)');
+    }
 
     if (specificIds) {
-        query = query.in('id', specificIds);
         console.log(`Filtering for ${specificIds.length} specific IDs: ${specificIds.join(', ')}`);
     }
 
-    const { data: companies, error } = await query;
-
-    if (error || !companies) {
-        console.error('❌ Could not load companies from DB:', error?.message);
+    let companies: CompanyRow[] = [];
+    try {
+        companies = await loadAllCompanies(specificIds);
+    } catch (e: any) {
+        console.error('❌ Could not load companies from DB:', e.message);
         return;
     }
 
+    const { count: statusCount, error: statusCountError } = await supabase
+        .from('companies')
+        .select('*', { count: 'exact', head: true })
+        .not('ats_status', 'is', null);
+
+    if (statusCountError) {
+        console.warn(`Could not determine health tracking state: ${statusCountError.message}`);
+    }
+    const healthTrackingEnabled = !!statusCount && statusCount > 0;
+    if (!healthTrackingEnabled) {
+        console.warn('Health tracking disabled - run validateAtsTokens.ts and repairBadTokens.ts first');
+    }
+
     console.log(`Found ${companies.length} companies with configured ATS\n`);
+
+    if (fallbackOnlyDryRun && !specificIds) {
+        companies = companies.filter((company) => {
+            const provider = normalizeProviderName(company.ats_provider);
+            return !provider || provider === 'custom' || !FETCHERS[provider];
+        });
+        console.log(`Filtered to ${companies.length} custom/no-ATS companies for fallback dry run\n`);
+    } else if (fallbackOnlyDryRun) {
+        console.log(`Using explicit IDs for fallback dry run (${companies.length} companies)\n`);
+    }
 
     const results: SyncResult[] = [];
     let totalSaved = 0;
 
     for (const company of companies) {
-        const { id, trading_name, ats_provider, ats_board_token } = company;
+        const { id, trading_name, ats_provider } = company;
 
-        const fetcher = FETCHERS[ats_provider];
-        if (!fetcher) {
-            console.log(`[SKIP] ${trading_name} — no fetcher for provider: ${ats_provider}`);
+        if (!fallbackOnlyDryRun && !ats_provider) {
+            console.log(`[UNCONFIGURED] ${trading_name} — no ATS provider assigned`);
+            if (healthTrackingEnabled) {
+                await supabase
+                    .from('companies')
+                    .update({
+                        ats_status: 'needs_manual_review',
+                        ats_last_validated: new Date().toISOString(),
+                    })
+                    .eq('id', id);
+            }
             continue;
         }
 
-        process.stdout.write(`[${ats_provider.toUpperCase()}] ${trading_name} ... `);
+        const primaryProvider = normalizeProviderName(ats_provider) || ats_provider || 'custom';
+        process.stdout.write(`[${primaryProvider.toUpperCase()}] ${trading_name} ... `);
 
         const result: SyncResult = {
             company: trading_name,
-            provider: ats_provider,
+            provider: primaryProvider,
             fetched: 0, ukJobs: 0, saved: 0
         };
 
         try {
-            const allJobs = await fetcher(ats_board_token);
+            const fetchOutcome = await fetchJobsWithFallback(company, { fallbackOnly: fallbackOnlyDryRun });
+            if (!fetchOutcome.jobs.length) {
+                console.log(`0 jobs fetched from primary + fallback sources`);
+                if (!fallbackOnlyDryRun && healthTrackingEnabled) {
+                    await supabase
+                        .from('companies')
+                        .update({
+                            ats_status: 'dead',
+                            ats_last_validated: new Date().toISOString(),
+                        })
+                        .eq('id', id);
+                }
+                continue;
+            }
+
+            if (fetchOutcome.source === 'fallback') {
+                console.log(`  [FALLBACK] used ${fetchOutcome.provider} from audit URL`);
+                result.provider = fetchOutcome.provider;
+            } else if (fetchOutcome.source === 'serper') {
+                console.log(`  [FALLBACK] used ${fetchOutcome.provider} from Serper discovery`);
+                result.provider = fetchOutcome.provider;
+            }
+
+            const allJobs = fetchOutcome.jobs;
             result.fetched = allJobs.length;
 
             // Apply UK keyword filter to all fetched jobs for safety
-            const ukJobs = allJobs.filter(j => isUKLocation(j.location) || /uk|united kingdom/i.test(j.title));
+            const ukJobs = allJobs.filter(j => {
+                const isUK = isLikelyUKJob(j);
+                if (!isUK && (j.location || j.title) && allJobs.length > 100) {
+                    // Diagnostic: log why large job batches have 0 UK matches
+                    if (allJobs.filter(x => !isLikelyUKJob(x)).length === allJobs.length) {
+                        // Log one sample of unmatched location per company
+                        if (allJobs.indexOf(j) === 0) {
+                            console.log(`  [DIAGNOSIS] No UK matches. Sample jobs: ${allJobs.slice(0, 3).map(x => `${x.title} @ ${x.location}`).join(' | ')}`);
+                        }
+                    }
+                }
+                return isUK;
+            });
 
             result.ukJobs = ukJobs.length;
             console.log(`${allJobs.length} total → ${ukJobs.length} UK`);
@@ -1051,58 +1924,128 @@ async function syncAll() {
                         level: inferJobLevel(safeStr(j.title))
                     }));
 
-                const { error: jobErr } = await supabase
-                    .from('jobs')
-                    .upsert(rows, { onConflict: 'url' });
-
-                if (jobErr) {
-                    result.error = jobErr.message;
-                    console.error(`  ❌ ${jobErr.message}`);
-                } else {
+                if (fallbackOnlyDryRun) {
                     result.saved = rows.length;
                     totalSaved += rows.length;
-
-                    // ─── Cleanup: Delete stale jobs ───
-                    // Remove any jobs for this company that NOT in the list we just fetched.
-                    const currentUrls = uniqueJobs.map(j => j.url);
-                    const { error: delErr, count: delCount } = await supabase
+                    console.log(`  [DRY RUN] would upsert ${rows.length} UK jobs`);
+                } else {
+                    const { error: jobErr } = await supabase
                         .from('jobs')
-                        .delete()
-                        .eq('company_id', id)
-                        .not('url', 'in', `(${currentUrls.map(u => `"${u}"`).join(',')})`);
+                        .upsert(rows, { onConflict: 'url' });
 
-                    if (delErr) {
-                        console.error(`  ⚠️ Cleanup error: ${delErr.message}`);
-                    } else if (delCount) {
-                        console.log(`  🧹 Cleaned up ${delCount} stale jobs`);
+                    if (jobErr) {
+                        result.error = jobErr.message;
+                        console.error(`  ❌ ${jobErr.message}`);
+                        if (healthTrackingEnabled) {
+                            await markCompanyFailure(id);
+                        }
+                    } else {
+                        result.saved = rows.length;
+                        totalSaved += rows.length;
+
+                        // ─── Cleanup: Delete stale jobs ───
+                        // Remove any jobs for this company that are NOT in the list we just fetched.
+                        // Correct pattern: fetch existing URLs, find stale ones, chunk the stale list for deletion
+                        const currentUrls = uniqueJobs.map(j => j.url);
+                        const currentUrlsSet = new Set(currentUrls);
+                    
+                    // Fetch all existing job URLs for this company from the database
+                        const { data: existingJobs, error: fetchErr } = await supabase
+                            .from('jobs')
+                            .select('url')
+                            .eq('company_id', id);
+                    
+                        if (fetchErr) {
+                            console.error(`  ⚠️ Cleanup error (fetch): ${fetchErr.message}`);
+                        } else if (existingJobs && existingJobs.length > 0) {
+                        // Find stale URLs (in DB but not in new fetch)
+                            const staleUrls = existingJobs
+                                .map(r => r.url)
+                                .filter(url => !currentUrlsSet.has(url));
+                        
+                        // Chunk the stale list for deletion
+                            const CHUNK_SIZE = 200;
+                            const staleChunks = chunkArray(staleUrls, CHUNK_SIZE);
+                            let totalDeleted = 0;
+                        
+                            for (const chunk of staleChunks) {
+                                const { error: delErr, count: delCount } = await supabase
+                                    .from('jobs')
+                                    .delete()
+                                    .eq('company_id', id)
+                                    .in('url', chunk);
+
+                                if (delErr) {
+                                    console.error(`  ⚠️ Cleanup error (delete): ${delErr.message}`);
+                                    break;
+                                }
+                                if (delCount) totalDeleted += delCount;
+                            }
+                        
+                            if (totalDeleted > 0) {
+                                console.log(`  🧹 Cleaned up ${totalDeleted} stale jobs (${staleChunks.length} chunks)`);
+                            }
+                        }
+
+                        if (healthTrackingEnabled) {
+                            await supabase
+                                .from('companies')
+                                .update({
+                                    ats_status: 'ok',
+                                    ats_failure_count: 0,
+                                    ats_last_validated: new Date().toISOString(),
+                                })
+                                .eq('id', id);
+                        }
                     }
                 }
             } else {
                 // Special case: If the fetcher returned 0 jobs AND it was successful (not an error),
                 // we should probably clear out old jobs for this company too.
                 console.log(`0 total → 0 UK. Clearing old jobs...`);
-                const { error: delErr } = await supabase
-                    .from('jobs')
-                    .delete()
-                    .eq('company_id', id);
+                if (!fallbackOnlyDryRun) {
+                    const { error: delErr } = await supabase
+                        .from('jobs')
+                        .delete()
+                        .eq('company_id', id);
 
-                if (delErr) console.error(`  ⚠️ Clear error: ${delErr.message}`);
+                    if (delErr) console.error(`  ⚠️ Clear error: ${delErr.message}`);
+                } else {
+                    console.log('  [DRY RUN] no UK jobs; would clear existing company jobs');
+                }
+
+                if (!fallbackOnlyDryRun && healthTrackingEnabled) {
+                    await supabase
+                        .from('companies')
+                        .update({
+                            ats_status: 'ok',
+                            ats_failure_count: 0,
+                            ats_last_validated: new Date().toISOString(),
+                        })
+                        .eq('id', id);
+                }
             }
 
             // Calculate exact active jobs count directly from DB
-            const { count: finalCount } = await supabase
-                .from('jobs')
-                .select('*', { count: 'exact', head: true })
-                .eq('company_id', id);
+            if (!fallbackOnlyDryRun) {
+                const { count: finalCount } = await supabase
+                    .from('jobs')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('company_id', id);
 
-            await supabase
-                .from('companies')
-                .update({ active_jobs_count: finalCount || 0 })
-                .eq('id', id);
+                await supabase
+                    .from('companies')
+                    .update({ active_jobs_count: finalCount || 0 })
+                    .eq('id', id);
+            }
 
         } catch (e: any) {
             result.error = e.message;
             console.error(`  ❌ ${e.message}`);
+
+            if (healthTrackingEnabled) {
+                await markCompanyFailure(id);
+            }
         }
 
         results.push(result);
@@ -1123,6 +2066,12 @@ async function syncAll() {
     console.log(`  ✅ With UK jobs:   ${withJobs.length}`);
     console.log(`  ➕ Jobs saved:     ${totalSaved}`);
     console.log(`  ⚪ No UK jobs:     ${noJobs.length}`);
+    if (fallbackOnlyDryRun) {
+        console.log('  🧪 Mode:          custom fallback dry run (no writes)');
+    }
+    if (SERPER_API_KEY) {
+        console.log(`  🔎 Serper hits:    ${serperHitCount}/${serperCallCount}`);
+    }
     if (errored.length > 0) {
         console.log(`  ❌ Errors:        ${errored.length}`);
         errored.forEach(r => console.log(`     - ${r.company}: ${r.error}`));
@@ -1139,4 +2088,10 @@ async function syncAll() {
     console.log('════════════════════════════════════════════════════\n');
 }
 
-syncAll().catch(console.error);
+const isDirectExecution = process.argv[1]
+    ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+    : false;
+
+if (isDirectExecution) {
+    syncAll().catch(console.error);
+}
