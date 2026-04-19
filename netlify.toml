@@ -1,6 +1,10 @@
 [build]
-  command = "rm -rf .next && npm run build"
+  command = "npm run build"
   publish = ".next"
+
+[build.environment]
+  NODE_ENV = "production"
+  NEXT_TELEMETRY_DISABLED = "1"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
