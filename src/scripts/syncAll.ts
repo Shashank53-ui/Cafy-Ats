@@ -30,10 +30,10 @@ import { inferJobLevel } from '../lib/inferJobLevel';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-key';
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const SERPER_API_KEY = process.env.SERPER_API_KEY?.trim() || '';
 let serperCallCount = 0;
@@ -80,6 +80,7 @@ interface CompanyRow {
     ats_provider: string;
     ats_board_token: string;
     careers_url?: string | null;
+    url?: string | null;
 }
 
 interface AtsOverrideRow {
@@ -708,7 +709,7 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
     if (specificIds && specificIds.length > 0) {
         const { data, error } = await supabase
             .from('companies')
-            .select('id, trading_name, ats_provider, ats_board_token')
+            .select('id, trading_name, ats_provider, ats_board_token, url')
             .in('id', specificIds)
             .order('trading_name');
 
@@ -740,7 +741,7 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
         const to = from + pageSize - 1;
         const { data, error } = await supabase
             .from('companies')
-            .select('id, trading_name, ats_provider, ats_board_token')
+            .select('id, trading_name, ats_provider, ats_board_token, url')
             .order('id', { ascending: true })
             .range(from, to);
 
