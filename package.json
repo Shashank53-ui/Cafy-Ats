@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:clean": "rimraf .next && next build",
     "start": "next start",
     "lint": "eslint",
     "ingest": "tsx src/scripts/ingestJobs.ts",
