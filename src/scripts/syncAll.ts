@@ -35,7 +35,11 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-key';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseKey) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY. Sync writes require the service role key when RLS is enabled.');
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -2795,7 +2799,6 @@ export async function syncAll() {
                 const uniqueJobs = Array.from(dedupedJobs.values());
                 const rows = uniqueJobs.map(j => ({
                     company_id: id,
-                    company_name: trading_name,
                     title: safeStr(j.title, 255),
                     location: safeStr(j.location, 255),
                     url: j.url,
@@ -2807,6 +2810,7 @@ export async function syncAll() {
                 if (!fallbackOnlyDryRun) {
                     const { error: jobErr } = await supabase.from('jobs').upsert(rows, { onConflict: 'url' });
                     if (jobErr) {
+                        console.error(`[${displayProvider}] ${trading_name} jobs upsert failed: ${jobErr.message}`);
                     } else {
                         result.saved = rows.length;
                         totalSaved += rows.length;
