@@ -72,6 +72,10 @@ Required env vars:
 - `SUPABASE_SERVICE_ROLE_KEY` (preferred)
 - fallback if service key missing: `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
+Note: For server-side scripts and CLI tools that perform writes (migrations, bulk imports,
+or the master sync), set `SUPABASE_SERVICE_ROLE_KEY` in your environment. This key bypasses
+RLS and is required for admin-level DML; never expose it to browsers or client-side code.
+
 Optional env vars:
 - `SERPER_API_KEY` (enables careers URL discovery fallback in sync)
 
@@ -151,6 +155,7 @@ Current providers in the map:
 - `goldmansachs`
 - `google`
 - `jpmc`
+- `custom_nhs`
 
 If a company has an unsupported `ats_provider`, it is skipped.
 

@@ -6,10 +6,18 @@ import { createAdminClient } from '../../utils/supabase/admin';
 export async function reportJobAction(jobId: number, notes?: string) {
     const supabaseServer = await createClient();
 
+    // Ensure the caller is authenticated. With RLS enabled most tables
+    // will only allow inserts where `user_id = auth.uid()` so include it.
+    const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
+    if (userError || !user) {
+        return { success: false, error: 'Not authenticated.' };
+    }
+
     try {
         const { error } = await supabaseServer
             .from('reported_jobs')
             .insert({
+                user_id: user.id,
                 job_id: jobId,
                 notes: notes || null
             });
