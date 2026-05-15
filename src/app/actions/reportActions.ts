@@ -21,7 +21,11 @@ export async function reportJobAction(jobId: number, notes?: string) {
                 notes: notes || null
             });
 
-        if (error?.message?.toLowerCase().includes('user_id')) {
+        const missingUserIdColumn =
+            (error as { code?: string } | null)?.code === '42703' &&
+            error?.message?.toLowerCase().includes('user_id');
+
+        if (missingUserIdColumn) {
             const fallback = await supabaseServer
                 .from('reported_jobs')
                 .insert({
