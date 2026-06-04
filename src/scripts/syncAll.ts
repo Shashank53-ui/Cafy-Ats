@@ -1181,13 +1181,11 @@ async function fetchLever(token: string): Promise<Job[]> {
                     const jobs: Job[] = [];
                     d.forEach((group: any) => {
                         (group.postings || []).forEach((p: any) => {
-                            // Gap 3: Combines location and team/department and tags
                             const loc = p.categories?.location || p.workplaceType || '';
                             const team = p.categories?.department || p.categories?.team || group.title || '';
-                            const tags = (p.tags || []).join(' ');
                             jobs.push({
                                 title: p.text || '',
-                                location: `${loc} ${team} ${tags}`.trim(),
+                                location: loc,
                                 url: p.hostedUrl || '',
                                 department: team,
                                 salary: undefined
@@ -1206,10 +1204,9 @@ async function fetchLever(token: string): Promise<Job[]> {
                     return d2.map((p: any) => {
                         const loc = p.categories?.location || p.workplaceType || '';
                         const team = p.categories?.department || p.categories?.team || '';
-                        const tags = (p.tags || []).join(' ');
                         return {
                             title: p.text || '',
-                            location: `${loc} ${team} ${tags}`.trim(),
+                            location: loc,
                             url: p.hostedUrl || '',
                             department: team,
                             salary: undefined
@@ -1367,7 +1364,9 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
 
             allJobs.push(...content.map((j: any) => ({
                 title: j.name || '',
-                location: `${j.location?.city || ''} ${j.location?.country || ''}`.trim(),
+                // fullLocation gives "London, England, United Kingdom" / "Saint Helier, Jersey"
+                // which catches Channel Islands and avoids 2-letter country code ambiguity
+                location: j.location?.fullLocation || `${j.location?.city || ''} ${j.location?.country || ''}`.trim(),
                 url: `https://jobs.smartrecruiters.com/${token}/${j.id}`,
                 department: j.department?.label || '',
                 salary: undefined
@@ -1651,7 +1650,7 @@ async function fetchWorkday(token: string): Promise<Job[]> {
     const isWorkdaySite = slug === 'wf' || slug.includes('hcahealthcare');
 
     // Subdomains to try. If we detected one from the URL, put it first.
-    const wds = ['wd3', 'wd1', 'wd5', 'wd103', 'wd107', 'wd108', 'wd12', 'wd2'];
+    const wds = ['wd3', 'wd1', 'wd5', 'wd103', 'wd107', 'wd108', 'wd12', 'wd2', 'wd10', 'wd8', 'wd6', 'wd4', 'wd9', 'wd1001'];
     if (detectedWd && wds.includes(detectedWd)) {
         wds.splice(wds.indexOf(detectedWd), 1);
         wds.unshift(detectedWd);
@@ -1716,23 +1715,29 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 
                 const data = await res.json();
                 let posts = data?.jobPostings || [];
-
                 let total = data.total || 0;
+                const facetWasApplied = Object.keys(currentFacets).length > 0;
 
-                // If UK facet returned 0, but the company is expected to have jobs, try without facet
-                if (posts.length === 0) {
-                    currentFacets = {};
-                    const noFacetRes = await fetchWithTimeout(apiUrl, {
+                // Always fetch the global (no-facet) count so we can judge whether the UK
+                // facet is actually filtering, or just returning the full board.
+                let globalTotal = 0;
+                try {
+                    const globalRes = await fetchWithTimeout(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
-                        body: JSON.stringify({ appliedFacets: currentFacets, limit: 20, offset: 0, searchText: '' })
+                        body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText: '' })
                     });
-                    if (noFacetRes.ok) {
-                        const noFacetData = await noFacetRes.json();
-                        posts = noFacetData.jobPostings || [];
-                        total = noFacetData.total || 0;
+                    if (globalRes.ok) {
+                        const gd = await globalRes.json();
+                        globalTotal = gd.total || 0;
+                        // If facet returned 0 jobs but the board has jobs, use the global results
+                        if (posts.length === 0 && (gd.jobPostings || []).length > 0) {
+                            posts = gd.jobPostings;
+                            total = globalTotal;
+                            currentFacets = {};
+                        }
                     }
-                }
+                } catch { /* ignore — proceed with facet results */ }
 
                 if (posts.length === 0) {
                     if (isWorkdaySite) break;
@@ -1741,31 +1746,43 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 
                 const allJobs: Job[] = [];
                 let offset = 0;
-                const finalFacets = data.appliedFacets || currentFacets || {};
 
-                // Sanity check: did the UK facet actually work?
-                let facetIsTrusted = Object.keys(finalFacets).length > 0;
-                if (facetIsTrusted && posts.length > 0) {
-                    const sample = posts.slice(0, 20);
-                    let hasExplicitUK = false;
-                    let hasExplicitNonUK = false;
+                // ── Step 1: Is the UK facet genuinely filtering? ─────────────────────
+                // If faceted count ≈ global count (ratio ≥ 0.75), the facet is not
+                // filtering by country at all.
+                const facetReducedCount = facetWasApplied && globalTotal > 0 && (total / globalTotal) < 0.75;
+                let finalFacets: any = (facetWasApplied && facetReducedCount)
+                    ? (data.appliedFacets || currentFacets)
+                    : {};
 
-                    for (const p of sample) {
-                        const loc = normalizeLocation(p.locationsText || p.bulletFields?.[1] || '');
-                        const isUK = isUKLocation(loc);
-                        const isNonUK = !isUK && !/^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified)$/.test(loc) && !/\d+\s+locations?/.test(loc);
+                let facetIsTrusted = facetWasApplied && facetReducedCount;
 
-                        if (isUK) hasExplicitUK = true;
-                        if (isNonUK) {
-                            hasExplicitNonUK = true;
-                            break;
-                        }
-                    }
+                // ── Step 2: Sample the first page for explicit non-UK locations ───────
+                // Even a working facet can mis-fire. Also used to detect UK-only boards.
+                let explicitNonUKCount = 0;
+                let explicitUKCount = 0;
+                for (const p of posts.slice(0, 20)) {
+                    const loc = normalizeLocation(p.locationsText || p.bulletFields?.[1] || '');
+                    const isUK = isUKLocation(loc);
+                    const isAmbiguous = !loc || /\d+\s+locations?/.test(loc)
+                        || /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified)$/.test(loc);
+                    if (isUK) explicitUKCount++;
+                    else if (!isAmbiguous) explicitNonUKCount++;
+                }
 
-                    // If we found ANY explicit non-UK, or we found NO explicit UK (only ambiguous), don't trust.
-                    if (hasExplicitNonUK || !hasExplicitUK) {
-                        facetIsTrusted = false;
-                    }
+                if (facetIsTrusted && explicitNonUKCount > 0) {
+                    // Facet returned non-UK results → it's not working correctly
+                    facetIsTrusted = false;
+                    finalFacets = {};
+                }
+
+                // ── Step 3: UK-only board detection ──────────────────────────────────
+                // If the facet isn't filtering BUT the first page shows zero explicit
+                // non-UK locations, this is almost certainly a UK-only job board
+                // (e.g. Lloyds, Harrods, Railpen). Trust all results directly.
+                if (!facetIsTrusted && explicitNonUKCount === 0) {
+                    facetIsTrusted = true;
+                    finalFacets = {}; // paginate without facet to get all jobs
                 }
 
                 while (offset < total || (offset === 0 && posts.length > 0)) {
@@ -1774,10 +1791,7 @@ async function fetchWorkday(token: string): Promise<Job[]> {
                         const nextRes = await fetchWithTimeout(apiUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
-                            body: JSON.stringify({
-                                appliedFacets: finalFacets,
-                                limit: 20, offset, searchText: ''
-                            })
+                            body: JSON.stringify({ appliedFacets: finalFacets, limit: 20, offset, searchText: '' })
                         });
                         if (nextRes.ok) {
                             const nextData = await nextRes.json();
@@ -2547,6 +2561,118 @@ async function fetchNHS(token: string): Promise<Job[]> {
     return allJobs;
 }
 
+// ─── JazzHR ─────────────────────────────────────────────────────────────────
+// Public job board at {token}.applytojob.com/apply — HTML scraped with Cheerio.
+// Token is either a company slug ("vyne") or numeric ID ("558485").
+async function fetchJazzHR(token: string): Promise<Job[]> {
+    try {
+        const url = `https://${token}.applytojob.com/apply`;
+        const r = await fetchWithTimeout(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36', 'Accept': 'text/html' }
+        });
+        if (!r.ok) return [];
+        const html = await r.text();
+        const $ = cheerio.load(html);
+        const jobs: Job[] = [];
+
+        $('li.list-group-item').each((_, el) => {
+            const anchor = $(el).find('h3.list-group-item-heading a, h2 a').first();
+            const title = anchor.text().trim();
+            const jobUrl = anchor.attr('href') || '';
+            if (!title || !jobUrl) return;
+
+            const listItems = $(el).find('ul.list-inline li');
+            // First li = location (has map-marker icon), second = department/type
+            const location = listItems.eq(0).text().replace(/^\s*\S+\s*/, '').trim(); // strip icon char
+            const department = listItems.eq(1).text().trim();
+
+            jobs.push({ title, location, url: jobUrl, department, salary: undefined });
+        });
+
+        return jobs;
+    } catch { return []; }
+}
+
+// ─── Oracle Taleo ────────────────────────────────────────────────────────────
+// Token is a full URL like https://arm.taleo.net/careersection/arm_external/joblist.ftl
+// We extract tenant + section and hit the public REST API.
+async function fetchOracleTaleo(token: string): Promise<Job[]> {
+    try {
+        let tenant = '';
+        let section = '';
+
+        if (token.startsWith('http')) {
+            const parsed = new URL(token);
+            tenant = parsed.hostname.split('.')[0];                         // "arm"
+            const parts = parsed.pathname.split('/').filter(Boolean);       // ["careersection","arm_external","joblist.ftl"]
+            section = parts[1] || '';                                        // "arm_external"
+        } else {
+            tenant = token;
+            section = 'External';
+        }
+
+        if (!tenant) return [];
+
+        // Taleo public REST API — no auth required for published jobs
+        const apiUrl = `https://${tenant}.taleo.net/careersection/rest/jobboard/requisition?lang=en&start=0&end=100${section ? `&src=${section}` : ''}`;
+        const r = await fetchWithTimeout(apiUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+        });
+        if (!r.ok) return [];
+        const d = await r.json();
+        const requisitions = d?.requisitionList || d?.requisitions || [];
+
+        return requisitions.map((j: any) => ({
+            title: j.title || j.jobTitle || '',
+            location: j.location || j.locationDescr || j.primaryLocation || '',
+            url: j.referenceNumber
+                ? `https://${tenant}.taleo.net/careersection/${section}/jobdetail.ftl?job=${j.referenceNumber}&lang=en`
+                : (j.jobDetailUrl || ''),
+            department: j.department || '',
+            salary: undefined,
+        })).filter((j: Job) => j.title && j.url);
+    } catch { return []; }
+}
+
+// ─── Eploy ────────────────────────────────────────────────────────────────────
+// Token is either a company slug ("vanquisbankinggroup") or a full careers URL.
+// Eploy exposes a public vacancy search JSON endpoint.
+async function fetchEploy(token: string): Promise<Job[]> {
+    try {
+        let base = '';
+
+        if (token.startsWith('http')) {
+            // Full URL — extract the hostname-based eploy subdomain if present
+            const parsed = new URL(token);
+            if (parsed.hostname.includes('eploy.net')) {
+                base = `https://${parsed.hostname}`;
+            } else {
+                // Custom domain with Eploy backend — try appending the known API path
+                base = `https://${parsed.hostname}`;
+            }
+        } else {
+            base = `https://${token}.eploy.net`;
+        }
+
+        // Primary: JSON vacancy search API
+        const apiUrl = `${base}/careers/vacancy/search/json?rows=200`;
+        const r = await fetchWithTimeout(apiUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+        });
+        if (!r.ok) return [];
+        const d = await r.json();
+        const vacancies = Array.isArray(d) ? d : (d.vacancies || d.results || []);
+
+        return vacancies.map((j: any) => ({
+            title: j.title || j.jobTitle || j.VacancyTitle || '',
+            location: j.location || j.Location || j.town || j.region || '',
+            url: j.url || j.applyUrl || `${base}/careers/vacancy/${j.id || j.VacancyId}`,
+            department: j.department || j.category || '',
+            salary: undefined,
+        })).filter((j: Job) => j.title && j.url);
+    } catch { return []; }
+}
+
 export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     greenhouse: fetchGreenhouse,
     ashby: fetchAshby,
@@ -2571,6 +2697,9 @@ export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     icims: fetchICIMS,
     rippling: fetchRippling,
     generic_careers: fetchGenericCareersPage,
+    jazzhr: fetchJazzHR,
+    oracle: fetchOracleTaleo,
+    eploy: fetchEploy,
 
     // Special / Custom Scrapers
     amazon: fetchAmazon,
@@ -2761,7 +2890,18 @@ export async function syncAll() {
                 const adapterKey = `${atsProvider.toLowerCase()}ToJobLocationInput` as keyof typeof Adapters;
                 const adapter = Adapters[adapterKey];
 
-                const locationInput = adapter ? adapter(j) : { locations: [j.location ?? ''], isRemote: false, isTrustedSource: false };
+                // Default adapter: split pipe/bullet-separated office lists so each office
+                // is checked independently (e.g. "London | New York" → ["London","New York"]).
+                const locationInput = adapter ? adapter(j) : (() => {
+                    const raw = j.location ?? '';
+                    const parts = raw.split(/\s*[|·•]\s*/).map((s: string) => s.trim()).filter(Boolean);
+                    const locs = parts.length > 0 ? parts : (raw ? [raw] : []);
+                    return {
+                        locations: locs,
+                        isRemote: /\bremote\b/i.test(raw),
+                        isTrustedSource: false,
+                    };
+                })();
                 if (isNHS || isUKJob(locationInput)) {
                     ukJobs.push(j);
                     if (j.needs_review) needsReviewCount++;
