@@ -72,16 +72,37 @@ export function workableToJobLocationInput(job: any): JobLocationInput {
     };
 }
 
+// Workday tenants sometimes return vague placeholder strings instead of a real city.
+// These carry no geographic signal so we ignore them and fall back to the URL path.
+const WORKDAY_VAGUE_LOCATIONS = new Set([
+    'location negotiable', 'negotiable', 'tbd', 'to be confirmed',
+    'various', 'various locations', 'see description', 'see job description',
+    'multiple locations', 'not specified',
+]);
+
 export function workdayToJobLocationInput(job: any): JobLocationInput {
-    const locations = (job.locationsText || '')
+    const rawText = job.locationsText || '';
+    const rawLocations = rawText
         .split(',')
         .map((s: string) => s.trim())
         .filter(Boolean);
 
+    // Drop vague placeholder strings — they carry no geographic signal.
+    const locations = rawLocations.filter(
+        (l: string) => !WORKDAY_VAGUE_LOCATIONS.has(l.toLowerCase())
+    );
+
+    // Fall back to the city embedded in the Workday URL path when no real location exists.
+    // e.g. /job/London/Role-Title_REF → "London"
+    if (locations.length === 0 && job.url) {
+        const cityFromUrl = (job.url as string).match(/\/job\/([^/]+)\//)?.[1];
+        if (cityFromUrl) locations.push(cityFromUrl.replace(/-/g, ' '));
+    }
+
     return {
         locations,
-        isRemote: locations.some((l: string) => containsRemote(l)),
-        isTrustedSource: !!job.verified // Use the existing verified/facetIsTrusted flag
+        isRemote: rawLocations.some((l: string) => containsRemote(l)),
+        isTrustedSource: !!job.verified,
     };
 }
 
@@ -137,7 +158,8 @@ export function breezyToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function recruiteeToJobLocationInput(job: any): JobLocationInput {
-    const locations = [job.location, job.city].filter(Boolean);
+    // Include country field so "York, United States" doesn't pass as UK via city match
+    const locations = [job.city, job.country, job.location].filter(Boolean);
     return {
         locations,
         isRemote: locations.some((l: string) => containsRemote(l)),

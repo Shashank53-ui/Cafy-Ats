@@ -365,7 +365,7 @@ function isLikelyUKJob(job: Job): boolean {
         // Location is present but NOT UK — don't fall through to URL/title signals
         // (avoids "Senior Engineer - New York" matching title-based UK city checks)
         // EXCEPTION: if location is truly ambiguous (e.g. 'remote', 'flexible')
-        const isAmbiguous = /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified|remote other|remot other|multiple locations)$/.test(locationNorm) ||
+        const isAmbiguous = /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified|remote other|remot other|multiple locations|location negotiable|negotiable|tbd|to be confirmed|various|various locations|see description|see job description)$/.test(locationNorm) ||
             /\d+\s+locations?/.test(locationNorm);
 
         if (!isAmbiguous) {
@@ -1229,44 +1229,55 @@ async function fetchLever(token: string): Promise<Job[]> {
 async function fetchWorkable(token: string): Promise<Job[]> {
     const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0';
 
-    // 1. Try public detail API (most reliable/fastest)
-    try {
-        const r = await fetchWithTimeout(`https://www.workable.com/api/accounts/${token}?detail=true`, {
-            headers: { 'User-Agent': ua, 'Accept': 'application/json' }
-        });
-        if (r.ok) {
-            const d = await r.json();
-            if (Array.isArray(d.jobs)) {
-                return d.jobs.map((j: any) => ({
-                    title: j.title || '',
-                    location: [j.city, j.state, j.country].filter(Boolean).join(', ') || (j.telecommuting ? 'Remote' : ''),
-                    url: j.url || j.shortlink || `https://apply.workable.com/j/${j.shortcode}`,
-                    department: j.department || '',
-                    salary: undefined
-                }));
-            }
+    const workableFetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3): Promise<Response | null> => {
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                const r = await fetchWithTimeout(url, options);
+                if (r.status === 429) {
+                    const retryAfter = parseInt(r.headers.get('retry-after') || '0') || (2 ** attempt) * 2;
+                    await sleep(retryAfter * 1000);
+                    continue;
+                }
+                return r;
+            } catch { }
         }
-    } catch { }
+        return null;
+    };
 
-    // 2. Try v3 API fallback (in case public API fails/different structure)
-    try {
-        const body = { query: '', location: [], department: [], worktype: [], remote: [] };
-        const r = await fetchWithTimeout(`https://apply.workable.com/api/v3/accounts/${token}/jobs`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'User-Agent': ua },
-            body: JSON.stringify(body)
-        });
-        if (r.ok) {
-            const d = await r.json();
-            return (d.results || []).map((j: any) => ({
+    // 1. Try public detail API (most reliable/fastest)
+    const r1 = await workableFetchWithRetry(`https://www.workable.com/api/accounts/${token}?detail=true`, {
+        headers: { 'User-Agent': ua, 'Accept': 'application/json' }
+    });
+    if (r1?.ok) {
+        const d = await r1.json();
+        if (Array.isArray(d.jobs)) {
+            return d.jobs.map((j: any) => ({
                 title: j.title || '',
-                location: [j.location?.city, j.location?.region, j.location?.country].filter(Boolean).join(', ') || (j.remote ? 'Remote' : ''),
-                url: `https://apply.workable.com/${token}/j/${j.shortcode}/`,
+                location: [j.city, j.state, j.country].filter(Boolean).join(', ') || (j.telecommuting ? 'Remote' : ''),
+                url: j.url || j.shortlink || `https://apply.workable.com/j/${j.shortcode}`,
                 department: j.department || '',
                 salary: undefined
             }));
         }
-    } catch { }
+    }
+
+    // 2. Try v3 API fallback
+    const body = { query: '', location: [], department: [], worktype: [], remote: [] };
+    const r2 = await workableFetchWithRetry(`https://apply.workable.com/api/v3/accounts/${token}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': ua },
+        body: JSON.stringify(body)
+    });
+    if (r2?.ok) {
+        const d = await r2.json();
+        return (d.results || []).map((j: any) => ({
+            title: j.title || '',
+            location: [j.location?.city, j.location?.region, j.location?.country].filter(Boolean).join(', ') || (j.remote ? 'Remote' : ''),
+            url: `https://apply.workable.com/${token}/j/${j.shortcode}/`,
+            department: j.department || '',
+            salary: undefined
+        }));
+    }
 
     return [];
 }
@@ -1440,10 +1451,11 @@ async function fetchRecruitee(token: string): Promise<Job[]> {
         const d = await r.json();
         return (d.offers || []).map((j: any) => ({
             title: j.title || '',
-            location: j.location || j.city || '',
+            location: [j.city, j.country].filter(Boolean).join(', ') || j.location || '',
             url: j.careers_url || '',
             department: j.department || '',
-            salary: undefined
+            salary: undefined,
+            country: j.country || '',
         }));
     } catch { return []; }
 }
@@ -1772,15 +1784,17 @@ async function fetchWorkday(token: string): Promise<Job[]> {
                     const loc = normalizeLocation(p.locationsText || p.bulletFields?.[1] || '');
                     const isUK = isUKLocation(loc);
                     const isAmbiguous = !loc || /\d+\s+locations?/.test(loc)
-                        || /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified)$/.test(loc);
+                        || /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified|location negotiable|negotiable|tbd|various|see description)$/.test(loc);
                     if (isUK) explicitUKCount++;
                     else if (!isAmbiguous) explicitNonUKCount++;
                 }
 
-                if (facetIsTrusted && explicitNonUKCount > 0) {
-                    // Facet returned non-UK results → it's not working correctly
+                if (facetIsTrusted && explicitNonUKCount > explicitUKCount) {
+                    // Majority of sample is non-UK → facet is not filtering usefully.
+                    // Switch to global fetch and update total so we paginate all jobs.
                     facetIsTrusted = false;
                     finalFacets = {};
+                    total = globalTotal;
                 }
 
                 // ── Step 3: UK-only board detection ──────────────────────────────────
