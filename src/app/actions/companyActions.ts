@@ -1,6 +1,5 @@
 'use server';
 
-import { createAdminClient } from '@/utils/supabase/admin';
 import { createClient } from '@/utils/supabase/server';
 import { getSubscriptionStatus } from './subscriptionActions';
 
@@ -40,20 +39,19 @@ export async function getCompanies(params: {
     const to = from + PAGE_SIZE - 1;
 
     const favoritesOnly = params.favoritesOnly;
-    const supabaseServer = favoritesOnly ? await createClient() : null;
-    const user = favoritesOnly ? (await supabaseServer!.auth.getUser()).data.user : null;
+    const supabaseServer = await createClient();
+    const user = (await supabaseServer.auth.getUser()).data.user;
 
     if (favoritesOnly && !user) {
         return { companies: [], totalPages: 0 };
     }
 
-    const adminClient = createAdminClient();
-    let query = adminClient
+    let query = supabaseServer
         .from('companies')
         .select('*', { count: 'exact' });
 
     if (favoritesOnly && user) {
-        const { data: favs, error: favError } = await supabaseServer!
+        const { data: favs, error: favError } = await supabaseServer
             .from('user_favorite_companies')
             .select('company_id')
             .eq('user_id', user.id);
