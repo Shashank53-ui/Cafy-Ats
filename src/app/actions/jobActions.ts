@@ -11,6 +11,7 @@ export interface Job {
     location: string;
     department?: string;
     level?: string | null;
+    sector?: string | null;
     created_at: string;
     company_id: number;
     company?: {

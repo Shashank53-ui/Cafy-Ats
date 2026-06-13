@@ -26,6 +26,7 @@ import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
 import { chromium } from 'playwright';
 import { inferJobLevel } from '../lib/inferJobLevel';
+import { inferJobSector } from '../lib/inferJobSector';
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { isUKJob } from '../lib/ukFilter';
@@ -2961,6 +2962,7 @@ export async function syncAll() {
                     url: j.url,
                     department: j.department ? safeStr(j.department, 255) : null,
                     level: inferJobLevel(safeStr(j.title)),
+                    sector: inferJobSector(safeStr(j.title), j.department),
                     updated_at: new Date().toISOString()
                 }));
 
