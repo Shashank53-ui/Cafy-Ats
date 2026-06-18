@@ -23,13 +23,12 @@ jobs:
           pip install pandas requests openpyxl
           
       - name: Run verification script
-        working-directory: ./jobs
         run: python verify_uk_companies.py
         
       - name: Commit and push changes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add jobs/data/excel/UK_companies_only.xlsx jobs/data/excel/Non_UK_companies.xlsx
+          git add data/excel/UK_companies_only.xlsx data/excel/Non_UK_companies.xlsx
           # Only commit if there are changes
           git diff --staged --quiet || (git commit -m "Automated update of UK companies filter" && git push)
