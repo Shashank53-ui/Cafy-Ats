@@ -1235,7 +1235,12 @@ async function fetchWorkable(token: string): Promise<Job[]> {
             try {
                 const r = await fetchWithTimeout(url, options);
                 if (r.status === 429) {
-                    const retryAfter = parseInt(r.headers.get('retry-after') || '0') || (2 ** attempt) * 2;
+                    const retryAfterRaw = r.headers.get('retry-after');
+                    let retryAfter = parseInt(retryAfterRaw || '0');
+                    if (isNaN(retryAfter)) retryAfter = 0;
+                    retryAfter = retryAfter || (2 ** attempt) * 2;
+                    
+                    if (retryAfter > 10) return null; // Cap wait time to prevent hanging
                     await sleep(retryAfter * 1000);
                     continue;
                 }
