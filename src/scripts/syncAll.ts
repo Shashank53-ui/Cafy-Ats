@@ -3008,20 +3008,40 @@ export async function syncAll() {
     console.log('════════════════════════════════════════════════════\n');
 
     const args = process.argv.slice(2);
-    const idIndex = args.indexOf('--ids');
-    const specificIds = idIndex !== -1 ? args[idIndex + 1].split(',').map(id => parseInt(id.trim())) : null;
 
-    const providerIndex = args.indexOf('--provider');
-    const targetProvider = providerIndex !== -1 ? args[providerIndex + 1].toLowerCase() : null;
+    // Robust arg parser: handles BOTH --flag value AND --flag=value formats
+    function getArg(name: string): string | null {
+        // Check --flag=value format first
+        const eqArg = args.find(a => a.startsWith(`${name}=`));
+        if (eqArg) return eqArg.slice(name.length + 1).replace(/^["']|["']$/g, '');
+        // Check --flag value format
+        const idx = args.indexOf(name);
+        if (idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith('--')) return args[idx + 1].replace(/^["']|["']$/g, '');
+        return null;
+    }
 
-    const startIndex = args.indexOf('--start-from-provider');
-    const startFromProvider = startIndex !== -1 ? args[startIndex + 1].toLowerCase() : null;
+    const rawIds = getArg('--ids');
+    const specificIds = rawIds ? rawIds.split(',').map(id => parseInt(id.trim())) : null;
 
-    const startCompanyIndex = args.indexOf('--start-from-company');
-    const startFromCompany = startCompanyIndex !== -1 ? args[startCompanyIndex + 1] : null;
+    const rawProvider = getArg('--provider');
+    const targetProvider = rawProvider ? rawProvider.toLowerCase() : null;
 
-    const startIdIndex = args.indexOf('--start-from-id');
-    const startFromId = startIdIndex !== -1 ? parseInt(args[startIdIndex + 1]) : null;
+    const rawAts = getArg('--ats');
+    const atsList = rawAts ? rawAts.toLowerCase().split(',').map(s => s.trim()).filter(Boolean) : null;
+
+    const rawExcludeAts = getArg('--exclude-ats');
+    const excludeAtsList = rawExcludeAts ? rawExcludeAts.toLowerCase().split(',').map(s => s.trim()).filter(Boolean) : null;
+
+    const clearCsvs = args.includes('--clear-csvs');
+
+    const rawStartProvider = getArg('--start-from-provider');
+    const startFromProvider = rawStartProvider ? rawStartProvider.toLowerCase() : null;
+
+    const rawStartCompany = getArg('--start-from-company');
+    const startFromCompany = rawStartCompany || null;
+
+    const rawStartId = getArg('--start-from-id');
+    const startFromId = rawStartId ? parseInt(rawStartId) : null;
 
     const fallbackOnlyDryRun = args.includes('--dry-run-custom-fallback');
 
@@ -3062,12 +3082,22 @@ export async function syncAll() {
     }
 
     if (targetProvider) {
-        companies = companies.filter(c => normalizeProviderName(c.ats_provider) === targetProvider || String(c.ats_provider).toLowerCase() === targetProvider);
+        companies = companies.filter(c => normalizeProviderName(String(c.ats_provider)) === targetProvider || String(c.ats_provider).toLowerCase() === targetProvider);
         console.log(`Filtering for provider: ${targetProvider} (${companies.length} companies)`);
     }
 
+    if (atsList) {
+        companies = companies.filter(c => atsList.includes(normalizeProviderName(String(c.ats_provider)) || '') || atsList.includes(String(c.ats_provider).toLowerCase()));
+        console.log(`Filtering for ATS list: ${atsList.join(', ')} (${companies.length} companies)`);
+    }
+
+    if (excludeAtsList) {
+        companies = companies.filter(c => !excludeAtsList.includes(normalizeProviderName(String(c.ats_provider)) || '') && !excludeAtsList.includes(String(c.ats_provider).toLowerCase()));
+        console.log(`Excluding ATS list: ${excludeAtsList.join(', ')} (${companies.length} companies remaining)`);
+    }
+
     if (startFromProvider) {
-        const index = companies.findIndex(c => normalizeProviderName(c.ats_provider) === startFromProvider || String(c.ats_provider).toLowerCase() === startFromProvider);
+        const index = companies.findIndex(c => normalizeProviderName(String(c.ats_provider)) === startFromProvider || String(c.ats_provider).toLowerCase() === startFromProvider);
         if (index !== -1) {
             companies = companies.slice(index);
             console.log(`Starting from first ${startFromProvider} company: ${companies[0].trading_name} (${companies.length} remaining)`);
@@ -3127,12 +3157,50 @@ export async function syncAll() {
     const nonUkJobsFile = path.join(excelDir, 'companies_with_non_uk_jobs.csv');
     
     const csvHeaders = 'Company ID,Company Name,ATS Provider,ATS Board Token,URL,Verification\n';
-    fs.writeFileSync(ukJobsFile, csvHeaders);
-    fs.writeFileSync(zeroJobsFile, csvHeaders);
-    fs.writeFileSync(nonUkJobsFile, csvHeaders);
+    
+    if (clearCsvs) {
+        console.log('🧹 --clear-csvs provided. Wiping CSV buckets clean.');
+        fs.writeFileSync(ukJobsFile, csvHeaders);
+        fs.writeFileSync(zeroJobsFile, csvHeaders);
+        fs.writeFileSync(nonUkJobsFile, csvHeaders);
+    } else {
+        if (!fs.existsSync(ukJobsFile)) fs.writeFileSync(ukJobsFile, csvHeaders);
+        if (!fs.existsSync(zeroJobsFile)) fs.writeFileSync(zeroJobsFile, csvHeaders);
+        if (!fs.existsSync(nonUkJobsFile)) fs.writeFileSync(nonUkJobsFile, csvHeaders);
+    }
+
+    // Load already processed IDs to prevent duplicates and enable strict resume
+    const processedCompanyIds = new Set<number>();
+    const loadProcessedIds = (filepath: string) => {
+        if (fs.existsSync(filepath)) {
+            const content = fs.readFileSync(filepath, 'utf8');
+            const lines = content.split('\n');
+            for (let i = 1; i < lines.length; i++) {
+                const idStr = lines[i].split(',')[0];
+                if (idStr && !isNaN(Number(idStr))) {
+                    processedCompanyIds.add(Number(idStr));
+                }
+            }
+        }
+    };
+    loadProcessedIds(ukJobsFile);
+    loadProcessedIds(zeroJobsFile);
+    loadProcessedIds(nonUkJobsFile);
+    
+    console.log(`🛡️  Loaded ${processedCompanyIds.size} already processed companies. These will be skipped.`);
 
     for (const company of companies) {
+        if (Date.now() - startTime > 5.5 * 60 * 60 * 1000) {
+            console.log('\n⏳ Approaching 5.5-hour limit! Gracefully stopping so progress can be safely committed.');
+            break;
+        }
+
         const { id, trading_name, ats_provider } = company;
+        
+        if (processedCompanyIds.has(id)) {
+            continue; // Skip instantly, preventing duplicates
+        }
+
         let logBuffer = '';
 
         if (String(ats_provider || '').toLowerCase() === 'linkedin' && !includeLinkedin) {

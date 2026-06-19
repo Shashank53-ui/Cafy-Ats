@@ -167,34 +167,37 @@ export function isUKJob(input: JobLocationInput): boolean {
     // 1. Trust the source (e.g. facet-filtered Workday results, NHS)
     if (isTrustedSource) return true;
 
-    // 2. Trust an explicit remote flag
-    if (isRemote) return true;
-
     const locs = locations.map(normalize).filter(Boolean);
 
-    // 3. Ambiguous multi-location text ("3 locations", "multiple locations") — allow
-    for (const loc of locs) {
-        if (/\d+\s+locations?/i.test(loc) || /multiple\s+locations?/i.test(loc)) return true;
-    }
+    // 2. Deep Location Validation
+    let hasBlocked = false;
+    let hasUk = false;
 
-    // 4. UK geography check — FIRST pass (before hard blocks)
-    //    A job with offices in London AND New York is still a UK job.
-    //    So if ANY location segment is UK, accept it.
     for (const loc of locs) {
-        if (isUKTerm(loc)) return true;
-    }
-
-    // 5. Hard block — only if NO UK term was found above
-    for (const loc of locs) {
+        // Evaluate for hard blocks (US, India, etc.)
         if (isBlockedTerm(loc)) {
-            if (!loc.includes('northern ireland')) return false;
+            if (!loc.includes('northern ireland')) hasBlocked = true;
+        }
+        // Evaluate for UK geography (London, UK, England, etc.)
+        if (isUKTerm(loc)) {
+            hasUk = true;
         }
     }
 
-    // 6. Global/EMEA signals (treat as potentially UK — don't reject outright)
+    // 3. Strict resolution:
+    // If it contains a blocked location (like "Remote - US") and NO UK location, strictly reject.
+    if (hasBlocked && !hasUk) return false;
+    // If it contains a UK location, always accept.
+    if (hasUk) return true;
+
+    // 4. Ambiguous / Blanket rules (Only reached if NO block and NO UK term exists)
+    // E.g., just "Remote" or "Multiple Locations" (User requested to consider these valid)
     for (const loc of locs) {
+        if (/\d+\s+locations?/i.test(loc) || /multiple\s+locations?/i.test(loc)) return true;
         if (GLOBAL_SIGNALS.some(s => loc.includes(s))) return true;
     }
+
+    if (isRemote) return true;
 
     // Default: reject
     return false;

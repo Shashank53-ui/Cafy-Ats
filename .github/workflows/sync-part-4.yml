@@ -1,13 +1,14 @@
-name: Scheduled Job Sync
+name: "Scheduled Sync Part 4 (The Tail)"
 
 on:
-  schedule:
-    # Runs every 6 hours (matches your vercel.json)
-    - cron: '0 */6 * * *'
-  workflow_dispatch: # Allows you to manually trigger it from the GitHub UI
+  workflow_run:
+    workflows: ["Scheduled Sync Part 3 (Mid-Tiers)"]
+    types:
+      - completed
+  workflow_dispatch:
 
 jobs:
-  sync:
+  sync_part_4:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Job Sync
+      - name: Run Job Sync (The Tail)
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -35,7 +36,7 @@ jobs:
           REED_API_KEY: ${{ secrets.REED_API_KEY }}
           SEARXNG_INSTANCES: ${{ secrets.SEARXNG_INSTANCES }}
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
-        run: npm run sync
+        run: npm run sync -- --exclude-ats join_com,bamboohr,greenhouse,workable,ashby,ashbyhq,workday,jazzhr,personio,smartrecruiters
 
       - name: Commit CSV results
         if: always()
@@ -43,5 +44,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data/excel/companies_with_*.csv || true
-          git commit -m "chore: Update scraped company CSV files [skip ci]" || true
+          git commit -m "chore: Update scraped company CSV files (Part 4) [skip ci]" || true
           git push || true
