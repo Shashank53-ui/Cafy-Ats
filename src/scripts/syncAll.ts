@@ -2874,6 +2874,22 @@ export async function syncAll() {
     const companiesWithZeroJobs: any[] = [];
     const companiesWithNonUkJobs: any[] = [];
 
+    const Papa = await import('papaparse');
+    const path = await import('path');
+    const fs = await import('fs');
+    const excelDir = path.resolve(process.cwd(), 'data', 'excel');
+    if (!fs.existsSync(excelDir)) {
+        fs.mkdirSync(excelDir, { recursive: true });
+    }
+    const ukJobsFile = path.join(excelDir, 'companies_with_uk_jobs.csv');
+    const zeroJobsFile = path.join(excelDir, 'companies_with_zero_jobs.csv');
+    const nonUkJobsFile = path.join(excelDir, 'companies_with_non_uk_jobs.csv');
+    
+    const csvHeaders = 'Company ID,Company Name,ATS Provider,ATS Board Token,URL,Verification\n';
+    fs.writeFileSync(ukJobsFile, csvHeaders);
+    fs.writeFileSync(zeroJobsFile, csvHeaders);
+    fs.writeFileSync(nonUkJobsFile, csvHeaders);
+
     for (const company of companies) {
         const { id, trading_name, ats_provider } = company;
         let logBuffer = '';
@@ -2903,14 +2919,16 @@ export async function syncAll() {
 
             if (!allJobs.length) {
                 console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⚪ Fetch: 0 | UK: 0 | Saved: 0`);
-                companiesWithZeroJobs.push({
+                const rowExport = {
                     'Company ID': id,
                     'Company Name': trading_name,
                     'ATS Provider': ats_provider || '',
                     'ATS Board Token': company.ats_board_token || '',
                     'URL': company.url || company.careers_url || '',
                     'Verification': 'Verified'
-                });
+                };
+                companiesWithZeroJobs.push(rowExport);
+                fs.appendFileSync(zeroJobsFile, Papa.default.unparse([rowExport], { header: false }) + '\n');
                 results.push(result);
                 continue;
             }
@@ -3036,8 +3054,10 @@ export async function syncAll() {
 
             if (result.ukJobs === 0) {
                 companiesWithNonUkJobs.push(rowExport);
+                fs.appendFileSync(nonUkJobsFile, Papa.default.unparse([rowExport], { header: false }) + '\n');
             } else {
                 companiesWithUkJobs.push(rowExport);
+                fs.appendFileSync(ukJobsFile, Papa.default.unparse([rowExport], { header: false }) + '\n');
             }
 
             results.push(result);
@@ -3045,14 +3065,16 @@ export async function syncAll() {
         } catch (err: any) {
             console.log(`[${displayProvider}] ${trading_name} ... ❌ ERROR: ${err.message}`);
             results.push({ ...result, error: err.message });
-            companiesWithZeroJobs.push({
+            const rowExport = {
                 'Company ID': id,
                 'Company Name': trading_name,
                 'ATS Provider': ats_provider || '',
                 'ATS Board Token': company.ats_board_token || '',
                 'URL': company.url || company.careers_url || '',
                 'Verification': 'Dead URL'
-            });
+            };
+            companiesWithZeroJobs.push(rowExport);
+            fs.appendFileSync(zeroJobsFile, Papa.default.unparse([rowExport], { header: false }) + '\n');
             if (healthTrackingEnabled && !fallbackOnlyDryRun) {
                 await markCompanyFailure(id);
             }
@@ -3118,19 +3140,6 @@ export async function syncAll() {
     }
     
     // Save CSV exports
-    const Papa = await import('papaparse');
-    const path = await import('path');
-    const fs = await import('fs');
-    
-    const excelDir = path.resolve(process.cwd(), 'data', 'excel');
-    if (!fs.existsSync(excelDir)) {
-        fs.mkdirSync(excelDir, { recursive: true });
-    }
-    
-    fs.writeFileSync(path.join(excelDir, 'companies_with_uk_jobs.csv'), Papa.default.unparse(companiesWithUkJobs));
-    fs.writeFileSync(path.join(excelDir, 'companies_with_zero_jobs.csv'), Papa.default.unparse(companiesWithZeroJobs));
-    fs.writeFileSync(path.join(excelDir, 'companies_with_non_uk_jobs.csv'), Papa.default.unparse(companiesWithNonUkJobs));
-    
     console.log(`\n  💾 Saved ${companiesWithUkJobs.length} companies to data/excel/companies_with_uk_jobs.csv`);
     console.log(`  💾 Saved ${companiesWithZeroJobs.length} companies to data/excel/companies_with_zero_jobs.csv`);
     console.log(`  💾 Saved ${companiesWithNonUkJobs.length} companies to data/excel/companies_with_non_uk_jobs.csv`);
