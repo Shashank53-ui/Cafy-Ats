@@ -2870,6 +2870,10 @@ export async function syncAll() {
     const results: SyncResult[] = [];
     let totalSaved = 0;
 
+    const companiesWithUkJobs: any[] = [];
+    const companiesWithZeroJobs: any[] = [];
+    const companiesWithNonUkJobs: any[] = [];
+
     for (const company of companies) {
         const { id, trading_name, ats_provider } = company;
         let logBuffer = '';
@@ -2899,6 +2903,14 @@ export async function syncAll() {
 
             if (!allJobs.length) {
                 console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⚪ Fetch: 0 | UK: 0 | Saved: 0`);
+                companiesWithZeroJobs.push({
+                    'Company ID': id,
+                    'Company Name': trading_name,
+                    'ATS Provider': ats_provider || '',
+                    'ATS Board Token': company.ats_board_token || '',
+                    'URL': company.url || company.careers_url || '',
+                    'Verification': 'Verified'
+                });
                 results.push(result);
                 continue;
             }
@@ -3013,11 +3025,34 @@ export async function syncAll() {
             const statusEmoji = result.ukJobs > 0 ? '✅' : '⚪';
             console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
 
+            const rowExport = {
+                'Company ID': id,
+                'Company Name': trading_name,
+                'ATS Provider': ats_provider || '',
+                'ATS Board Token': company.ats_board_token || '',
+                'URL': company.url || company.careers_url || '',
+                'Verification': 'Verified'
+            };
+
+            if (result.ukJobs === 0) {
+                companiesWithNonUkJobs.push(rowExport);
+            } else {
+                companiesWithUkJobs.push(rowExport);
+            }
+
             results.push(result);
             await sleep(500); // Politeness delay
         } catch (err: any) {
             console.log(`[${displayProvider}] ${trading_name} ... ❌ ERROR: ${err.message}`);
             results.push({ ...result, error: err.message });
+            companiesWithZeroJobs.push({
+                'Company ID': id,
+                'Company Name': trading_name,
+                'ATS Provider': ats_provider || '',
+                'ATS Board Token': company.ats_board_token || '',
+                'URL': company.url || company.careers_url || '',
+                'Verification': 'Dead URL'
+            });
             if (healthTrackingEnabled && !fallbackOnlyDryRun) {
                 await markCompanyFailure(id);
             }
@@ -3081,6 +3116,25 @@ export async function syncAll() {
             .slice(0, 10)
             .forEach(r => console.log(`     ${r.company.padEnd(35)} ${r.saved} jobs  [${r.provider}]`));
     }
+    
+    // Save CSV exports
+    const Papa = await import('papaparse');
+    const path = await import('path');
+    const fs = await import('fs');
+    
+    const excelDir = path.resolve(process.cwd(), 'data', 'excel');
+    if (!fs.existsSync(excelDir)) {
+        fs.mkdirSync(excelDir, { recursive: true });
+    }
+    
+    fs.writeFileSync(path.join(excelDir, 'companies_with_uk_jobs.csv'), Papa.default.unparse(companiesWithUkJobs));
+    fs.writeFileSync(path.join(excelDir, 'companies_with_zero_jobs.csv'), Papa.default.unparse(companiesWithZeroJobs));
+    fs.writeFileSync(path.join(excelDir, 'companies_with_non_uk_jobs.csv'), Papa.default.unparse(companiesWithNonUkJobs));
+    
+    console.log(`\n  💾 Saved ${companiesWithUkJobs.length} companies to data/excel/companies_with_uk_jobs.csv`);
+    console.log(`  💾 Saved ${companiesWithZeroJobs.length} companies to data/excel/companies_with_zero_jobs.csv`);
+    console.log(`  💾 Saved ${companiesWithNonUkJobs.length} companies to data/excel/companies_with_non_uk_jobs.csv`);
+    
     console.log('════════════════════════════════════════════════════\n');
 }
 

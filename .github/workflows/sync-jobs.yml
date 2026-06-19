@@ -34,3 +34,11 @@ jobs:
           SEARXNG_INSTANCES: ${{ secrets.SEARXNG_INSTANCES }}
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
         run: npm run sync
+
+      - name: Commit CSV results
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/excel/companies_with_*.csv || true
+          git commit -m "chore: Update scraped company CSV files [skip ci]" || true
+          git push || true
