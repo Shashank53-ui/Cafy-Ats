@@ -3043,6 +3043,12 @@ export async function syncAll() {
     const rawStartId = getArg('--start-from-id');
     const startFromId = rawStartId ? parseInt(rawStartId) : null;
 
+    const rawSkip = getArg('--skip');
+    const skipCount = rawSkip ? parseInt(rawSkip) : 0;
+
+    const rawLimit = getArg('--limit');
+    const limitCount = rawLimit ? parseInt(rawLimit) : null;
+
     const fallbackOnlyDryRun = args.includes('--dry-run-custom-fallback');
 
     const includeLinkedin = !args.includes('--exclude-linkedin');
@@ -3124,6 +3130,16 @@ export async function syncAll() {
         } else {
             console.warn(`No company found with ID: ${startFromId}`);
         }
+    }
+
+    if (skipCount > 0) {
+        companies = companies.slice(skipCount);
+        console.log(`Skipping first ${skipCount} companies (${companies.length} remaining)`);
+    }
+
+    if (limitCount !== null) {
+        companies = companies.slice(0, limitCount);
+        console.log(`Limiting execution to ${limitCount} companies`);
     }
 
     console.log(`Found ${companies.length} companies with configured ATS\n`);

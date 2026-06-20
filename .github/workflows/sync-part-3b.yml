@@ -1,12 +1,14 @@
-name: "Scheduled Sync Part 1 (Join.com)"
+name: "Scheduled Sync Part 3B (Mid-Tiers 2)"
 
 on:
-  # schedule:
-  #   - cron: '15 12 * * *'
+  workflow_run:
+    workflows: ["Scheduled Sync Part 3A (Mid-Tiers 1)"]
+    types:
+      - completed
   workflow_dispatch:
 
 jobs:
-  sync_part_1:
+  sync_part_3b:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -24,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Job Sync (Join.com)
+      - name: Run Job Sync (Mid-Tiers Second Half)
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -34,7 +36,7 @@ jobs:
           REED_API_KEY: ${{ secrets.REED_API_KEY }}
           SEARXNG_INSTANCES: ${{ secrets.SEARXNG_INSTANCES }}
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
-        run: npm run sync -- --clear-csvs --ats join_com
+        run: npm run sync -- --ats ashby,ashbyhq,workday,jazzhr,personio,smartrecruiters --skip 8000
 
       - name: Commit CSV results
         if: always()
@@ -42,5 +44,14 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data/excel/companies_with_*.csv || true
-          git commit -m "chore: Update scraped company CSV files (Part 1) [skip ci]" || true
-          git push || true
+          git commit -m "chore: Update scraped company CSV files (Part 3B) [skip ci]" || true
+          git pull --rebase origin main || true
+          git push origin main || true
+
+      - name: Upload CSV Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraped-csvs-part-3b
+          path: data/excel/companies_with_*.csv
+          retention-days: 7
