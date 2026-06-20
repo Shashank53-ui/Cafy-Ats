@@ -2,7 +2,7 @@ name: "Scheduled Sync Part 1A (Join.com 1)"
 
 on:
   schedule:
-    - cron: '15 12 * * *'
+    - cron: '30 08 * * *'
   workflow_dispatch:
 
 jobs:
