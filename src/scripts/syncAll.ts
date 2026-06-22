@@ -111,6 +111,7 @@ interface CompanyRow {
     ats_board_token: string;
     careers_url?: string | null;
     url?: string | null;
+    company_sector?: string | null;
 }
 
 interface AtsOverrideRow {
@@ -424,7 +425,8 @@ function isValidJobTitle(title: string): boolean {
         'get started', 'apply now', 'view details', 'view job', 'read more',
         'open positions', 'current openings', 'our roles', 'work with us',
         'explore careers', 'early careers', 'experienced hires', 'alumni',
-        'jobs and careers', 'careers', 'our vacancies', 'view vacancies'
+        'jobs and careers', 'careers', 'our vacancies', 'view vacancies', 'vacancies', 'details', 'view details & apply',
+        'view role ↗', 'more detail'
     ];
     // Check if it's an exact match or if it's one of the junk phrases
     if (junk.includes(lower)) return false;
@@ -1021,7 +1023,7 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
     if (specificIds && specificIds.length > 0) {
         const { data, error } = await supabase
             .from('companies')
-            .select('id, trading_name, ats_provider, ats_board_token, url')
+            .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
             .in('id', specificIds)
             .order('trading_name');
 
@@ -1057,7 +1059,7 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
         const to = from + pageSize - 1;
         const { data, error } = await supabase
             .from('companies')
-            .select('id, trading_name, ats_provider, ats_board_token, url')
+            .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
             .order('id', { ascending: true })
             .range(from, to);
 
@@ -2962,7 +2964,7 @@ export async function syncAll() {
                     url: j.url,
                     department: j.department ? safeStr(j.department, 255) : null,
                     level: inferJobLevel(safeStr(j.title)),
-                    sector: inferJobSector(safeStr(j.title), j.department),
+                    sector: inferJobSector(safeStr(j.title), j.department, company.company_sector),
                     updated_at: new Date().toISOString()
                 }));
 

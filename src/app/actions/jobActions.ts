@@ -23,6 +23,7 @@ export interface Job {
         description: string | null;
         licensed_sponsor: boolean;
         active_jobs_count: number;
+        company_sector?: string | null;
     };
 }
 

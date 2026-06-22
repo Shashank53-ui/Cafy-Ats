@@ -10,6 +10,7 @@
     "lint": "eslint",
     "ingest": "tsx src/scripts/ingestJobs.ts",
     "sync": "tsx src/scripts/syncAll.ts",
+    "backfill:sectors": "tsx src/scripts/backfillJobSectors.ts",
     "test:fetchers": "tsx src/scripts/testNewFetchers.ts",
     "validate:ats": "tsx src/scripts/validateAtsTokens.ts",
     "repair:ats": "tsx src/scripts/repairBadTokens.ts",
