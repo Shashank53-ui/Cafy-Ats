@@ -133,3 +133,33 @@ test('UK Filter: Ambiguous remote', () => {
     // "Remote" in locations string should pass via GLOBAL_SIGNALS
     assert.strictEqual(isUKJob(input), true, 'Bare "Remote" in locations string should return true');
 });
+
+test('UK Filter: Remote flag bare (no location)', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: [], isRemote: true };
+    assert.strictEqual(isUKJob(input), true, 'isRemote with no location should pass');
+});
+
+test('UK Filter: Remote - United States blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Remote - United States"], isRemote: true };
+    assert.strictEqual(isUKJob(input), false, 'Remote - United States should be blocked');
+});
+
+test('UK Filter: Remote - India blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Remote - India"], isRemote: true };
+    assert.strictEqual(isUKJob(input), false, 'Remote - India should be blocked');
+});
+
+test('UK Filter: Remote (USA) blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Remote (USA)"], isRemote: true };
+    assert.strictEqual(isUKJob(input), false, 'Remote (USA) should be blocked');
+});
+
+test('UK Filter: Remote UK passes', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Remote UK"], isRemote: true };
+    assert.strictEqual(isUKJob(input), true, 'Remote UK with isRemote flag should pass');
+});
+
+test('UK Filter: Remote with London passes', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Remote", "London"], isRemote: true };
+    assert.strictEqual(isUKJob(input), true, 'Remote + London should pass');
+});

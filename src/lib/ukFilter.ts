@@ -113,6 +113,8 @@ const HARD_BLOCKS = [
     "riyadh", "doha", "tel aviv",
     // US‑specific terms
     "whippany", "mclean", "plano", "wilmington",
+    // US country terms
+    "united states", "usa", "u.s.a.",
 ];
 
 const GLOBAL_SIGNALS = ["global", "worldwide", "international", "emea", "remote"];
@@ -167,8 +169,14 @@ export function isUKJob(input: JobLocationInput): boolean {
     // 1. Trust the source (e.g. facet-filtered Workday results, NHS)
     if (isTrustedSource) return true;
 
-    // 2. Trust an explicit remote flag
-    if (isRemote) return true;
+    // 2. Remote jobs: pass only if no explicit non-UK location is present
+    if (isRemote) {
+        const locs = locations.map(normalize).filter(Boolean);
+        for (const loc of locs) {
+            if (isBlockedTerm(loc)) return false;
+        }
+        return true;
+    }
 
     const locs = locations.map(normalize).filter(Boolean);
 
