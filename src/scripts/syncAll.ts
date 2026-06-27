@@ -2996,11 +2996,12 @@ async function fetchStandardChartered(token: string): Promise<Job[]> {
 async function fetchMicrosoft(_token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     let start = 0;
-    const PAGE_SIZE = 10;
+    const PAGE_SIZE = 20;
 
     while (true) {
         try {
-            const url = `https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&query=&location=&start=${start}&sort_by=timestamp&filter_country=United+Kingdom`;
+            // location= filters by country; filter_country= is ignored by the API
+            const url = `https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&query=&location=United+Kingdom&start=${start}&sort_by=timestamp`;
             const res = await fetchWithTimeout(url, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -3015,13 +3016,14 @@ async function fetchMicrosoft(_token: string): Promise<Job[]> {
 
             for (const p of positions) {
                 const title = p.name || p.title || '';
-                const loc = (p.locations || [])[0] || p.standardizedLocations?.[0] || p.location || '';
-                const positionId = p.position_id || p.id || '';
-                if (title && positionId) {
+                // positionUrl is the canonical path e.g. /careers/job/1970393556866457
+                const positionUrl = p.positionUrl || '';
+                const loc = (p.locations || [])[0] || p.location || '';
+                if (title && positionUrl) {
                     allJobs.push({
                         title,
                         location: typeof loc === 'string' ? loc : (loc?.name || ''),
-                        url: `https://apply.careers.microsoft.com/jobs/detail/${positionId}`,
+                        url: `https://apply.careers.microsoft.com${positionUrl}`,
                         department: p.category || p.department || '',
                         salary: undefined,
                     });
