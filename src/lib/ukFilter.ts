@@ -113,7 +113,8 @@ const HARD_BLOCKS = [
     "riyadh", "doha", "tel aviv",
     // US‑specific terms
     "whippany", "mclean", "plano", "wilmington",
-    // US country terms
+    // US country abbreviations in location strings (e.g. "US - CA - Bay Area")
+    "bay area", "silicon valley", "research triangle", "twin cities",
     "united states", "usa", "u.s.a.",
 ];
 
@@ -169,13 +170,15 @@ export function isUKJob(input: JobLocationInput): boolean {
     // 1. Trust the source (e.g. facet-filtered Workday results, NHS)
     if (isTrustedSource) return true;
 
-    // 2. Remote jobs: pass only if no explicit non-UK location is present
+    // 2. Trust an explicit remote flag — but only if no non-UK country is specified.
+    // "Remote" or "Remote UK" → accept. "Remote (USA)" / "Remote - Germany" → fall through.
     if (isRemote) {
-        const locs = locations.map(normalize).filter(Boolean);
-        for (const loc of locs) {
-            if (isBlockedTerm(loc)) return false;
-        }
-        return true;
+        const combined = locations.join(' ').toLowerCase();
+        const hasNonUKCountry = isBlockedTerm(combined)
+            // Also catch bare "US" / "USA" abbreviations not matched by HARD_BLOCKS word search
+            || /\b(us|usa)\b/.test(combined);
+        if (!hasNonUKCountry) return true;
+        // Has non-UK signal — fall through to geography checks below
     }
 
     const locs = locations.map(normalize).filter(Boolean);

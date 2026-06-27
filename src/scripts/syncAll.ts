@@ -128,13 +128,20 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 async function fetchWithTimeout(url: string, options: any = {}, timeout = 15000) {
     const controller = new AbortController();
+    // Keep the abort timer running through the body read, not just headers
     const id = setTimeout(() => controller.abort(), timeout);
     try {
         const response = await fetch(url, {
             ...options,
             signal: controller.signal
         });
-        clearTimeout(id);
+        // Wrap body methods to clear timer after body is fully read
+        const originalText = response.text.bind(response);
+        const originalJson = response.json.bind(response);
+        const originalBuffer = response.arrayBuffer.bind(response);
+        (response as any).text = async () => { const r = await originalText(); clearTimeout(id); return r; };
+        (response as any).json = async () => { const r = await originalJson(); clearTimeout(id); return r; };
+        (response as any).arrayBuffer = async () => { const r = await originalBuffer(); clearTimeout(id); return r; };
         return response;
     } catch (error) {
         clearTimeout(id);
@@ -414,6 +421,8 @@ function safeStr(s: any, maxLen = 500): string {
     return String(s || '').slice(0, maxLen);
 }
 
+const LOW_PROFILE_TITLE_PATTERN = /\b(customer (assistant|team member|colleague|care advi[cs]or)|sales assistant|store assistant|shop assistant|checkout (operator|assistant|colleague)|night fill|shelf (stacker|filler|colleague)|replenishment (assistant|colleague|operator)|van driver|delivery driver|picker|packer|warehouse (operative|assistant|colleague)|stock (replenishment|assistant|colleague)|counter assistant|retail (assistant|adviser|advisor|store manager|sales advi[cs]or|advi[cs]or)|store manager|assistant store manager|visual merchandis|till operator|shop floor|consumer sales advi[cs]or|webchat sales advi[cs]or|barista|bar staff|waiter|waitress|food runner|kitchen (porter|assistant|crew)|dishwasher|cleaning operative|cleaner\b|hgv driver|security (guard|officer)|porter(?! manage))\b/i;
+
 function isValidJobTitle(title: string): boolean {
     if (!title || title.length < 3) return false;
     const lower = title.toLowerCase().trim();
@@ -428,12 +437,9 @@ function isValidJobTitle(title: string): boolean {
         'jobs and careers', 'careers', 'our vacancies', 'view vacancies', 'vacancies', 'details', 'view details & apply',
         'view role ↗', 'more detail'
     ];
-    // Check if it's an exact match or if it's one of the junk phrases
     if (junk.includes(lower)) return false;
-    // Check if it starts with a junk phrase followed by a space (e.g., "See all jobs in...")
-    // but only if the title is relatively short (less than 40 chars) to avoid false positives
     if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return false;
-    
+    if (LOW_PROFILE_TITLE_PATTERN.test(title)) return false;
     return true;
 }
 
@@ -1237,7 +1243,8 @@ async function fetchWorkable(token: string): Promise<Job[]> {
             try {
                 const r = await fetchWithTimeout(url, options);
                 if (r.status === 429) {
-                    const retryAfter = parseInt(r.headers.get('retry-after') || '0') || (2 ** attempt) * 2;
+                    const rawRetry = parseInt(r.headers.get('retry-after') || '0') || (2 ** attempt) * 2;
+                    const retryAfter = Math.min(rawRetry, 30); // cap at 30s so one company can't stall the whole run
                     await sleep(retryAfter * 1000);
                     continue;
                 }
@@ -2697,6 +2704,538 @@ async function fetchEploy(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
+// ─── AstraZeneca (Playwright / TalentBrew SPA) ───────────────────────────────
+// Token: "astrazeneca" — JS-rendered careers.astrazeneca.com
+async function fetchAstraZeneca(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        // Intercept JSON API responses from TalentBrew / Radancy backend
+        const apiJobs: Job[] = [];
+        page.on('response', async (response) => {
+            const url = response.url();
+            if ((url.includes('position') || url.includes('jobs') || url.includes('search')) &&
+                response.headers()['content-type']?.includes('json')) {
+                try {
+                    const data = await response.json();
+                    const positions = data?.positions || data?.jobs || data?.results || data?.reqs || [];
+                    for (const j of positions) {
+                        const title = j.title || j.jobTitle || j.Title || '';
+                        const loc = j.jobLocation || j.location || j.primaryLocation || '';
+                        const url = j.applyUrl || j.url || j.jobUrl || j.detailUrl || '';
+                        if (title && url) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || loc.country || ''), url, department: j.category || '', salary: undefined });
+                    }
+                } catch { /* not JSON or wrong format */ }
+            }
+        });
+
+        await page.goto('https://careers.astrazeneca.com/search-jobs?k=&l=United+Kingdom', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+
+        // Use API-intercepted jobs if available
+        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
+        else {
+            // Fallback: parse rendered HTML
+            const jobs = await page.$$eval(
+                'a[href*="job"], li[class*="job"], .job-result, article[class*="job"]',
+                els => els.map(el => ({
+                    title: el.querySelector('[class*="title"], h2, h3')?.textContent?.trim() || el.textContent?.trim() || '',
+                    url:   (el as HTMLAnchorElement).href || el.querySelector('a')?.href || '',
+                    location: el.querySelector('[class*="location"], [class*="city"]')?.textContent?.trim() || '',
+                    department: '', salary: undefined as any,
+                })).filter(j => j.title && j.url)
+            );
+            allJobs.push(...jobs);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[AstraZeneca] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return allJobs;
+}
+
+// ─── Tesco (Playwright / careers.tesco.com) ───────────────────────────────────
+// Token: "tesco"
+async function fetchTesco(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        // Intercept API calls
+        const apiJobs: Job[] = [];
+        page.on('response', async (response) => {
+            const url = response.url();
+            if (url.includes('/jobs') && response.headers()['content-type']?.includes('json')) {
+                try {
+                    const data = await response.json();
+                    const items = data?.jobs || data?.results || data?.postings || data?.data || [];
+                    if (Array.isArray(items)) {
+                        for (const j of items) {
+                            const title = j.title || j.jobTitle || j.name || '';
+                            const loc = j.location || j.city || j.locationName || '';
+                            const href = j.url || j.applyUrl || j.canonicalPositionUrl || j.jobUrl || '';
+                            if (title && href) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || ''), url: href, department: j.department || j.category || '', salary: undefined });
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+        });
+
+        await page.goto('https://careers.tesco.com/en_GB/careers/SearchJobs', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+
+        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
+        else {
+            const jobs = await page.$$eval(
+                'a[href*="job"], [class*="job-card"], [class*="position-card"], li[class*="result"]',
+                els => els.map(el => ({
+                    title: el.querySelector('[class*="title"], h2, h3')?.textContent?.trim() || el.textContent?.trim() || '',
+                    url:   (el as HTMLAnchorElement).href || el.querySelector('a')?.href || '',
+                    location: el.querySelector('[class*="location"]')?.textContent?.trim() || 'United Kingdom',
+                    department: '', salary: undefined as any,
+                })).filter(j => j.title && j.url)
+            );
+            allJobs.push(...jobs);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[Tesco] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return allJobs;
+}
+
+// ─── EasyJet (Playwright / easyjet.taleo.net) ────────────────────────────────
+// Token: "easyjet"
+async function fetchEasyJet(token: string): Promise<Job[]> {
+    const tenant = token || 'easyjet';
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        const apiJobs: Job[] = [];
+        page.on('response', async (response) => {
+            if (response.url().includes('requisition') && response.headers()['content-type']?.includes('json')) {
+                try {
+                    const d = await response.json();
+                    const items = d?.requisitionList || d?.reqs || [];
+                    for (const j of items) {
+                        const title = j.title || j.jobTitle || '';
+                        const refNum = j.referenceNumber || j.id || '';
+                        const loc = j.location || j.locationDescr || '';
+                        if (title && refNum) apiJobs.push({
+                            title, location: loc,
+                            url: `https://${tenant}.taleo.net/careersection/2/jobdetail.ftl?job=${refNum}&lang=en`,
+                            department: '', salary: undefined
+                        });
+                    }
+                } catch { /* ignore */ }
+            }
+        });
+
+        await page.goto(`https://${tenant}.taleo.net/careersection/2/jobsearch.ftl?lang=en`, { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+
+        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
+        else {
+            // Parse Taleo rendered table
+            const jobs = await page.$$eval('tr[id]', rows => rows.map(row => ({
+                title: row.querySelector('a')?.textContent?.trim() || '',
+                url:   row.querySelector('a')?.href || '',
+                location: row.querySelector('td:nth-child(3), .location')?.textContent?.trim() || '',
+                department: '', salary: undefined as any,
+            })).filter(j => j.title && j.url));
+            allJobs.push(...jobs);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[EasyJet] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return allJobs;
+}
+
+// ─── BT Group (Playwright / careers.bt.com) ──────────────────────────────────
+// Token: "bt"
+async function fetchBTGroup(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        const apiJobs: Job[] = [];
+        page.on('response', async (response) => {
+            const url = response.url();
+            if ((url.includes('/jobs') || url.includes('/search') || url.includes('positions')) &&
+                response.headers()['content-type']?.includes('json')) {
+                try {
+                    const d = await response.json();
+                    const items = d?.jobs || d?.results || d?.postings || d?.positions || [];
+                    if (Array.isArray(items)) {
+                        for (const j of items) {
+                            const title = j.title || j.jobTitle || j.name || '';
+                            const loc = j.location || j.city || j.locationName || '';
+                            const href = j.url || j.canonicalPositionUrl || j.applyUrl || j.jobDetailUrl || '';
+                            if (title && href) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || ''), url: href, department: j.department || '', salary: undefined });
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+        });
+
+        await page.goto('https://careers.bt.com/global/en/search-results', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+
+        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
+        else {
+            const jobs = await page.$$eval(
+                'a[href*="/job/"], [class*="job-card"] a, [class*="position"] a, li[class*="result"] a',
+                els => els.map(el => ({
+                    title: el.textContent?.trim() || '',
+                    url:   (el as HTMLAnchorElement).href,
+                    location: el.closest('li,article,div')?.querySelector('[class*="location"]')?.textContent?.trim() || 'United Kingdom',
+                    department: '', salary: undefined as any,
+                })).filter(j => j.title && j.url && j.url.includes('bt.com'))
+            );
+            allJobs.push(...jobs);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[BT Group] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return allJobs;
+}
+
+// ─── Standard Chartered (Playwright + Workday fallback) ──────────────────────
+// Token: "standardchartered"
+async function fetchStandardChartered(token: string): Promise<Job[]> {
+    const slug = token || 'standardchartered';
+
+    // First: try Workday API (fastest)
+    for (const board of ['SCBExternalCareers', 'External', 'SC_External', 'StanChartExternal']) {
+        try {
+            const jobs = await fetchWorkday(`${slug}/${board}`);
+            if (jobs.length > 0) return jobs;
+        } catch { /* try next */ }
+    }
+
+    // Playwright fallback
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+        const apiJobs: Job[] = [];
+
+        page.on('response', async (response) => {
+            const url = response.url();
+            if ((url.includes('/jobs') || url.includes('/search') || url.includes('requisition')) &&
+                response.headers()['content-type']?.includes('json')) {
+                try {
+                    const d = await response.json();
+                    const items = d?.jobs || d?.results || d?.requisitionList || d?.postings || [];
+                    if (Array.isArray(items)) {
+                        for (const j of items) {
+                            const title = j.title || j.jobTitle || j.Title || '';
+                            const loc = j.location || j.primaryLocation || j.locationDescr || '';
+                            const href = j.url || j.applyUrl || j.jobDetailUrl || '';
+                            if (title && href) apiJobs.push({ title, location: typeof loc === 'string' ? loc : '', url: href, department: '', salary: undefined });
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+        });
+
+        await page.goto('https://scb.taleo.net/careersection/2/jobsearch.ftl?lang=en', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+        await browser.close();
+        if (apiJobs.length > 0) return apiJobs;
+    } catch (e: any) {
+        console.error('[Standard Chartered] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return [];
+}
+
+// ─── Microsoft (Phenom pcsx API at apply.careers.microsoft.com) ──────────────
+// Debug revealed the actual API: apply.careers.microsoft.com/api/pcsx/search
+// No Playwright needed — direct REST call identical to fetchEightfold pattern.
+async function fetchMicrosoft(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let start = 0;
+    const PAGE_SIZE = 10;
+
+    while (true) {
+        try {
+            const url = `https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&query=&location=&start=${start}&sort_by=timestamp&filter_country=United+Kingdom`;
+            const res = await fetchWithTimeout(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                    'Accept': 'application/json',
+                    'Referer': 'https://apply.careers.microsoft.com/',
+                }
+            }, 20000);
+            if (!res.ok) break;
+            const d = await res.json();
+            const positions: any[] = d?.data?.positions || [];
+            if (positions.length === 0) break;
+
+            for (const p of positions) {
+                const title = p.name || p.title || '';
+                const loc = (p.locations || [])[0] || p.standardizedLocations?.[0] || p.location || '';
+                const positionId = p.position_id || p.id || '';
+                if (title && positionId) {
+                    allJobs.push({
+                        title,
+                        location: typeof loc === 'string' ? loc : (loc?.name || ''),
+                        url: `https://apply.careers.microsoft.com/jobs/detail/${positionId}`,
+                        department: p.category || p.department || '',
+                        salary: undefined,
+                    });
+                }
+            }
+
+            if (positions.length < PAGE_SIZE) break;
+            start += positions.length;
+            await sleep(500);
+        } catch { break; }
+    }
+    return allJobs;
+}
+
+// ─── Arup (jobs.arup.com UKIMEA region — scroll-paginated SPA) ───────────────
+// Arup has a regional browse page for UK+Ireland+Middle East+Africa.
+// We load that, scroll to reveal all jobs, then let the UK filter remove
+// non-UK results (Ireland, UAE, SA etc.).
+async function fetchArup(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        // Load the search page; scroll aggressively to trigger infinite-load
+        await page.goto('https://jobs.arup.com/jobs?keywords=&location=United+Kingdom', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(4000);
+
+        let prevCount = 0;
+        for (let i = 0; i < 60; i++) {
+            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+            await page.waitForTimeout(1500);
+            const count: number = await page.$$eval('a[href*="/jobs/"]', els => els.length);
+            if (count === prevCount) break;
+            prevCount = count;
+        }
+
+        const jobs = await page.$$eval('a[href*="/jobs/"]', (els: Element[]) =>
+            els.map(el => {
+                const href = (el as HTMLAnchorElement).href || '';
+                if (!href.match(/\/jobs\/[^/]+-\d+$/)) return null;
+                const card = el.closest('li, article, div, section') as HTMLElement | null;
+                const rawText = card?.innerText || '';
+                // Location is in "City, -, Country" format in Arup's card
+                const locMatch = rawText.match(/([A-Za-z][A-Za-z\s]+,\s*[-A-Za-z\s]*,\s*[A-Za-z][A-Za-z\s]+)/);
+                return {
+                    title: ((el.querySelector('h2, h3, [class*="title"]') as HTMLElement)?.innerText
+                        || (el as HTMLElement).innerText || '').trim(),
+                    url: href,
+                    location: locMatch ? locMatch[1].trim() : '',
+                    department: '',
+                };
+            }).filter((j): j is NonNullable<typeof j> => !!j?.title && !!j?.url)
+        );
+
+        allJobs.push(...jobs as Job[]);
+        await browser.close();
+    } catch (e: any) {
+        console.error('[Arup] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
+}
+
+// ─── Jacobs (careers.jacobs.com — Playwright with stealth) ───────────────────
+// careers.jacobs.com uses AWS WAF. We disable automation flags and add
+// realistic timing to avoid bot detection.
+async function fetchJacobs(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({
+            headless: true,
+            args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+        });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1440, height: 900 },
+            extraHTTPHeaders: { 'Accept-Language': 'en-GB,en;q=0.9' },
+        });
+        // Mask webdriver property
+        await context.addInitScript(() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        });
+        const page = await context.newPage();
+
+        const apiJobs: Job[] = [];
+        const pending: Promise<void>[] = [];
+
+        page.on('response', (response: any) => {
+            const url = response.url();
+            if (!(url.includes('/jobs') || url.includes('/search') || url.includes('position') || url.includes('requisition'))) return;
+            if (!response.headers()['content-type']?.includes('json')) return;
+            const p = response.json().then((d: any) => {
+                const items = d?.jobs || d?.results || d?.jobPostings || d?.requisitionList ||
+                    d?.data?.positions || d?.positions || (Array.isArray(d) ? d : []);
+                for (const j of items) {
+                    const title = j.title || j.jobTitle || j.Title || j.name || '';
+                    const loc = j.location || j.primaryLocation || j.city || j.locationDescr || (j.locations || [])[0] || '';
+                    const href = j.url || j.applyUrl || j.jobDetailUrl || j.canonicalPositionUrl || '';
+                    if (title) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc?.name || ''), url: href, department: j.department || j.category || '', salary: undefined });
+                }
+            }).catch(() => {});
+            pending.push(p);
+        });
+
+        await page.waitForTimeout(1000 + Math.random() * 1000);
+        await page.goto('https://careers.jacobs.com/jobs/search?locations=United+Kingdom&keywords=', { waitUntil: 'networkidle', timeout: 90000 });
+        await page.waitForTimeout(5000);
+        await Promise.all(pending);
+
+        if (apiJobs.length > 0) {
+            allJobs.push(...apiJobs);
+        } else {
+            // HTML fallback
+            const jobs = await page.$$eval(
+                'a[href*="/jobs/"], [class*="job-card"] a, [class*="position"] a',
+                (els: Element[]) => els.map(el => ({
+                    title: ((el.querySelector('h2, h3, [class*="title"]') as HTMLElement)?.innerText || (el as HTMLElement).innerText || '').trim(),
+                    url: (el as HTMLAnchorElement).href || '',
+                    location: ((el.closest('li,article,div,[class*="card"]')?.querySelector('[class*="location"]') as HTMLElement)?.innerText || 'United Kingdom').trim(),
+                    department: ((el.closest('li,article,div,[class*="card"]')?.querySelector('[class*="department"]') as HTMLElement)?.innerText || '').trim(),
+                })).filter((j: any) => j.title && j.url)
+            );
+            allJobs.push(...jobs as Job[]);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[Jacobs] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
+}
+
+// ─── WSP UK (wsprecruit.mindmill.co.uk — Playwright, /Vacancies) ─────────────
+// Debug: page URL is /Vacancies not /Jobs. Uses JS rendering. Playwright + scroll.
+async function fetchWSP(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        const apiJobs: Job[] = [];
+        const pending: Promise<void>[] = [];
+
+        page.on('response', (response: any) => {
+            const url = response.url();
+            if (!response.headers()['content-type']?.includes('json')) return;
+            if (!(url.includes('Vacanc') || url.includes('vacanc') || url.includes('search') || url.includes('job'))) return;
+            const p = response.json().then((d: any) => {
+                const items = d?.jobs || d?.vacancies || d?.Vacancies || d?.results || d?.data || (Array.isArray(d) ? d : []);
+                for (const j of items) {
+                    const title = j.title || j.jobTitle || j.name || j.Title || j.VacancyTitle || '';
+                    const loc = j.location || j.Location || j.town || j.Town || j.city || 'United Kingdom';
+                    const href = j.url || j.Url || j.applyUrl || j.VacancyUrl || '';
+                    if (title) apiJobs.push({ title, location: typeof loc === 'string' ? loc : 'United Kingdom', url: href || 'https://wsprecruit.mindmill.co.uk/Vacancies', department: j.department || j.Category || '', salary: undefined });
+                }
+            }).catch(() => {});
+            pending.push(p);
+        });
+
+        await page.goto('https://wsprecruit.mindmill.co.uk/Vacancies', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+        await Promise.all(pending);
+
+        if (apiJobs.length > 0) {
+            allJobs.push(...apiJobs);
+        } else {
+            // Scroll and collect all job links from HTML
+            let prevCount = 0;
+            for (let i = 0; i < 10; i++) {
+                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                await page.waitForTimeout(1500);
+                const count: number = await page.$$eval('a[href*="Vacanc"], a[href*="vacanc"]', els => els.length);
+                if (count === prevCount) break;
+                prevCount = count;
+            }
+
+            const jobs = await page.$$eval(
+                'a[href*="Vacanc"], a[href*="vacanc"], a[href*="/job"]',
+                (els: Element[]) => els.map(el => {
+                    const href = (el as HTMLAnchorElement).href || '';
+                    const card = el.closest('li, article, div, tr') as HTMLElement | null;
+                    return {
+                        title: ((card?.querySelector('[class*="title"], [class*="name"], h2, h3, strong') as HTMLElement)?.innerText
+                            || (el as HTMLElement).innerText || '').trim(),
+                        url: href,
+                        location: ((card?.querySelector('[class*="location"], [class*="town"]') as HTMLElement)?.innerText || 'United Kingdom').trim(),
+                        department: ((card?.querySelector('[class*="department"], [class*="category"]') as HTMLElement)?.innerText || '').trim(),
+                    };
+                }).filter((j: any) => j.title && j.url && j.url.includes('mindmill'))
+            );
+            allJobs.push(...jobs as Job[]);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[WSP] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
+}
+
 export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     greenhouse: fetchGreenhouse,
     ashby: fetchAshby,
@@ -2724,6 +3263,17 @@ export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     jazzhr: fetchJazzHR,
     oracle: fetchOracleTaleo,
     eploy: fetchEploy,
+
+    // Company-specific scrapers
+    astrazeneca: fetchAstraZeneca,
+    tesco: fetchTesco,
+    easyjet: fetchEasyJet,
+    btgroup: fetchBTGroup,
+    standardchartered: fetchStandardChartered,
+    microsoft: fetchMicrosoft,
+    arup: fetchArup,
+    jacobs: fetchJacobs,
+    wsp: fetchWSP,
 
     // Special / Custom Scrapers
     amazon: fetchAmazon,
@@ -2887,6 +3437,8 @@ export async function syncAll() {
         );
         const displayProvider = (resolved?.provider || normalizeProviderName(ats_provider) || ats_provider || 'custom').toUpperCase();
         const isNHS = /\bnhs\b/i.test(trading_name);
+        // Trusted UK-only companies where location may be missing from ATS data
+        const isTrustedUKCompany = isNHS || /\baddison lee\b/i.test(trading_name);
 
         const result: SyncResult = {
             company: trading_name,
@@ -2926,7 +3478,7 @@ export async function syncAll() {
                         isTrustedSource: false,
                     };
                 })();
-                if (isNHS || isUKJob(locationInput)) {
+                if (isTrustedUKCompany || isUKJob(locationInput)) {
                     ukJobs.push(j);
                     if (j.needs_review) needsReviewCount++;
                 } else {
