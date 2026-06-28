@@ -162,6 +162,21 @@ function isBlockedTerm(loc: string): boolean {
     });
 }
 
+// Checks for unambiguous UK country/nation terms only — NOT generic city names.
+// Used when a hard-block is present to avoid false positives like "London, Ontario, Canada".
+function hasDefinitiveUKSignal(combined: string): boolean {
+    if (/\b[a-z]{1,2}\d[a-z\d]?\s?\d[a-z]{2}\b/.test(combined)) return true;
+    const definitive = [
+        'england', 'scotland', 'wales', 'northern ireland',
+        'united kingdom', 'great britain', 'remote uk', 'hybrid uk',
+        'uk', 'u\\.k\\.', 'gbr',
+    ];
+    if (definitive.some(term => new RegExp(`\\b${term}\\b`).test(combined))) return true;
+    // "London" alone (not "London, Ontario" / "London, Canada") is sufficiently unambiguous
+    if (/\blondon\b/.test(combined) && !/\blondon[\s,]+(ontario|canada|ohio)\b/.test(combined)) return true;
+    return false;
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function isUKJob(input: JobLocationInput): boolean {
@@ -188,18 +203,18 @@ export function isUKJob(input: JobLocationInput): boolean {
         if (/\d+\s+locations?/i.test(loc) || /multiple\s+locations?/i.test(loc)) return true;
     }
 
-    // 4. UK geography check — FIRST pass (before hard blocks)
-    //    A job with offices in London AND New York is still a UK job.
-    //    So if ANY location segment is UK, accept it.
-    for (const loc of locs) {
-        if (isUKTerm(loc)) return true;
+    // 4-5. Hard block vs UK geography
+    // Check the FULL combined string for hard blocks first. If any hard block is present,
+    // city names alone are not sufficient — "London, Ontario, Canada" and "Jersey City, New Jersey"
+    // both contain UK city terms but are clearly not UK. Require a definitive nation/country signal.
+    const allCombined = locs.join(' ');
+    if (isBlockedTerm(allCombined)) {
+        return hasDefinitiveUKSignal(allCombined);
     }
 
-    // 5. Hard block — only if NO UK term was found above
+    // No hard block — any UK geography term is sufficient
     for (const loc of locs) {
-        if (isBlockedTerm(loc)) {
-            if (!loc.includes('northern ireland')) return false;
-        }
+        if (isUKTerm(loc)) return true;
     }
 
     // 6. Global/EMEA signals (treat as potentially UK — don't reject outright)

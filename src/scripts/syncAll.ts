@@ -1759,7 +1759,35 @@ async function fetchWorkday(token: string): Promise<Job[]> {
                     if (globalRes.ok) {
                         const gd = await globalRes.json();
                         globalTotal = gd.total || 0;
-                        // If facet returned 0 jobs but the board has jobs, use the global results
+                        // If facet returned 0 jobs but the board has jobs, try alternate
+                        // facet key names before falling back to the full global board.
+                        // Different Workday tenants use different keys:
+                        //   locationCountry — most boards (default)
+                        //   Country         — e.g. RBC, Baxter
+                        //   Location_Country — e.g. Pfizer
+                        if (posts.length === 0 && (gd.jobPostings || []).length > 0 && !dbAppliedFacets) {
+                            for (const altKey of ['Country', 'Location_Country']) {
+                                try {
+                                    const altRes = await fetchWithTimeout(apiUrl, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
+                                        body: JSON.stringify({ appliedFacets: { [altKey]: [ukFacetId] }, limit: 20, offset: 0, searchText: '' })
+                                    });
+                                    if (altRes.ok) {
+                                        const cd = await altRes.json();
+                                        const cPosts = cd.jobPostings || [];
+                                        const cTotal = cd.total || 0;
+                                        if (cPosts.length > 0 && cTotal < globalTotal) {
+                                            posts = cPosts;
+                                            total = cTotal;
+                                            currentFacets = { [altKey]: [ukFacetId] };
+                                            break;
+                                        }
+                                    }
+                                } catch { /* ignore */ }
+                            }
+                        }
+                        // Still 0 after all facet attempts — fall back to full global board
                         if (posts.length === 0 && (gd.jobPostings || []).length > 0) {
                             posts = gd.jobPostings;
                             total = globalTotal;
