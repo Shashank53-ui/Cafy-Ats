@@ -80,6 +80,9 @@ const WORKDAY_VAGUE_LOCATIONS = new Set([
     'multiple locations', 'not specified',
 ]);
 
+// "2 Locations", "3 Locations" etc — Workday aggregate text, carries no geographic info
+const WORKDAY_N_LOCATIONS_RE = /^\d+\s+locations?$/i;
+
 export function workdayToJobLocationInput(job: any): JobLocationInput {
     const rawText = job.locationsText || '';
     const rawLocations = rawText
@@ -87,16 +90,24 @@ export function workdayToJobLocationInput(job: any): JobLocationInput {
         .map((s: string) => s.trim())
         .filter(Boolean);
 
-    // Drop vague placeholder strings — they carry no geographic signal.
+    // Drop vague placeholder strings and "N Locations" aggregate text — no geographic signal.
     const locations = rawLocations.filter(
-        (l: string) => !WORKDAY_VAGUE_LOCATIONS.has(l.toLowerCase())
+        (l: string) => !WORKDAY_VAGUE_LOCATIONS.has(l.toLowerCase()) && !WORKDAY_N_LOCATIONS_RE.test(l)
     );
 
-    // Fall back to the city embedded in the Workday URL path when no real location exists.
-    // e.g. /job/London/Role-Title_REF → "London"
+    // Fall back to the path segment in the Workday URL when no real location exists.
+    // e.g. /job/London/Role-Title → "London"
+    //      /job/US-CA-Santa-Clara/Role-Title → "United States" (US-XX-City pattern)
     if (locations.length === 0 && job.url) {
-        const cityFromUrl = (job.url as string).match(/\/job\/([^/]+)\//)?.[1];
-        if (cityFromUrl) locations.push(cityFromUrl.replace(/-/g, ' '));
+        const pathSegment = (job.url as string).match(/\/job\/([^/]+)\//)?.[1] || '';
+        if (pathSegment) {
+            // Workday US jobs encode location as "US-{StateCode}-{City}"
+            if (/^US-[A-Z]{2}-/i.test(pathSegment)) {
+                locations.push('United States');
+            } else {
+                locations.push(pathSegment.replace(/-/g, ' '));
+            }
+        }
     }
 
     return {
