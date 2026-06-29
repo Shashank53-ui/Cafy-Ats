@@ -41,4 +41,15 @@ yarn-error.log*
 next-env.d.ts
 
 # non-sync local python scraper workspace
-backend_scrape/
+# Allow tracking backend_scrape except for virtual environments, caches, database files, and local envs
+!backend_scrape/
+backend_scrape/venv/
+backend_scrape/.venv/
+backend_scrape/__pycache__/
+backend_scrape/**/__pycache__/
+*.pyc
+backend_scrape/.env
+backend_scrape/ats_database.csv
+backend_scrape/ats_database.json
+
+
