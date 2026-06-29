@@ -29,6 +29,7 @@ import { inferJobLevel } from '../lib/inferJobLevel';
 import { inferJobSector } from '../lib/inferJobSector';
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
+import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import * as Adapters from '../lib/ukFilterAdapters';
 
@@ -3341,6 +3342,89 @@ async function markCompanyFailure(companyId: number): Promise<void> {
         .eq('id', companyId);
 }
 
+// ─── Python Location Normalizer ───────────────────────────────────────────────
+
+export interface NormalizedLocation {
+    raw_string: string;
+    is_remote: boolean;
+    is_hybrid: boolean;
+    is_multi_location: boolean;
+    city: string | null;
+    state_province: string | null;
+    country: string | null;
+    is_uk_job: boolean;
+}
+
+/**
+ * Batch-normalise raw location strings via the Python normalizer script.
+ * Returns results in the same order as the input array.
+ * Non-fatal: on Python error or missing interpreter, returns [].
+ */
+export async function normalizeLocationsViaPython(
+    locations: string[],
+): Promise<NormalizedLocation[]> {
+    if (locations.length === 0) return [];
+
+    const scriptPath = path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        'normalizeLocations.py',
+    );
+    const payload = JSON.stringify(locations.map(l => ({ location: l })));
+
+    return new Promise(resolve => {
+        // Try python3 first, fall back to python
+        const cmd = process.platform === 'win32' ? 'python' : 'python3';
+        const proc = spawn(cmd, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+        proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+        proc.stdin.write(payload);
+        proc.stdin.end();
+
+        proc.on('close', (code: number | null) => {
+            if (code !== 0) {
+                console.warn('[normalizeLocations] Python exited with code', code, stderr.slice(0, 300));
+                resolve([]);
+                return;
+            }
+            try {
+                resolve(JSON.parse(stdout) as NormalizedLocation[]);
+            } catch {
+                console.warn('[normalizeLocations] JSON parse error');
+                resolve([]);
+            }
+        });
+
+        // Python not installed → silent skip
+        proc.on('error', () => resolve([]));
+    });
+}
+
+/**
+ * Given a NormalizedLocation result, produce a clean display string for storage.
+ * e.g. { city: "London", country: "United Kingdom" } → "London"
+ *      { city: "New York", country: "United States", state_province: "NY" } → "New York, NY"
+ *      { country: "Ireland" } → "Ireland"
+ */
+export function formatNormalizedLocation(n: NormalizedLocation): string | null {
+    if (n.is_multi_location) return 'Multiple Locations';
+
+    const parts: string[] = [];
+    if (n.city) parts.push(n.city);
+    if (n.state_province && n.country !== 'United Kingdom') parts.push(n.state_province);
+    if (n.country && n.country !== 'United Kingdom') parts.push(n.country);
+
+    if (parts.length === 0) {
+        if (n.is_remote) return 'Remote';
+        return null;
+    }
+
+    return parts.join(', ');
+}
+
 export async function syncAll() {
     const startTime = Date.now();
     const syncRunId = crypto.randomUUID();
@@ -3539,16 +3623,32 @@ export async function syncAll() {
                 }
 
                 const uniqueJobs = Array.from(dedupedJobs.values());
-                const rows = uniqueJobs.map(j => ({
-                    company_id: id,
-                    title: safeStr(j.title, 255),
-                    location: safeStr(j.location, 255),
-                    url: j.url,
-                    department: j.department ? safeStr(j.department, 255) : null,
-                    level: inferJobLevel(safeStr(j.title)),
-                    sector: inferJobSector(safeStr(j.title), j.department, company.company_sector),
-                    updated_at: new Date().toISOString()
-                }));
+
+                // ── Normalise locations via Python ─────────────────────────
+                const rawLocations = uniqueJobs.map(j => j.location ?? '');
+                const normalizedLocs = await normalizeLocationsViaPython(rawLocations);
+                const normalizedMap = new Map<string, NormalizedLocation>();
+                for (let i = 0; i < uniqueJobs.length; i++) {
+                    const n = normalizedLocs[i];
+                    if (n) normalizedMap.set(uniqueJobs[i].url, n);
+                }
+
+                const rows = uniqueJobs.map(j => {
+                    const n = normalizedMap.get(j.url);
+                    const cleanedLocation = n
+                        ? (formatNormalizedLocation(n) ?? safeStr(j.location, 255))
+                        : safeStr(j.location, 255);
+                    return {
+                        company_id: id,
+                        title: safeStr(j.title, 255),
+                        location: safeStr(cleanedLocation, 255),
+                        url: j.url,
+                        department: j.department ? safeStr(j.department, 255) : null,
+                        level: inferJobLevel(safeStr(j.title)),
+                        sector: inferJobSector(safeStr(j.title), j.department, company.company_sector),
+                        updated_at: new Date().toISOString()
+                    };
+                });
 
                 if (!fallbackOnlyDryRun) {
                     const { error: jobErr } = await supabase.from('jobs').upsert(rows, { onConflict: 'url' });
