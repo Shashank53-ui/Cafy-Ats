@@ -3592,6 +3592,10 @@ export async function syncAll() {
                         isTrustedSource: false,
                     };
                 })();
+                if (!isValidJobTitle(j.title)) {
+                    rejectedCount++;
+                    continue;
+                }
                 if (isTrustedUKCompany || isUKJob(locationInput)) {
                     ukJobs.push(j);
                     if (j.needs_review) needsReviewCount++;
