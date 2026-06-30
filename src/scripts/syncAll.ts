@@ -1699,12 +1699,9 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 
             try {
                 let currentFacets: any = { locationCountry: [ukFacetId] };
-                if (dbAppliedFacets?.locations) {
-                    currentFacets = { locations: dbAppliedFacets.locations };
-                } else if (dbAppliedFacets?.locationCountry) {
-                    currentFacets = { locationCountry: dbAppliedFacets.locationCountry };
-                } else if (dbAppliedFacets?.Location_Country) {
-                    currentFacets = { Location_Country: dbAppliedFacets.Location_Country };
+                if (dbAppliedFacets && Object.keys(dbAppliedFacets).length > 0) {
+                    // Use whatever facet key the company config specifies (e.g. locationHierarchy1 for NVIDIA)
+                    currentFacets = dbAppliedFacets;
                 }
 
                 let res = await fetchWithTimeout(apiUrl, {
