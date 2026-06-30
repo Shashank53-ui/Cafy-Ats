@@ -10,6 +10,8 @@ const dmSans = DM_Sans({
   subsets: ["latin"],
 });
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: "Getlanded | UK Sponsored Jobs",
   description: "Discover tech roles from verified UK visa sponsors and land your dream job.",
