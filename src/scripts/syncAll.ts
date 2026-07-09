@@ -1004,11 +1004,10 @@ async function loadAtsOverrides(companyIds: number[]): Promise<Map<number, AtsOv
 async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRow[]> {
     const EXCEL_PATH_NEW = path.resolve(process.cwd(), 'data/excel/Testing_jobs_data.xlsx');
     const EXCEL_PATH_OLD = path.resolve(process.cwd(), 'Testing_jobs_data.xlsx');
-    const EXCEL_PATH = fs.existsSync(EXCEL_PATH_NEW) ? EXCEL_PATH_NEW : EXCEL_PATH_OLD;
 
-    if (fs.existsSync(EXCEL_PATH)) {
-        console.log(`[INPUT] Reading companies from ${EXCEL_PATH}...`);
-        const workbook = XLSX.readFile(EXCEL_PATH);
+    const loadFromExcel = (excelPath: string): CompanyRow[] => {
+        console.log(`[INPUT] Reading companies from ${excelPath}...`);
+        const workbook = XLSX.readFile(excelPath);
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(sheet);
 
@@ -1024,24 +1023,75 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
             return companies.filter(c => specificIds.includes(c.id));
         }
         return companies;
+    };
+
+    if (specificIds && specificIds.length > 0) {
+        try {
+            const { data, error } = await supabase
+                .from('companies')
+                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
+                .in('id', specificIds)
+                .order('trading_name');
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            const companies = (data || []) as CompanyRow[];
+            const overrides = await loadAtsOverrides(companies.map(c => c.id));
+
+            return companies.map(company => {
+                const override = overrides.get(company.id);
+                const base = {
+                    ...company,
+                    careers_url: company.url
+                };
+                if (!override) return base;
+
+                return {
+                    ...base,
+                    ats_provider: normalizeProviderName(override.sync_provider || override.provider_raw) || company.ats_provider,
+                    ats_board_token: override.board_token_raw?.trim() || company.ats_board_token,
+                    careers_url: normalizeCareersUrl(override.careers_url_raw) || base.careers_url,
+                };
+            });
+        } catch (error: any) {
+            console.warn(`Could not load filtered companies from Supabase, falling back to Excel: ${error.message}`);
+            if (fs.existsSync(EXCEL_PATH_NEW)) return loadFromExcel(EXCEL_PATH_NEW);
+            if (fs.existsSync(EXCEL_PATH_OLD)) return loadFromExcel(EXCEL_PATH_OLD);
+            throw error;
+        }
     }
 
-    // ─── DATABASE LOAD FALLBACK ───
-    if (specificIds && specificIds.length > 0) {
-        const { data, error } = await supabase
-            .from('companies')
-            .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
-            .in('id', specificIds)
-            .order('trading_name');
+    const pageSize = 1000;
+    let from = 0;
+    const all: CompanyRow[] = [];
 
-        if (error) {
-            throw new Error(`Could not load filtered companies: ${error.message}`);
+    try {
+        while (true) {
+            const to = from + pageSize - 1;
+            const { data, error } = await supabase
+                .from('companies')
+                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
+                .order('id', { ascending: true })
+                .range(from, to);
+
+            if (error) {
+                throw new Error(`Could not load companies page ${from}-${to}: ${error.message}`);
+            }
+
+            const rows = (data || []) as CompanyRow[];
+            if (rows.length === 0) break;
+
+            all.push(...rows);
+
+            if (rows.length < pageSize) break;
+            from += pageSize;
         }
 
-        const companies = (data || []) as CompanyRow[];
-        const overrides = await loadAtsOverrides(companies.map(c => c.id));
+        const overrides = await loadAtsOverrides(all.map(c => c.id));
 
-        return companies.map(company => {
+        const merged = all.map(company => {
             const override = overrides.get(company.id);
             const base = {
                 ...company,
@@ -1056,52 +1106,14 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
                 careers_url: normalizeCareersUrl(override.careers_url_raw) || base.careers_url,
             };
         });
+
+        return merged.sort((a, b) => a.trading_name.localeCompare(b.trading_name));
+    } catch (error: any) {
+        console.warn(`Could not load companies from Supabase, falling back to Excel: ${error.message}`);
+        if (fs.existsSync(EXCEL_PATH_NEW)) return loadFromExcel(EXCEL_PATH_NEW);
+        if (fs.existsSync(EXCEL_PATH_OLD)) return loadFromExcel(EXCEL_PATH_OLD);
+        throw error;
     }
-
-    const pageSize = 1000;
-    let from = 0;
-    const all: CompanyRow[] = [];
-
-    while (true) {
-        const to = from + pageSize - 1;
-        const { data, error } = await supabase
-            .from('companies')
-            .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
-            .order('id', { ascending: true })
-            .range(from, to);
-
-        if (error) {
-            throw new Error(`Could not load companies page ${from}-${to}: ${error.message}`);
-        }
-
-        const rows = (data || []) as CompanyRow[];
-        if (rows.length === 0) break;
-
-        all.push(...rows);
-
-        if (rows.length < pageSize) break;
-        from += pageSize;
-    }
-
-    const overrides = await loadAtsOverrides(all.map(c => c.id));
-
-    const merged = all.map(company => {
-        const override = overrides.get(company.id);
-        const base = {
-            ...company,
-            careers_url: company.url
-        };
-        if (!override) return base;
-
-        return {
-            ...base,
-            ats_provider: normalizeProviderName(override.sync_provider || override.provider_raw) || company.ats_provider,
-            ats_board_token: override.board_token_raw?.trim() || company.ats_board_token,
-            careers_url: normalizeCareersUrl(override.careers_url_raw) || base.careers_url,
-        };
-    });
-
-    return merged.sort((a, b) => a.trading_name.localeCompare(b.trading_name));
 }
 
 function normalizeTeamtailorHtmlToken(token: string): string {
