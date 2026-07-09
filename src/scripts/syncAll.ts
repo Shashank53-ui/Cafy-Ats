@@ -422,7 +422,7 @@ function safeStr(s: any, maxLen = 500): string {
     return String(s || '').slice(0, maxLen);
 }
 
-const LOW_PROFILE_TITLE_PATTERN = /\b(customer (assistant|team member|colleague|care advi[cs]or)|sales assistant|store assistant|shop assistant|checkout (operator|assistant|colleague)|night fill|shelf (stacker|filler|colleague)|replenishment (assistant|colleague|operator)|van driver|delivery driver|picker|packer|warehouse (operative|assistant|colleague)|stock (replenishment|assistant|colleague)|counter assistant|retail (assistant|adviser|advisor|store manager|sales advi[cs]or|advi[cs]or)|store manager|assistant store manager|visual merchandis|till operator|shop floor|consumer sales advi[cs]or|webchat sales advi[cs]or|barista|bar staff|waiter|waitress|food runner|kitchen (porter|assistant|crew)|dishwasher|cleaning operative|cleaner\b|hgv driver|security (guard|officer)|porter(?! manage))\b/i;
+const LOW_PROFILE_TITLE_PATTERN = /\b(customer (assistant|team member|colleague|care advi[cs]or)|sales assistant|store assistant|shop assistant|checkout (operator|assistant|colleague)|night fill|shelf (stacker|filler|colleague)|replenishment (assistant|colleague|operator)|van driver|delivery driver|picker|packer|warehouse (operative|assistant|colleague)|stock (replenishment|assistant|colleague)|counter assistant|retail (assistant|adviser|advisor|store manager|sales advi[cs]or|advi[cs]or)|store manager|assistant store manager|visual merchandis|till operator|shop floor|consumer sales advi[cs]or|webchat sales advi[cs]or|barista|bar staff|waiter|waitress|food runner|kitchen (porter|assistant|crew)|dishwasher|clean(er|ers|ing)\b|cleaning (operative|supervisor|team leader|manager|coordinator|assistant|technician|controller|inspector)|hgv driver|security (guard|officer|operative|supervisor|team leader|warden|patrol)|(relief|mobile|static|door|night|site) security (officer|guard|operative)|cctv (operator|officer|monitor)|door supervisor|crowd steward|event steward|match day steward|housekeeper|housekeeping|waste (operative|collector|handler|driver|technician)|janitor|caretaker|groundsman|groundswoman|grounds maintenance|groundskeeper|window clean|pest control|laundry (operative|assistant)|room attendant|maintenance operative|car park (attendant|operative|marshal)|parking (attendant|warden|marshal)|domestic (operative|assistant|services team)|porter(?! manage))\b/i;
 
 function isValidJobTitle(title: string): boolean {
     if (!title || title.length < 3) return false;
@@ -1699,12 +1699,9 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 
             try {
                 let currentFacets: any = { locationCountry: [ukFacetId] };
-                if (dbAppliedFacets?.locations) {
-                    currentFacets = { locations: dbAppliedFacets.locations };
-                } else if (dbAppliedFacets?.locationCountry) {
-                    currentFacets = { locationCountry: dbAppliedFacets.locationCountry };
-                } else if (dbAppliedFacets?.Location_Country) {
-                    currentFacets = { Location_Country: dbAppliedFacets.Location_Country };
+                if (dbAppliedFacets && Object.keys(dbAppliedFacets).length > 0) {
+                    // Use whatever facet key the company config specifies (e.g. locationHierarchy1 for NVIDIA)
+                    currentFacets = dbAppliedFacets;
                 }
 
                 let res = await fetchWithTimeout(apiUrl, {
