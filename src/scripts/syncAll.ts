@@ -2,8 +2,8 @@
  * syncAll.ts — Master Daily Sync Script
  *
  * Dynamically reads ALL companies from Supabase, routes each to the correct
- * ATS fetcher based on ats_provider, filters for UK-only jobs, and upserts
- * to the jobs table.
+ * ATS fetcher based on ats_provider, filters for UK and Ireland jobs, and
+ * upserts to the jobs and jobs_IR tables.
  *
  * Adding a new company to the DB is all that's needed — this script picks it up
  * automatically on the next run. No code changes required.
@@ -88,10 +88,23 @@ interface SyncResult {
     provider: string;
     fetched: number;
     ukJobs: number;
+    irelandJobs: number;
     saved: number;
+    savedIreland: number;
     rejected: number;
     needsReview: number;
     error?: string;
+}
+
+interface JobRow {
+    company_id: number;
+    title: string;
+    location: string;
+    url: string;
+    department: string | null;
+    level: string | null;
+    sector: string | null;
+    updated_at: string;
 }
 
 // Rejection log array to track dropped jobs
@@ -220,6 +233,39 @@ const UK_URL_HINTS = [
     "/en-gb/", "-gb-", "region=uk", "region=gb"
 ];
 
+const IRELAND_CITIES = [
+    "Dublin", "Cork", "Limerick", "Galway", "Waterford", "Drogheda", "Kilkenny", "Wexford", "Sligo", "Clonmel",
+    "Dundalk", "Bray", "Navan", "Ennis", "Tralee", "Carlow", "Naas", "Athlone", "Letterkenny", "Tullamore",
+    "Killarney", "Arklow", "Cobh", "Castlebar", "Midleton", "Mallow", "Ballina", "Enniscorthy", "Wicklow", "Cavan",
+    "Athy", "Longford", "Dungarvan", "Nenagh", "Trim", "New Ross", "Thurles", "Youghal", "Monaghan", "Buncrana",
+    "Ballinasloe", "Fermoy", "Westport", "Carrick-on-Suir", "Kells", "Birr", "Tipperary", "Carrickmacross", "Kinsale", "Listowel",
+    "Clonakilty", "Cashel", "Macroom", "Castleblayney", "Kilrush", "Skibbereen", "Bundoran", "Templemore", "Clones", "Newbridge",
+    "Portlaoise", "Mullingar", "Balbriggan", "Greystones", "Leixlip", "Tramore", "Shannon", "Gorey", "Tuam", "Edenderry",
+    "Bandon", "Passage West", "Loughrea", "Ardee", "Mountmellick", "Bantry", "Muine Bheag", "Boyle", "Ballyshannon", "Cootehill",
+    "Ballybay", "Belturbet", "Lismore", "Kilkee", "Granard"
+];
+
+const IRELAND_LOCATION_PHRASES = [
+    "ireland",
+    "republic of ireland",
+    "eire",
+    "éire",
+    ...IRELAND_CITIES,
+];
+
+const IRELAND_URL_HINTS = [
+    "country=ie",
+    "country%5B%5D=ie",
+    "countryid=ire",
+    "country=ireland",
+    "locale=en-ie",
+    "/ie/",
+    "-ie-",
+    "region=ie",
+    "location=ireland",
+    "location=eire",
+];
+
 const NON_UK_URL_HINTS = [
     "country=us", "country=usa", "country=ca", "country=au", "country=sg", "country=in",
     "location=united-states", "location=usa", "location=us",
@@ -242,6 +288,82 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
         chunks.push(arr.slice(i, i + size));
     }
     return chunks;
+}
+
+function buildLocationInput(job: Job) {
+    const raw = job.location ?? '';
+    const parts = raw.split(/\s*[|·•]\s*/).map((s: string) => s.trim()).filter(Boolean);
+    const locs = parts.length > 0 ? parts : (raw ? [raw] : []);
+    return {
+        locations: locs,
+        isRemote: /\bremote\b/i.test(raw),
+        isTrustedSource: false,
+    };
+}
+
+function isLikelyIrelandJob(job: Job, locationInput: { locations?: string[] }): boolean {
+    const locationNorm = normalizeLocation(job.location || '');
+    const urlNorm = String(job.url || '').toLowerCase();
+    const titleNorm = normalizeLocation(job.title || '');
+    const deptNorm = normalizeLocation(job.department || '');
+    const locationCandidates = (locationInput.locations || []).map(normalizeLocation).filter(Boolean);
+
+    if (!locationNorm && !urlNorm && !titleNorm && !deptNorm && !locationCandidates.length) {
+        return false;
+    }
+
+    if (locationNorm.includes('northern ireland') || titleNorm.includes('northern ireland') || deptNorm.includes('northern ireland')) {
+        return false;
+    }
+
+    const irelandMatches = [locationNorm, titleNorm, deptNorm, ...locationCandidates]
+        .some((text) => text && IRELAND_LOCATION_PHRASES.some((phrase) => text.includes(normalizeLocation(phrase))));
+    if (irelandMatches) return true;
+
+    if (hasAnyHint(urlNorm, IRELAND_URL_HINTS)) return true;
+
+    return false;
+}
+
+async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Job[]): Promise<JobRow[]> {
+    if (!jobs.length) return [];
+
+    const dedupedJobs = new Map<string, Job>();
+    for (const j of jobs) {
+        if (!j.url || !j.title) continue;
+        const dedupKey = `${companyId}_${j.title.toLowerCase().trim()}_${(j.location || '').toLowerCase().trim()}`;
+        if (!dedupedJobs.has(dedupKey) && !Array.from(dedupedJobs.values()).some(existing => existing.url === j.url)) {
+            dedupedJobs.set(dedupKey, j);
+        }
+    }
+
+    const uniqueJobs = Array.from(dedupedJobs.values());
+    if (!uniqueJobs.length) return [];
+
+    const rawLocations = uniqueJobs.map(j => j.location ?? '');
+    const normalizedLocs = await normalizeLocationsViaPython(rawLocations);
+    const normalizedMap = new Map<string, NormalizedLocation>();
+    for (let i = 0; i < uniqueJobs.length; i++) {
+        const n = normalizedLocs[i];
+        if (n) normalizedMap.set(uniqueJobs[i].url, n);
+    }
+
+    return uniqueJobs.map(j => {
+        const n = normalizedMap.get(j.url);
+        const cleanedLocation = n
+            ? (formatNormalizedLocation(n) ?? safeStr(j.location, 255))
+            : safeStr(j.location, 255);
+        return {
+            company_id: companyId,
+            title: safeStr(j.title, 255),
+            location: safeStr(cleanedLocation, 255),
+            url: j.url,
+            department: j.department ? safeStr(j.department, 255) : null,
+            level: inferJobLevel(safeStr(j.title)),
+            sector: inferJobSector(safeStr(j.title), j.department, company.company_sector),
+            updated_at: new Date().toISOString()
+        };
+    });
 }
 
 function isUKLocation(loc: any): boolean {
@@ -3566,7 +3688,7 @@ export async function syncAll() {
         const result: SyncResult = {
             company: trading_name,
             provider: displayProvider.toLowerCase(),
-            fetched: 0, ukJobs: 0, saved: 0, rejected: 0, needsReview: 0
+            fetched: 0, ukJobs: 0, irelandJobs: 0, saved: 0, savedIreland: 0, rejected: 0, needsReview: 0
         };
 
         try {
@@ -3581,6 +3703,7 @@ export async function syncAll() {
             }
 
             const ukJobs: Job[] = [];
+            const irelandJobs: Job[] = [];
             let rejectedCount = 0;
             let needsReviewCount = 0;
 
@@ -3591,16 +3714,7 @@ export async function syncAll() {
 
                 // Default adapter: split pipe/bullet-separated office lists so each office
                 // is checked independently (e.g. "London | New York" → ["London","New York"]).
-                const locationInput = adapter ? adapter(j) : (() => {
-                    const raw = j.location ?? '';
-                    const parts = raw.split(/\s*[|·•]\s*/).map((s: string) => s.trim()).filter(Boolean);
-                    const locs = parts.length > 0 ? parts : (raw ? [raw] : []);
-                    return {
-                        locations: locs,
-                        isRemote: /\bremote\b/i.test(raw),
-                        isTrustedSource: false,
-                    };
-                })();
+                const locationInput = adapter ? adapter(j) : buildLocationInput(j);
                 if (!isValidJobTitle(j.title)) {
                     rejectedCount++;
                     continue;
@@ -3608,6 +3722,11 @@ export async function syncAll() {
                 if (isTrustedUKCompany || isUKJob(locationInput)) {
                     ukJobs.push(j);
                     if (j.needs_review) needsReviewCount++;
+                    continue;
+                }
+
+                if (isLikelyIrelandJob(j, locationInput)) {
+                    irelandJobs.push(j);
                 } else {
                     rejectedCount++;
                     globalRejectionLog.push({
@@ -3622,76 +3741,70 @@ export async function syncAll() {
             }
 
             result.ukJobs = ukJobs.length;
+            result.irelandJobs = irelandJobs.length;
             result.rejected = rejectedCount;
             result.needsReview = needsReviewCount;
 
-            if (ukJobs.length > 0) {
-                const dedupedJobs = new Map<string, Job>();
-                for (const j of ukJobs) {
-                    if (!j.url || !j.title) continue;
-                    const dedupKey = `${id}_${j.title.toLowerCase().trim()}_${(j.location || '').toLowerCase().trim()}`;
-                    if (!dedupedJobs.has(dedupKey) && !Array.from(dedupedJobs.values()).some(existing => existing.url === j.url)) {
-                        dedupedJobs.set(dedupKey, j);
-                    }
+            const ukRows = await buildRowsForJobs(company, id, ukJobs);
+            const irelandRows = await buildRowsForJobs(company, id, irelandJobs);
+
+            const persistRows = async (tableName: 'jobs' | 'jobs_IR', rows: JobRow[]) => {
+                if (!rows.length) {
+                    await supabase.from(tableName).delete().eq('company_id', id);
+                    return 0;
                 }
 
-                const uniqueJobs = Array.from(dedupedJobs.values());
+                const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
+                if (jobErr) {
+                    if (tableName === 'jobs_IR' && /sector|schema cache/i.test(jobErr.message)) {
+                        const fallbackRows = rows.map(({ sector, ...rest }) => rest);
+                        const { error: fallbackErr } = await supabase.from(tableName).upsert(fallbackRows, { onConflict: 'url' });
+                        if (!fallbackErr) {
+                            console.warn(`[${displayProvider}] ${trading_name} jobs_IR upsert retried without sector because the table schema does not expose that column yet.`);
 
-                // ── Normalise locations via Python ─────────────────────────
-                const rawLocations = uniqueJobs.map(j => j.location ?? '');
-                const normalizedLocs = await normalizeLocationsViaPython(rawLocations);
-                const normalizedMap = new Map<string, NormalizedLocation>();
-                for (let i = 0; i < uniqueJobs.length; i++) {
-                    const n = normalizedLocs[i];
-                    if (n) normalizedMap.set(uniqueJobs[i].url, n);
-                }
-
-                const rows = uniqueJobs.map(j => {
-                    const n = normalizedMap.get(j.url);
-                    const cleanedLocation = n
-                        ? (formatNormalizedLocation(n) ?? safeStr(j.location, 255))
-                        : safeStr(j.location, 255);
-                    return {
-                        company_id: id,
-                        title: safeStr(j.title, 255),
-                        location: safeStr(cleanedLocation, 255),
-                        url: j.url,
-                        department: j.department ? safeStr(j.department, 255) : null,
-                        level: inferJobLevel(safeStr(j.title)),
-                        sector: inferJobSector(safeStr(j.title), j.department, company.company_sector),
-                        updated_at: new Date().toISOString()
-                    };
-                });
-
-                if (!fallbackOnlyDryRun) {
-                    const { error: jobErr } = await supabase.from('jobs').upsert(rows, { onConflict: 'url' });
-                    if (jobErr) {
-                        console.error(`[${displayProvider}] ${trading_name} jobs upsert failed: ${jobErr.message}`);
-                    } else {
-                        result.saved = rows.length;
-                        totalSaved += rows.length;
-
-                        // Cleanup stale jobs
-                        const currentUrls = uniqueJobs.map(j => j.url);
-                        const { data: existingJobs } = await supabase.from('jobs').select('url').eq('company_id', id);
-                        if (existingJobs && existingJobs.length > 0) {
-                            const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
-                            if (staleUrls.length > 0) {
-                                for (const chunk of chunkArray(staleUrls, 100)) {
-                                    await supabase.from('jobs').delete().in('url', chunk).eq('company_id', id);
+                            const currentUrls = fallbackRows.map(row => row.url);
+                            const { data: existingJobs } = await supabase.from(tableName).select('url').eq('company_id', id);
+                            if (existingJobs && existingJobs.length > 0) {
+                                const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
+                                if (staleUrls.length > 0) {
+                                    for (const chunk of chunkArray(staleUrls, 100)) {
+                                        await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
+                                    }
                                 }
                             }
+
+                            return fallbackRows.length;
+                        }
+                        console.error(`[${displayProvider}] ${trading_name} ${tableName} retry failed: ${fallbackErr.message}`);
+                    }
+                    console.error(`[${displayProvider}] ${trading_name} ${tableName} upsert failed: ${jobErr.message}`);
+                    return 0;
+                }
+
+                const currentUrls = rows.map(row => row.url);
+                const { data: existingJobs } = await supabase.from(tableName).select('url').eq('company_id', id);
+                if (existingJobs && existingJobs.length > 0) {
+                    const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
+                    if (staleUrls.length > 0) {
+                        for (const chunk of chunkArray(staleUrls, 100)) {
+                            await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
                         }
                     }
-                } else {
-                    result.saved = rows.length;
-                    totalSaved += rows.length;
                 }
+
+                return rows.length;
+            };
+
+            if (!fallbackOnlyDryRun) {
+                const savedUK = await persistRows('jobs', ukRows);
+                const savedIreland = await persistRows('jobs_IR', irelandRows);
+                result.saved = savedUK + savedIreland;
+                result.savedIreland = savedIreland;
+                totalSaved += result.saved;
             } else {
-                // No UK jobs fetched
-                if (!fallbackOnlyDryRun) {
-                    await supabase.from('jobs').delete().eq('company_id', id);
-                }
+                result.saved = ukRows.length + irelandRows.length;
+                result.savedIreland = irelandRows.length;
+                totalSaved += result.saved;
             }
             if (healthTrackingEnabled && !fallbackOnlyDryRun) {
                 await supabase.from('companies').update({
@@ -3707,8 +3820,8 @@ export async function syncAll() {
                 await supabase.from('companies').update({ active_jobs_count: finalCount || 0 }).eq('id', id);
             }
 
-            const statusEmoji = result.ukJobs > 0 ? '✅' : '⚪';
-            console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
+            const statusEmoji = (result.ukJobs + result.irelandJobs) > 0 ? '✅' : '⚪';
+            console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | IR: ${result.irelandJobs.toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
 
             results.push(result);
             await sleep(500); // Politeness delay

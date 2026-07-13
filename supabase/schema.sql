@@ -1,5 +1,6 @@
 -- Drop existing tables if they exist
 DROP TABLE IF EXISTS public.jobs CASCADE;
+DROP TABLE IF EXISTS public."jobs_IR" CASCADE;
 DROP TABLE IF EXISTS public.companies CASCADE;
 DROP TABLE IF EXISTS public.location_filter_log CASCADE;
 
@@ -41,6 +42,7 @@ CREATE TABLE public.jobs (
     description TEXT,
     salary TEXT,
     level TEXT,
+    sector TEXT DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -51,6 +53,27 @@ CREATE INDEX idx_jobs_company_id ON public.jobs(company_id);
 CREATE INDEX idx_jobs_location ON public.jobs(location);
 CREATE INDEX idx_jobs_last_seen_at ON public.jobs(last_seen_at DESC);
 CREATE INDEX idx_jobs_company_last_seen ON public.jobs(company_id, last_seen_at);
+
+-- Create Ireland Jobs Table
+CREATE TABLE public."jobs_IR" (
+    id SERIAL PRIMARY KEY,
+    company_id INTEGER REFERENCES public.companies(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    url TEXT UNIQUE NOT NULL,
+    location TEXT,
+    department TEXT,
+    description TEXT,
+    salary TEXT,
+    level TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_jobs_ir_company_id ON public."jobs_IR"(company_id);
+CREATE INDEX idx_jobs_ir_location ON public."jobs_IR"(location);
+CREATE INDEX idx_jobs_ir_last_seen_at ON public."jobs_IR"(last_seen_at DESC);
+CREATE INDEX idx_jobs_ir_company_last_seen ON public."jobs_IR"(company_id, last_seen_at);
 
 -- Location filter audit table
 CREATE TABLE public.location_filter_log (
