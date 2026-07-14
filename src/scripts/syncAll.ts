@@ -253,19 +253,6 @@ const IRELAND_LOCATION_PHRASES = [
     ...IRELAND_CITIES,
 ];
 
-const IRELAND_URL_HINTS = [
-    "country=ie",
-    "country%5B%5D=ie",
-    "countryid=ire",
-    "country=ireland",
-    "locale=en-ie",
-    "/ie/",
-    "-ie-",
-    "region=ie",
-    "location=ireland",
-    "location=eire",
-];
-
 const NON_UK_URL_HINTS = [
     "country=us", "country=usa", "country=ca", "country=au", "country=sg", "country=in",
     "location=united-states", "location=usa", "location=us",
@@ -303,12 +290,11 @@ function buildLocationInput(job: Job) {
 
 function isLikelyIrelandJob(job: Job, locationInput: { locations?: string[] }): boolean {
     const locationNorm = normalizeLocation(job.location || '');
-    const urlNorm = String(job.url || '').toLowerCase();
     const titleNorm = normalizeLocation(job.title || '');
     const deptNorm = normalizeLocation(job.department || '');
     const locationCandidates = (locationInput.locations || []).map(normalizeLocation).filter(Boolean);
 
-    if (!locationNorm && !urlNorm && !titleNorm && !deptNorm && !locationCandidates.length) {
+    if (!locationNorm && !titleNorm && !deptNorm && !locationCandidates.length) {
         return false;
     }
 
@@ -319,8 +305,6 @@ function isLikelyIrelandJob(job: Job, locationInput: { locations?: string[] }): 
     const irelandMatches = [locationNorm, titleNorm, deptNorm, ...locationCandidates]
         .some((text) => text && IRELAND_LOCATION_PHRASES.some((phrase) => text.includes(normalizeLocation(phrase))));
     if (irelandMatches) return true;
-
-    if (hasAnyHint(urlNorm, IRELAND_URL_HINTS)) return true;
 
     return false;
 }
