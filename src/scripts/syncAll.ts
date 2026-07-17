@@ -32,6 +32,7 @@ import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import * as Adapters from '../lib/ukFilterAdapters';
+import { isIrelandJob } from '../lib/irelandFilter';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -3709,7 +3710,7 @@ export async function syncAll() {
                     continue;
                 }
 
-                if (isLikelyIrelandJob(j, locationInput)) {
+                if (isIrelandJob(j.location, locationInput.locations)) {
                     irelandJobs.push(j);
                 } else {
                     rejectedCount++;

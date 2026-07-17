@@ -65,8 +65,6 @@ const UK_CITIES = [
     "home counties", "south east", "south west", "north east", "north west",
     "cotswolds", "chilterns", "pennines", "highlands", "lowlands", "borders",
     "east of england",
-    // Channel Islands / Crown dependencies (UK-adjacent for employment purposes)
-    "jersey", "guernsey", "isle of man",
     // Other specific locations that appear in Workday / ATS data
     "radbroke", "canary wharf", "paddington", "victoria", "waterloo",
     "euston", "king's cross", "kings cross", "london bridge",
@@ -116,10 +114,17 @@ const HARD_BLOCKS = [
     "whippany", "mclean", "plano", "wilmington",
     // US country abbreviations in location strings (e.g. "US - CA - Bay Area")
     "bay area", "silicon valley", "research triangle", "twin cities",
-    "united states", "usa", "u.s.a.",
+    "united states", "usa", "u.s.a.", "us",
+    // Crown Dependencies (not part of the UK for visa-sponsorship purposes)
+    "jersey", "guernsey", "isle of man",
+    // Broad regional terms — must not pass without an explicit UK term alongside them
+    "emea", "apac", "worldwide", "global", "int'l", "international",
+    "asia", "europe", "east coast", "namer",
 ];
 
-const GLOBAL_SIGNALS = ["global", "worldwide", "international", "emea", "remote"];
+// Kept separate from HARD_BLOCKS: a bare "Remote" text signal remains an
+// ambiguous pass (unlike EMEA/Global/etc, which are now hard-blocked above).
+const AMBIGUOUS_REMOTE_SIGNALS = ["remote"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -190,9 +195,7 @@ export function isUKJob(input: JobLocationInput): boolean {
     // "Remote" or "Remote UK" → accept. "Remote (USA)" / "Remote - Germany" → fall through.
     if (isRemote) {
         const combined = locations.join(' ').toLowerCase();
-        const hasNonUKCountry = isBlockedTerm(combined)
-            // Also catch bare "US" / "USA" abbreviations not matched by HARD_BLOCKS word search
-            || /\b(us|usa)\b/.test(combined);
+        const hasNonUKCountry = isBlockedTerm(combined);
         if (!hasNonUKCountry) return true;
         // Has non-UK signal — fall through to geography checks below
     }
@@ -218,9 +221,10 @@ export function isUKJob(input: JobLocationInput): boolean {
         if (isUKTerm(loc)) return true;
     }
 
-    // 6. Global/EMEA signals (treat as potentially UK — don't reject outright)
+    // 6. Bare "remote" text is still ambiguous — don't reject outright.
+    // (EMEA/Global/Worldwide/etc are handled above via HARD_BLOCKS + hasDefinitiveUKSignal.)
     for (const loc of locs) {
-        if (GLOBAL_SIGNALS.some(s => loc.includes(s))) return true;
+        if (AMBIGUOUS_REMOTE_SIGNALS.some(s => loc.includes(s))) return true;
     }
 
     // Default: reject
