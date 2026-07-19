@@ -70,7 +70,7 @@ const SERPER_DISCOVERY_SITE_HINTS = [
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Job {
+export interface Job {
     title: string;
     location: string;
     url: string;
@@ -277,7 +277,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
     return chunks;
 }
 
-function buildLocationInput(job: Job) {
+export function buildLocationInput(job: Job) {
     const raw = job.location ?? '';
     const parts = raw.split(/\s*[|·•]\s*/).map((s: string) => s.trim()).filter(Boolean);
     const locs = parts.length > 0 ? parts : (raw ? [raw] : []);
@@ -288,10 +288,21 @@ function buildLocationInput(job: Job) {
     };
 }
 
-function isLikelyIrelandJob(job: Job, locationInput: { locations?: string[] }): boolean {
-    const locationNorm = normalizeLocation(job.location || '');
-    const titleNorm = normalizeLocation(job.title || '');
-    const deptNorm = normalizeLocation(job.department || '');
+export function isLikelyIrelandJob(job: Job, locationInput: { locations?: string[] }): boolean {
+    const locationNorm = normalizeLocation(job.location);
+    const titleNorm = normalizeLocation(job.title);
+    const deptNorm = normalizeLocation(job.department);
+
+    // Hard block: US-based Dublin locations
+    if (locationNorm.includes('us-ca-dublin') || locationNorm.includes('dublin, ca') || locationNorm.includes('dublin, oh') || locationNorm.includes('dublin, california') || locationNorm.includes('dublin, ohio')) {
+        return false;
+    }
+
+    // Hard block: UK locations that aren't Northern Ireland
+    if (isUKJob(locationInput) && !locationNorm.includes('northern ireland')) {
+        return false;
+    }
+
     const locationCandidates = (locationInput.locations || []).map(normalizeLocation).filter(Boolean);
 
     if (!locationNorm && !titleNorm && !deptNorm && !locationCandidates.length) {
@@ -530,7 +541,7 @@ function safeStr(s: any, maxLen = 500): string {
 
 const LOW_PROFILE_TITLE_PATTERN = /\b(customer (assistant|team member|colleague|care advi[cs]or)|sales assistant|store assistant|shop assistant|checkout (operator|assistant|colleague)|night fill|shelf (stacker|filler|colleague)|replenishment (assistant|colleague|operator)|van driver|delivery driver|picker|packer|warehouse (operative|assistant|colleague)|stock (replenishment|assistant|colleague)|counter assistant|retail (assistant|adviser|advisor|store manager|sales advi[cs]or|advi[cs]or)|store manager|assistant store manager|visual merchandis|till operator|shop floor|consumer sales advi[cs]or|webchat sales advi[cs]or|barista|bar staff|waiter|waitress|food runner|kitchen (porter|assistant|crew)|dishwasher|clean(er|ers|ing)\b|cleaning (operative|supervisor|team leader|manager|coordinator|assistant|technician|controller|inspector)|hgv driver|security (guard|officer|operative|supervisor|team leader|warden|patrol)|(relief|mobile|static|door|night|site) security (officer|guard|operative)|cctv (operator|officer|monitor)|door supervisor|crowd steward|event steward|match day steward|housekeeper|housekeeping|waste (operative|collector|handler|driver|technician)|janitor|caretaker|groundsman|groundswoman|grounds maintenance|groundskeeper|window clean|pest control|laundry (operative|assistant)|room attendant|maintenance operative|car park (attendant|operative|marshal)|parking (attendant|warden|marshal)|domestic (operative|assistant|services team)|porter(?! manage))\b/i;
 
-function isValidJobTitle(title: string): boolean {
+export function isValidJobTitle(title: string): boolean {
     if (!title || title.length < 3) return false;
     const lower = title.toLowerCase().trim();
     const junk = [

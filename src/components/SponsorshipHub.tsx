@@ -1165,7 +1165,7 @@ const RoleSearchSection: React.FC<{
           <div className="flex items-center gap-1 sm:gap-2 bg-white p-1.5 sm:p-2 rounded-2xl border border-slate-200 shadow-sm w-[95%] sm:w-auto max-w-full overflow-x-auto scrollbar-hide flex-nowrap">
             <button
               onClick={() =>
-                setCurrentRolePage((prev) => Math.max(1, prev - 1))
+                setCurrentRolePage(Math.max(1, currentRolePage - 1))
               }
               disabled={currentRolePage === 1}
               className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center shrink-0"
@@ -1201,7 +1201,7 @@ const RoleSearchSection: React.FC<{
 
             <button
               onClick={() =>
-                setCurrentRolePage((prev) => Math.min(totalRolePages, prev + 1))
+                setCurrentRolePage(Math.min(totalRolePages, currentRolePage + 1))
               }
               disabled={currentRolePage === totalRolePages}
               className="p-2 sm:p-2.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl transition-all text-slate-600 flex items-center justify-center shrink-0"

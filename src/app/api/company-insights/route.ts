@@ -235,7 +235,7 @@ Use empty strings or empty arrays if some fields cannot be confidently filled fr
     } catch {
       jsonStr = jsonStr.replace(
         /"([^"\\]*(\\.[^"\\]*)*)"/g,
-        (match) =>
+        (match: string) =>
           match
             .replace(/\n/g, "\\n")
             .replace(/\r/g, "\\r")

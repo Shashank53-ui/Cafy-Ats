@@ -50,3 +50,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
         run: npm run sync
+
+      # 5. Run LinkedIn Scraper
+      - name: Run LinkedIn Ireland Scraper
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run sync:linkedin
