@@ -288,10 +288,10 @@ export function buildLocationInput(job: Job) {
     };
 }
 
-export function isLikelyIrelandJob(job: Job, locationInput: { locations?: string[] }): boolean {
+export function isLikelyIrelandJob(job: Job, locationInput: any): boolean {
     const locationNorm = normalizeLocation(job.location);
     const titleNorm = normalizeLocation(job.title);
-    const deptNorm = normalizeLocation(job.department);
+    const deptNorm = normalizeLocation(job.department || '');
 
     // Hard block: US-based Dublin locations
     if (locationNorm.includes('us-ca-dublin') || locationNorm.includes('dublin, ca') || locationNorm.includes('dublin, oh') || locationNorm.includes('dublin, california') || locationNorm.includes('dublin, ohio')) {
@@ -3393,6 +3393,248 @@ async function fetchWSP(_token: string): Promise<Job[]> {
     return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
 }
 
+// --- Cornerstone ---
+async function fetchCornerstone(token: string): Promise<Job[]> {
+    try {
+        const homeUrl = `https://${token}.csod.com/ux/ats/careersite/1/home?c=${token}`;
+        const homeRes = await fetchWithTimeout(homeUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!homeRes.ok) return [];
+        const html = await homeRes.text();
+        
+        const tokenMatch = html.match(/csod\.context\.token\s*=\s*['"]([^'"]+)['"]/i) || html.match(/"token"\s*:\s*"([^"]+)"/i);
+        if (!tokenMatch) return [];
+        const jwt = tokenMatch[1];
+        
+        const hostMatch = html.match(/https?:\/\/[a-z0-9-]+\.api\.csod\.com/i);
+        const apiHost = hostMatch ? hostMatch[0] : 'https://na.api.csod.com';
+        
+        let allJobs: any[] = [];
+        let page = 1;
+        while (true) {
+            const reqUrl = `${apiHost}/rec-job-search/external/jobs`;
+            const payload = {
+                careerSiteId: 1, careerSitePageId: 1, pageNumber: page, pageSize: 100, cultureId: 1, cultureName: "en-US"
+            };
+            const reqRes = await fetchWithTimeout(reqUrl, {
+                method: 'POST',
+                headers: { 'User-Agent': 'Mozilla/5.0', 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!reqRes.ok) break;
+            const data = await reqRes.json();
+            const reqs = data?.data?.requisitions || [];
+            if (!reqs.length) break;
+            
+            allJobs.push(...reqs);
+            if (data?.data?.totalCount && allJobs.length >= data.data.totalCount) break;
+            page++;
+        }
+        
+        return allJobs.map((j: any) => ({
+            title: j.displayJobTitle || 'Untitled',
+            url: `https://${token}.csod.com/ux/ats/careersite/1/job/${j.requisitionId}?c=${token}`,
+            location: Array.isArray(j.locations) ? j.locations.map((loc: any) => loc.city || loc.name || '').join(', ') : '',
+            department: j.department || j.category || '',
+            atsProvider: 'cornerstone'
+        })).filter(j => j.title && j.url);
+    } catch { return []; }
+}
+
+// --- Gem ---
+async function fetchGem(token: string): Promise<Job[]> {
+    try {
+        const payload = [{
+            operationName: "JobBoardList",
+            variables: { boardId: token },
+            query: "query JobBoardList($boardId: String!) { oatsExternalJobPostings(boardId: $boardId) { jobPostings { id extId title locations { name city isoCountry isRemote } job { department { name } } } } }"
+        }];
+        const res = await fetchWithTimeout('https://jobs.gem.com/api/public/graphql/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) return [];
+        const batch = await res.json();
+        if (!batch || !batch[0]) return [];
+        
+        const postings = batch[0]?.data?.oatsExternalJobPostings?.jobPostings || [];
+        return postings.map((j: any) => ({
+            title: j.title || '',
+            url: `https://jobs.gem.com/${token}/${j.extId || j.id}`,
+            location: Array.isArray(j.locations) && j.locations.length > 0 ? (j.locations[0].city || j.locations[0].name || '') : '',
+            department: j.job?.department?.name || '',
+            atsProvider: 'gem'
+        })).filter((j: any) => j.title && j.url);
+    } catch { return []; }
+}
+
+// --- Join.com ---
+async function fetchJoinCom(token: string): Promise<Job[]> {
+    try {
+        const homeRes = await fetchWithTimeout(`https://join.com/companies/${token}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!homeRes.ok) return [];
+        const html = await homeRes.text();
+        
+        const idMatch = html.match(/"company"\s*:\s*\{\s*"id"\s*:\s*"?(\d+)"?/i) || html.match(/"companyId"\s*:\s*"?(\d+)"?/i);
+        if (!idMatch) return [];
+        const companyId = idMatch[1];
+        
+        let allJobs: any[] = [];
+        let page = 1;
+        while (true) {
+            const apiRes = await fetchWithTimeout(`https://join.com/api/public/companies/${companyId}/jobs?locale=en-us&page=${page}&pageSize=100`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!apiRes.ok) break;
+            const data = await apiRes.json();
+            const items = data.items || [];
+            if (!items.length) break;
+            console.log(JSON.stringify(items.slice(0, 2), null, 2));
+            
+            allJobs.push(...items);
+            if (page >= (data.pagination?.totalPages || page)) break;
+            page++;
+        }
+        
+        return allJobs.map((j: any) => {
+            let locParts: string[] = [];
+            if (j.remoteType === 'ANYWHERE') {
+                locParts = ['Remote'];
+            } else {
+                locParts = [j.location, j.city?.cityName || j.city?.city, j.city?.regionName || j.office?.regionName, j.city?.countryName || j.country?.name || j.office?.countryName].filter(Boolean);
+                if (j.workplaceType === 'REMOTE') locParts.unshift('Remote');
+            }
+            
+            return {
+                title: j.title || '',
+                url: j.url || `https://join.com/companies/${token}/jobs/${j.idParam || j.id}`,
+                location: locParts.join(', ') || '',
+                department: typeof j.department === 'string' ? j.department : (j.department?.name || ''),
+                atsProvider: 'join_com'
+            };
+        }).filter((j: any) => j.title && j.url);
+    } catch { return []; }
+}
+
+// --- Mercor ---
+async function fetchMercor(token: string): Promise<Job[]> {
+    try {
+        const res = await fetchWithTimeout('https://aws.api.mercor.com/work/listings-explore-page', {
+            headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer',
+                'Origin': 'https://work.mercor.com',
+                'Referer': 'https://work.mercor.com/',
+                'User-Agent': 'Mozilla/5.0'
+            }
+        });
+        if (!res.ok) return [];
+        const data = await res.json();
+        const listings = data.listings || [];
+        
+        return listings.map((j: any) => {
+            const listingId = j.listingId || '';
+            const title = j.title || '';
+            const slugTitle = title.toLowerCase().replace(/[^\w\s-]/g, '').replace(/[-\s]+/g, '-').replace(/^-+|-+$/g, '');
+            return {
+                title,
+                url: `https://work.mercor.com/jobs/${listingId}/${slugTitle}`,
+                location: j.location || '',
+                salary: (j.rateMin || j.rateMax) ? `${j.rateMin || ''}-${j.rateMax || ''}/${j.payRateFrequency || ''}` : undefined,
+                atsProvider: 'mercor'
+            };
+        }).filter((j: any) => j.title && j.url);
+    } catch { return []; }
+}
+
+// --- Phenom ---
+async function fetchPhenom(token: string): Promise<Job[]> {
+    try {
+        const baseUrl = token.replace(/\/$/, '');
+        const locale = 'en_us';
+        const country = 'us';
+        const searchUrl = `${baseUrl}/${country}/en/search-results`;
+        
+        const initRes = await fetchWithTimeout(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!initRes.ok) return [];
+        const html = await initRes.text();
+        const csrfMatch = html.match(/"csrfToken"\s*:\s*"([^"]+)"/);
+        const csrf = csrfMatch ? csrfMatch[1] : '';
+        
+        let allJobs: any[] = [];
+        let from = 0;
+        
+        while (true) {
+            const payload = {
+                lang: locale, country: country, deviceType: "desktop", pageName: "search-results",
+                ddoKey: "refineSearch", from: from, size: 100, siteType: "external", global: true
+            };
+            const headers: any = { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' };
+            if (csrf) headers['x-csrf-token'] = csrf;
+            
+            const reqRes = await fetchWithTimeout(`${baseUrl}/widgets`, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payload)
+            });
+            if (!reqRes.ok) break;
+            const data = await reqRes.json();
+            
+            const rs = data?.refineSearch || {};
+            const hits = rs?.data?.jobs || rs?.jobs || rs?.hits || data?.jobs || [];
+            if (!hits.length) break;
+            
+            allJobs.push(...hits);
+            const total = rs?.totalHits || rs?.data?.totalHits || rs?.hitsCount || 0;
+            from += hits.length;
+            if (!total || from >= total) break;
+        }
+        
+        return allJobs.map((j: any) => {
+            const atsId = j.jobId || j.id || '';
+            let url = j.jobUrl || j.url || `${baseUrl}/job/${atsId}`;
+            if (!url.startsWith('http')) {
+                url = `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+            }
+            return {
+                title: j.title || j.jobTitle || '',
+                url: url,
+                location: [j.city, j.state, j.country].filter(Boolean).join(', ') || j.location || '',
+                department: j.department || j.category || '',
+                atsProvider: 'phenom'
+            };
+        }).filter((j: any) => j.title && j.url);
+    } catch { return []; }
+}
+
+// --- Recruiterbox ---
+async function fetchRecruiterbox(token: string): Promise<Job[]> {
+    try {
+        let allJobs: any[] = [];
+        let offset = 0;
+        while (true) {
+            const res = await fetchWithTimeout(`https://jsapi.recruiterbox.com/v1/openings?client_name=${token}&offset=${offset}&limit=100`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) break;
+            const data = await res.json();
+            const objects = data.objects || [];
+            if (!objects.length) break;
+            
+            allJobs.push(...objects);
+            const total = data.meta?.total;
+            offset += objects.length;
+            if (total !== undefined && offset >= total) break;
+            if (total === undefined && objects.length < 100) break;
+        }
+        
+        return allJobs.map((j: any) => ({
+            title: j.title || '',
+            url: j.hosted_url || j.url || '',
+            location: j.location ? [j.location.city, j.location.state, j.location.country].filter(Boolean).join(', ') : '',
+            department: j.department || j.team || '',
+            atsProvider: 'recruiterbox'
+        })).filter((j: any) => j.title && j.url);
+    } catch { return []; }
+}
+
+
 export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     greenhouse: fetchGreenhouse,
     ashby: fetchAshby,
@@ -3419,6 +3661,14 @@ export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     generic_careers: fetchGenericCareersPage,
     jazzhr: fetchJazzHR,
     oracle: fetchOracleTaleo,
+
+    cornerstone: fetchCornerstone,
+    gem: fetchGem,
+    join_com: fetchJoinCom,
+    mercor: fetchMercor,
+    phenom: fetchPhenom,
+    recruiterbox: fetchRecruiterbox,
+    
     eploy: fetchEploy,
 
     // Company-specific scrapers
@@ -3710,7 +3960,27 @@ export async function syncAll() {
                 // Default adapter: split pipe/bullet-separated office lists so each office
                 // is checked independently (e.g. "London | New York" → ["London","New York"]).
                 const locationInput = adapter ? adapter(j) : buildLocationInput(j);
-                if (!isValidJobTitle(j.title)) {
+
+                // Fix empty/generic remote locations based on job title
+                const titleLower = String(j.title || '').toLowerCase();
+                let locTrimmed = String(j.location || '').trim();
+                const locLower = locTrimmed.toLowerCase();
+                
+                if (!locTrimmed || locLower === 'remote' || locLower === '(remote)') {
+                    if (titleLower.includes('uk remote') || titleLower.includes('remote uk') || titleLower.includes('united kingdom remote') || titleLower.includes('remote united kingdom')) {
+                        j.location = 'UK Remote';
+                    } else if (titleLower.includes('us remote') || titleLower.includes('remote us') || titleLower.includes('usa remote') || titleLower.includes('remote usa')) {
+                        j.location = 'US Remote';
+                    } else if (titleLower.includes('india remote') || titleLower.includes('remote india')) {
+                        j.location = 'India Remote';
+                    } else if (titleLower.includes('remote')) {
+                        j.location = 'Remote';
+                    }
+                }
+
+
+                // Fix empty/generic remote locations based on job title
+                                if (!isValidJobTitle(j.title)) {
                     rejectedCount++;
                     continue;
                 }
@@ -3816,7 +4086,7 @@ export async function syncAll() {
             }
 
             const statusEmoji = (result.ukJobs + result.irelandJobs) > 0 ? '✅' : '⚪';
-            console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | IR: ${result.irelandJobs.toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
+            console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | IR: ${result.irelandJobs.toString().padEnd(3)} | Dups: ${(result.ukJobs + result.irelandJobs - result.saved).toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
 
             results.push(result);
             await sleep(500); // Politeness delay
