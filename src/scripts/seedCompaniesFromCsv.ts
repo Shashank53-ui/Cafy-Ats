@@ -38,13 +38,10 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 
 // ─── CSV config ───────────────────────────────────────────────────────────────
 // CSV columns: Company ID, Company Name, ATS Provider, ATS Board Token, URL, Verification, Status
-const CSV_PATH = path.resolve(
-    __dirname,
-    '../../ATS compnies - industry_grade_ats_database_fixed.csv'
-);
+const CSV_PATH = path.resolve(process.cwd(), process.argv[2] || 'data/csv/ATS compnies - industry_grade_ats_database_fixed.csv');
 
 // Only import rows with this status (set to null to import ALL rows)
-const ONLY_STATUS = 'Good';
+const ONLY_STATUS = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function normalizeProvider(raw: string): string {

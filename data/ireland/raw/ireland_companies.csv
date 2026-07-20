@@ -1,0 +1,202 @@
+Company ID,Company Name,ATS Provider,ATS Board Token,URL,Verification,Status,Notes
+900001,Intercom,greenhouse,intercom,https://www.intercom.com,web-verified,Good,Dublin-founded/HQ unicorn
+900002,Tines,greenhouse,tines,https://www.tines.com,web-verified,Good,Dublin-founded unicorn (security automation)
+900003,Flipdish,greenhouse,flipdish,https://www.flipdish.com,web-verified,Good,Dublin-founded (restaurant tech)
+900004,LetsGetChecked,greenhouse,letsgetchecked,https://www.letsgetchecked.com,web-verified,Good,Dublin-founded unicorn; board is on job-boards.eu.greenhouse.io
+900005,Wayflyer,ashby,wayflyer,https://www.wayflyer.com,web-verified,Good,Dublin-founded unicorn (revenue financing)
+900006,Fenergo,workable,fenergocareers,https://www.fenergo.com,web-verified,Good,Dublin-founded RegTech unicorn
+900007,TransferMate,workable,transfermate,https://www.transfermate.com,dryrun-0-jobs,needs_manual_review,Kilkenny/Dublin-founded fintech; live fetch returned 0 jobs - token likely stale/renamed
+900008,Kitman Labs,lever,kitmanlabs,https://www.kitmanlabs.com,web-verified,Good,Dublin-founded sports tech
+900009,Web Summit,lever,websummit,https://websummit.com,web-verified,Good,Dublin-founded events company
+900010,StoryToys,workable,storytoys,https://www.storytoys.com,web-verified,Good,Dublin-founded kids app studio
+900011,Compass Education,workable,compass-education,https://www.compass.education,web-verified,Good,Dublin-founded edtech
+900012,Version 1,smartrecruiters,Version1,https://www.version1.com,web-verified,Good,Dublin-founded IT services (large employer)
+900013,Kepak Group,workable,kepak/kepak-convenience-foods,https://www.kepak.com,dryrun-0-jobs,needs_manual_review,Cork-founded food group; live fetch returned 0 jobs - token/sub-brand path likely stale (reverted: an unverified token appeared here from outside this session and was not trusted)
+900014,Workhuman,workday,workhuman/WorkhumanCareers,https://www.workhuman.com,web-verified,Good,Dublin-founded HR tech unicorn; Workday token = tenant/board
+900015,Omni,ashby,omni,https://omni.co,web-verified,Good,Active Dublin hiring on Ashby
+900016,Axelera AI,ashby,axelera,https://axelera.ai,web-verified,Good,Active Dublin hiring on Ashby
+900017,2K Games,greenhouse,2k,https://www.2k.com,web-verified,Good,Dublin publishing/graduate hub
+900018,Twilio,greenhouse,twilio,https://www.twilio.com,web-verified,Good,Large Dublin office (Segment sales, support, eng)
+900019,Match Group,lever,matchgroup,https://mtch.com,web-verified,Good,Dublin office (Tinder etc.)
+900020,Dun & Bradstreet,lever,dnb,https://www.dnb.com,web-verified,Good,Dublin office
+900021,CFGI,lever,cfgi,https://www.cfgi.com,web-verified,Good,Dublin office listed on Lever board
+900022,Front,ashby,frontcareers,https://front.com,web-verified,Good,Dublin office
+900023,Deliveroo,ashby,deliveroo,https://deliveroo.ie,web-verified,Good,Ireland-specific roles (commercial/field sales)
+900024,AECOM,smartrecruiters,AECOM2,https://www.aecom.com,web-verified,Good,Dublin/Cork engineering roles
+900025,Securitas,smartrecruiters,Securitas,https://www.securitas.com,web-verified,Good,Ireland-wide security roles
+900026,Stripe,greenhouse,stripe,https://stripe.com,dryrun-confirmed,Good,Large Dublin hub; live fetch confirmed 528 jobs / 58 Ireland-tagged
+900027,HubSpot,greenhouse,hubspotjobs,https://www.hubspot.com,dryrun-confirmed,Good,Dublin EMEA HQ; live fetch confirmed 170 jobs / 83 Ireland-tagged
+900028,Klaviyo,greenhouse,klaviyocampus,https://www.klaviyo.com,dryrun-0-jobs,needs_manual_review,Dublin hub; campus/intern board returned 0 jobs (likely closed) - main board token still unconfirmed
+900029,Zendesk,workday,zendesk/zendesk,https://www.zendesk.com,dryrun-confirmed,Good,Dublin hub; live fetch confirmed 6 jobs (token works) but none tagged Ireland at time of run
+900030,ICON plc,unknown,,https://careers.iconplc.com,not-found,needs_manual_review,Dublin-founded global CRO; uses own careers.iconplc.com portal - ATS not identified
+900031,Datalex,unknown,,https://www.datalex.com/company/careers,not-found,needs_manual_review,Dublin-founded travel tech - ATS not identified
+900032,AMCS Group,unknown,,https://www.amcsgroup.com/careers,not-found,needs_manual_review,Limerick-founded sustainability SaaS - ATS not identified
+900033,ENGAGE XR (Immersive VR Education),unknown,,https://engagevr.io/careers,not-found,needs_manual_review,Waterford-founded VR company - ATS not identified
+900034,Poppulo,unknown,,https://www.poppulo.com,not-found,needs_manual_review,Cork/Waterford-founded internal comms SaaS - ATS not identified
+900035,TrueLayer,unknown,,https://truelayer.com,not-found,needs_manual_review,Dublin regulatory/ops hub (UK-founded) - ATS not identified
+900036,Squarespace,unknown,,https://www.squarespace.com,not-found,needs_manual_review,400+ person Dublin hub (US-founded) - ATS not identified
+900037,State Street,workday,statestreet/Global,https://careers.statestreet.com,web-verified,Good,Huge Kilkenny/Dublin funds-industry back office
+900038,Northern Trust,workday,ntrs/northerntrust,https://careers.northerntrust.com,web-verified,Good,Large Limerick AML/back-office centre
+900039,Concentrix,workday,cnx/external_global,https://jobs.concentrix.com,web-verified,Good,Large Ireland BPO/call-centre employer
+900040,Pfizer,workday,pfizer/PfizerCareers,https://www.pfizer.com/about/careers,web-verified,Good,Multiple large Irish manufacturing sites
+900041,MSD,workday,msd/SearchJobs,https://www.msd.com/careers,web-verified,Good,Large Irish manufacturing/biotech sites; tenant is wd5
+900042,Accenture,pinpoint,accenture,https://accenture.pinpointhq.com/ireland,web-verified,Good,Ireland-specific Pinpoint board (accenture.pinpointhq.com/ireland) - huge consulting employer
+900043,Genesys,workday,genesys/Genesys,https://www.genesys.com/company/careers,web-verified,Good,Galway R&D hub
+900044,DocuSign,icims,hubcareers-docusign,https://careers.docusign.com,web-verified,Good,Dublin hub; iCIMS board confirmed at hubcareers-docusign.icims.com
+900045,Mastercard,workday,mastercard/CorporateCareers,https://careers.mastercard.com,web-verified,Good,Large Dublin tech hub
+900046,Johnson & Johnson,workday,jj/JJ,https://www.careers.jnj.com,web-verified,Good,Multiple large Irish manufacturing sites; tenant is wd5
+900047,PayPal,workday,paypal/jobs,https://careers.pypl.com,web-verified,Good,Large Dublin European Operations Centre (307+ LinkedIn IE listings)
+900048,Fidelity Investments,unknown,,https://jobs.fidelity.com/ie,not-found,needs_manual_review,Large Dublin/Galway site - custom careers portal, ATS not identified
+900049,TELUS International,unknown,,https://jobs.telusdigital.com,not-found,needs_manual_review,Large Ireland BPO employer - custom portal, ATS not identified
+900050,Foundever,unknown,,https://jobs.foundever.com,not-found,needs_manual_review,Large Ireland BPO/call-centre employer - custom portal, ATS not identified
+900051,Teleperformance,unknown,,https://www.teleperformance.com/en-us/careers,not-found,needs_manual_review,Large Ireland BPO employer - ATS not identified
+900052,Boston Scientific,successfactors,BScientific,https://career4.successfactors.com/careers?company=BScientific,incompatible-fetcher,needs_manual_review,Large Galway manufacturing site; the repo's generic SuccessFactors fetcher hardcodes a UK-only location search and also expects a different URL pattern (careers.{token}) - needs a dedicated fetcher to be usable for Ireland
+900053,Stryker,unknown,,https://careers.stryker.com/jobs,not-found,needs_manual_review,Large Cork manufacturing site - ATS not identified (reverted: an unverified token appeared here from outside this session and was not trusted)
+900054,Deloitte Ireland,unknown,,https://www.deloitte.com/ie/en/careers.html,not-found,needs_manual_review,Big Four - ATS not identified (reverted: an unverified token appeared here from outside this session and was not trusted)
+900055,EY Ireland,unknown,,https://www.ey.com/en_ie/careers,not-found,needs_manual_review,Big Four - ATS not identified
+900056,KPMG Ireland,unknown,,https://home.kpmg/ie/en/home/careers.html,not-found,needs_manual_review,Big Four - ATS not identified
+900057,PwC Ireland,unknown,,https://www.pwc.ie/careers.html,not-found,needs_manual_review,Big Four - ATS not identified (reverted: an unverified token appeared here from outside this session and was not trusted)
+900058,Qualtrics,unknown,,https://www.qualtrics.com/careers/us/en/dublin,not-found,needs_manual_review,Dublin hub - ATS not identified
+900059,ServiceNow,unknown,,https://careers.servicenow.com,not-found,needs_manual_review,Dublin hub - ATS not identified
+900060,Salesforce,unknown,,https://careers.salesforce.com,not-found,needs_manual_review,Large Dublin hub - custom Avature-like portal, ATS not identified
+900061,eBay,unknown,,https://careers.ebayinc.com,not-found,needs_manual_review,Dublin hub - ATS not identified
+
+900062,CSC,unknown,,https://cscglobal.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900063,Datadog,unknown,,https://www.datadoghq.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900064,Toast,unknown,,https://pos.toasttab.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900065,Geneva Trading,unknown,,https://www.genevatrading.com,crawl-detected,needs_manual_review,"Crawl matched token ""embed"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900066,New Relic,unknown,,https://newrelic.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900067,Notion,ashby,notion,https://www.notion.so,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900068,InterSystems,unknown,,https://www.intersystems.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900069,Pluralsight,unknown,,https://www.pluralsight.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900070,CarGurus,unknown,,https://www.cargurus.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900071,Optum,unknown,,https://www.optum.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900072,Citadel Securities,unknown,,https://www.citadelsecurities.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900073,Whatnot,unknown,,https://www.whatnot.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900074,Citadel,unknown,,https://www.citadel.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900075,Udemy,unknown,,https://www.udemy.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900076,Monte Carlo,ashby,montecarlodata,https://www.montecarlodata.com,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900077,Sprout Social,unknown,,https://sproutsocial.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900078,Clearwater Analytics,unknown,,https://www.clearwater-analytics.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900079,Block,unknown,,https://block.xyz,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900080,Identity Digital,unknown,,https://identity.digital,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900081,Skillsoft,unknown,,https://www.skillsoft.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900082,Hudson River Trading,unknown,,https://www.hudsonrivertrading.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900083,DraftKings,unknown,,https://www.draftkings.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900084,Smartling,unknown,,https://www.smartling.com,crawl-detected,needs_manual_review,"Crawl matched token ""embed"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900085,Rapid7,unknown,,https://www.rapid7.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900086,Expedia Group,unknown,,https://www.expediagroup.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900087,Dropbox,unknown,,https://www.dropbox.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900088,Applied Systems,unknown,,https://www.appliedsystems.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900089,Zynga,unknown,,https://www.zynga.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900090,Dynatrace,unknown,,https://www.dynatrace.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900091,Sysco LABS,unknown,,https://www.syscolabs.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900092,AerCap,unknown,,https://www.aercap.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900093,Cairn Homes,unknown,,https://www.cairnhomes.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900094,Corlytics,unknown,,https://www.corlytics.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900095,Davy Group,unknown,,https://www.davy.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900096,Dalata Hotel Group,unknown,,https://www.dalatahotelgroup.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900097,Energia Group,unknown,,https://www.energiagroup.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900098,Experian Ireland,unknown,,https://www.experian.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900099,Fineos,unknown,,https://www.fineos.com,crawl-detected,needs_manual_review,"Crawl matched token ""rmkcdn"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900100,Flutter Entertainment,unknown,,https://www.flutter.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900101,Greencoat Renewables,unknown,,https://www.greencoat-renewables.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900102,Havok,unknown,,https://www.havok.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900103,Keywords Studios,unknown,,https://www.keywordsstudios.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900104,Learnosity,workable,learnosity,https://www.learnosity.com,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900105,Openet,unknown,,https://www.openet.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900106,Paddy Power,unknown,,https://www.paddypower.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900107,Phorest,unknown,,https://www.phorest.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900108,StatCounter,unknown,,https://statcounter.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900109,Storyful,workday,dowjones/Storyful_Careers,https://storyful.com,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900110,Taoglas,unknown,,https://www.taoglas.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900111,Three Ireland,unknown,,https://www.three.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900112,Vodafone Ireland,unknown,,https://www.vodafone.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900113,S3 Group,unknown,,https://www.s3group.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900114,RugbyPass,unknown,,https://www.rugbypass.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900115,Pulseway,unknown,,https://www.pulseway.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900116,CRH,unknown,,https://www.crh.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900117,Kingspan Group,unknown,,https://www.kingspan.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900118,Smurfit Kappa,unknown,,https://www.smurfitkappa.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900119,Glanbia,unknown,,https://www.glanbia.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900120,C&C Group,unknown,,https://www.candcgroup.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900121,Greencore,unknown,,https://www.greencore.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900122,Perrigo,unknown,,https://www.perrigo.com,crawl-detected,needs_manual_review,"Crawl matched token ""performancemanager4"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900123,Medtronic,workday,medtronic/MedtronicCareers,https://www.medtronic.com,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900124,TE Connectivity,unknown,,https://www.te.com,crawl-detected,needs_manual_review,"Crawl matched token ""performancemanager8"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900125,Johnson Controls,workday,jci/JCI,https://www.johnsoncontrols.com,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900126,DCC plc,unknown,,https://www.dcc.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900127,Allied Irish Banks,unknown,,https://aib.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900128,Bank of Ireland,unknown,,https://www.bankofireland.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900129,EBS,unknown,,https://www.ebs.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900130,Permanent TSB,unknown,,https://www.permanenttsb.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900131,FBD Holdings,unknown,,https://www.fbd.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900132,Vhi Healthcare,unknown,,https://www.vhi.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900133,Laya Healthcare,unknown,,https://www.layahealthcare.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900134,Ryanair,unknown,,https://careers.ryanair.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900135,Aer Lingus,unknown,,https://www.aerlingus.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900136,An Post,unknown,,https://www.anpost.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900137,SuperValu,unknown,,https://www.supervalu.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900138,Musgrave,unknown,,https://www.musgrave.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900139,Eir,unknown,,https://www.eir.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900140,Bord na Mona,unknown,,https://www.bordnamona.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900141,ESB Group,unknown,,https://esb.ie,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900142,Intel Ireland,unknown,,https://www.intel.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900143,Linde,unknown,,https://www.linde.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900144,Zalando,unknown,,https://jobs.zalando.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900145,TikTok,unknown,,https://careers.tiktok.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900146,LinkedIn Ireland,unknown,,https://careers.linkedin.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900147,Meta Ireland,unknown,,https://www.metacareers.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900148,Google Ireland,unknown,,https://www.google.com/about/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900149,Amazon Ireland,unknown,,https://www.amazon.jobs,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900150,Microsoft Ireland,unknown,,https://careers.microsoft.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900151,Indeed Ireland,unknown,,https://www.indeed.com/cmp/Indeed,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900152,Autodesk,unknown,,https://www.autodesk.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900153,ADP Ireland,unknown,,https://jobs.adp.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900154,Cisco Ireland,unknown,,https://jobs.cisco.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900155,VMware Ireland,unknown,,https://careers.vmware.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900156,Dell Ireland,unknown,,https://jobs.dell.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900157,HPE Ireland,unknown,,https://careers.hpe.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900158,IBM Ireland,unknown,,https://www.ibm.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900159,West Pharmaceutical Services,unknown,,https://www.westpharma.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900160,Regeneron Ireland,unknown,,https://careers.regeneron.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900161,Eli Lilly Ireland,unknown,,https://careers.lilly.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900162,Novartis Ireland,unknown,,https://www.novartis.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900163,Sanofi Ireland,unknown,,https://www.sanofi.com/en/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900164,Abbott Ireland,unknown,,https://www.jobs.abbott,crawl-detected,needs_manual_review,"Crawl matched token ""abbott/login"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900165,AbbVie Ireland,unknown,,https://careers.abbvie.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900166,Amgen Ireland,unknown,,https://careers.amgen.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900167,Takeda Ireland,avature,takeda,https://www.takedajobs.com,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900168,Alexion Ireland,unknown,,https://alexion.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900169,Bristol Myers Squibb Ireland,workday,bristolmyerssquibb/BMS,https://careers.bms.com,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900170,Wyeth Nutrition,unknown,,https://www.pfizer.com/about/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900171,DePuy Synthes,unknown,,https://www.careers.jnj.com,crawl-detected,needs_manual_review,"Crawl matched token ""jj/login"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900172,Zimmer Biomet Ireland,unknown,,https://www.zimmerbiometcareers.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900173,Edwards Lifesciences,unknown,,https://www.edwards.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900174,GE Healthcare Ireland,unknown,,https://www.gehealthcarecareers.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900175,Cook Medical Ireland,icims,americas-cookmedical,https://www.cookmedical.com/careers,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900176,LinkedIn EMEA,unknown,,https://careers.linkedin.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900177,Genpact,workday,genpact/External_Careers,https://www.genpact.com/careers,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900178,Willis Towers Watson Ireland,unknown,,https://careers.wtwco.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900179,Aon Ireland,unknown,,https://aon.com/careers,crawl-detected,needs_manual_review,"Crawl matched token ""cookie-policy-scripts"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900180,Marsh Ireland,unknown,,https://careers.marshmclennan.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900181,Zurich Insurance Ireland,unknown,,https://www.zurich.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900182,AIG Ireland,unknown,,https://careers.aig.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900183,Chubb Ireland,unknown,,https://careers.chubb.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900184,XL Catlin Ireland,unknown,,https://www.axa-xl.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900185,Beazley Ireland,unknown,,https://careers.beazley.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900186,Liberty Mutual Ireland,unknown,,https://jobs.libertymutualgroup.com,crawl-detected,needs_manual_review,"Crawl matched token ""internal-libertymutual"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900187,Susquehanna International Group,unknown,,https://careers.sig.com,crawl-detected,needs_manual_review,"Crawl matched token ""cookie-policy-scripts"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900188,Citco,unknown,,https://www.citco.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900189,SS&C Technologies,unknown,,https://www.ssctech.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900190,IQ-EQ,unknown,,https://www.iqeq.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900191,Sanne Group,unknown,,https://www.sanne.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900192,Apex Group,workday,theapexgroup/apexgroupcareers,https://www.apexgroup.com/careers,crawl-detected,Good,"Crawl-detected ATS token (homepage/careers-page scan), not yet live-verified by fetch"
+900193,Deutsche Bank Ireland,unknown,,https://careers.db.com,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900194,BNY Mellon Ireland,unknown,,https://www.bnymellon.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900195,UBS Ireland,unknown,,https://www.ubs.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900196,Barclays Ireland,unknown,,https://search.jobs.barclays,crawl-detected,needs_manual_review,"Crawl matched token ""barclays/login"" but it looks like a false positive (shared/CDN/login-page artifact) - needs manual lookup"
+900197,HSBC Ireland,unknown,,https://www.hsbc.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900198,Wells Fargo Ireland,unknown,,https://www.wellsfargo.jobs,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900199,Morgan Stanley Ireland,unknown,,https://www.morganstanley.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
+900200,Goldman Sachs Ireland,unknown,,https://www.goldmansachs.com/careers,crawl-detected,needs_manual_review,Crawl found careers page but no recognizable ATS pattern - needs manual lookup
