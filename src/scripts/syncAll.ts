@@ -212,58 +212,6 @@ const IRELAND_LOCATIONS = [
     "mullingar", "sligo", "athlone", "republic of ireland", "eire"
 ];
 
-const NON_UK_LOCATION_PHRASES = [
-    // Country names
-    "united states", "usa", "u.s.a", "canada", "india", "australia", "new zealand",
-    "germany", "france", "netherlands", "spain", "portugal", "italy", "sweden",
-    "norway", "denmark", "finland", "switzerland", "austria", "belgium",
-    "poland", "ukraine", "russia", "china", "japan", "south korea",
-    "singapore", "hong kong", "united arab emirates", "dubai", "israel", "ireland", "eire",
-    // US cities
-    "new york", "new jersey", "san francisco", "los angeles", "seattle", "chicago", "boston", "austin", "dallas", "houston", "denver", "atlanta",
-    "miami", "phoenix", "las vegas", "san jose", "san diego", "whippany", "wilmington", "st louis", "new hampshire", "california", "texas", "virginia", "mclean", "richmond", "plano", "georgia", "illinois", "maryland", "pennsylvania", "north carolina",
-    // Other non-UK cities
-    "auckland", "tokyo", "berlin", "munich", "hamburg", "paris", "amsterdam", "madrid", "barcelona", "stockholm", "oslo", "copenhagen",
-    "zurich", "geneva", "vienna", "warsaw", "prague", "bucharest", "budapest", "milan", "rome", "lisbon", "brussels", "luxembourg", "mexico city",
-    // India cities
-    "pune", "mumbai", "bengaluru", "bangalore", "chennai", "hyderabad", "noida", "gurgaon", "gurugram", "delhi", "kolkata", "ahmedabad", "jaipur"
-];
-
-const UK_URL_HINTS = [
-    "/uk/", "united-kingdom", "country=gb", "country=uk", "location=uk", "locale=en-gb",
-    "countryid=gbr", "country%5B%5D=gbr", "country=gbr",
-    "city=london", "city=manchester", "city=birmingham", "city=leeds", "city=bristol", "city=liverpool",
-    "city=edinburgh", "city=glasgow", "city=cardiff", "city=belfast",
-    "/en-gb/", "-gb-", "region=uk", "region=gb"
-];
-
-const IRELAND_CITIES = [
-    "Dublin", "Cork", "Limerick", "Galway", "Waterford", "Drogheda", "Kilkenny", "Wexford", "Sligo", "Clonmel",
-    "Dundalk", "Bray", "Navan", "Ennis", "Tralee", "Carlow", "Naas", "Athlone", "Letterkenny", "Tullamore",
-    "Killarney", "Arklow", "Cobh", "Castlebar", "Midleton", "Mallow", "Ballina", "Enniscorthy", "Wicklow", "Cavan",
-    "Athy", "Longford", "Dungarvan", "Nenagh", "Trim", "New Ross", "Thurles", "Youghal", "Monaghan", "Buncrana",
-    "Ballinasloe", "Fermoy", "Westport", "Carrick-on-Suir", "Kells", "Birr", "Tipperary", "Carrickmacross", "Kinsale", "Listowel",
-    "Clonakilty", "Cashel", "Macroom", "Castleblayney", "Kilrush", "Skibbereen", "Bundoran", "Templemore", "Clones", "Newbridge",
-    "Portlaoise", "Mullingar", "Balbriggan", "Greystones", "Leixlip", "Tramore", "Shannon", "Gorey", "Tuam", "Edenderry",
-    "Bandon", "Passage West", "Loughrea", "Ardee", "Mountmellick", "Bantry", "Muine Bheag", "Boyle", "Ballyshannon", "Cootehill",
-    "Ballybay", "Belturbet", "Lismore", "Kilkee", "Granard"
-];
-
-const IRELAND_LOCATION_PHRASES = [
-    "ireland",
-    "republic of ireland",
-    "eire",
-    "éire",
-    ...IRELAND_CITIES,
-];
-
-const NON_UK_URL_HINTS = [
-    "country=us", "country=usa", "country=ca", "country=au", "country=sg", "country=in",
-    "location=united-states", "location=usa", "location=us",
-    "city=new-york", "city=san-francisco", "city=seattle", "city=toronto", "city=singapore",
-    "country=ie", "country=de", "country=fr"
-];
-
 function normalizeLocation(str: string): string {
     return String(str || '')
         .toLowerCase()
@@ -290,38 +238,6 @@ export function buildLocationInput(job: Job) {
         isRemote: /\bremote\b/i.test(raw),
         isTrustedSource: false,
     };
-}
-
-export function isLikelyIrelandJob(job: Job, locationInput: any): boolean {
-    const locationNorm = normalizeLocation(job.location);
-    const titleNorm = normalizeLocation(job.title);
-    const deptNorm = normalizeLocation(job.department || '');
-
-    // Hard block: US-based Dublin locations
-    if (locationNorm.includes('us-ca-dublin') || locationNorm.includes('dublin, ca') || locationNorm.includes('dublin, oh') || locationNorm.includes('dublin, california') || locationNorm.includes('dublin, ohio')) {
-        return false;
-    }
-
-    // Hard block: UK locations that aren't Northern Ireland
-    if (isUKJob(locationInput) && !locationNorm.includes('northern ireland')) {
-        return false;
-    }
-
-    const locationCandidates = (locationInput.locations || []).map(normalizeLocation).filter(Boolean);
-
-    if (!locationNorm && !titleNorm && !deptNorm && !locationCandidates.length) {
-        return false;
-    }
-
-    if (locationNorm.includes('northern ireland') || titleNorm.includes('northern ireland') || deptNorm.includes('northern ireland')) {
-        return false;
-    }
-
-    const irelandMatches = [locationNorm, titleNorm, deptNorm, ...locationCandidates]
-        .some((text) => text && IRELAND_LOCATION_PHRASES.some((phrase) => text.includes(normalizeLocation(phrase))));
-    if (irelandMatches) return true;
-
-    return false;
 }
 
 async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Job[]): Promise<JobRow[]> {
@@ -444,98 +360,6 @@ function isUKLocation(loc: any): boolean {
         if (normalized.includes(phrase)) return true;
     }
 
-    return false;
-}
-
-function hasAnyHint(text: string, hints: string[]): boolean {
-    return hints.some((hint) => text.includes(hint));
-}
-
-function isLikelyUKJob(job: Job): boolean {
-    const locationNorm = normalizeLocation(job.location || '');
-    const urlNorm = String(job.url || '').toLowerCase();
-    const titleNorm = String(job.title || '').toLowerCase();
-
-    // If ATS says it's UK, but location explicitly says it's not, ATS is wrong.
-    // So we run the location check FIRST.
-
-    // console.log(`[DEBUG] Checking: ${job.title} | Loc: ${job.location}`);
-
-    // Hard block: URL signals non-UK
-    const badUrlHint = NON_UK_URL_HINTS.find((hint) => urlNorm.includes(hint));
-    if (badUrlHint) {
-        job.rejection_reason = `non_uk_url: ${badUrlHint}`;
-        return false;
-    }
-
-    // Hard block: location signals non-UK phrase
-    const badLocPhrase = NON_UK_LOCATION_PHRASES.find((p) => locationNorm.includes(p));
-    if (badLocPhrase && !locationNorm.includes('northern ireland')) {
-        job.rejection_reason = `non_uk_location: ${badLocPhrase}`;
-        return false;
-    }
-
-    if (job.verified) return true;
-
-    // PRIMARY: location field is the strongest signal
-    if (locationNorm) {
-        const ukFromLoc = isUKLocation(locationNorm);
-        if (ukFromLoc) return true;
-
-        // EXCEPTION: if location is just 'remote' but the URL is explicitly UK
-        // e.g. jobs.company.co.uk/remote-role
-        if (/^remote$/.test(locationNorm) && (
-            urlNorm.includes('.uk') ||
-            urlNorm.includes('.co.uk') ||
-            urlNorm.includes('country=gb') ||
-            urlNorm.includes('country=uk')
-        )) {
-            return true;
-        }
-
-        // Location is present but NOT UK — don't fall through to URL/title signals
-        // (avoids "Senior Engineer - New York" matching title-based UK city checks)
-        // EXCEPTION: if location is truly ambiguous (e.g. 'remote', 'flexible')
-        const isAmbiguous = /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified|remote other|remot other|multiple locations|location negotiable|negotiable|tbd|to be confirmed|various|various locations|see description|see job description)$/.test(locationNorm) ||
-            /\d+\s+locations?/.test(locationNorm);
-
-        if (!isAmbiguous) {
-            // Gap 6: EMEA / Global Roles Being Dropped
-            const EMEA_GLOBAL = ['emea', 'europe', 'global', 'worldwide', 'international', 'western europe', 'northern europe', 'british isles'];
-            if (EMEA_GLOBAL.some(w => locationNorm.includes(w))) {
-                job.needs_review = true;
-                return true; // Save it but flagged for review
-            }
-            job.rejection_reason = `failed_uk_location_check`;
-            return false;
-        }
-    }
-
-    // SECONDARY: URL contains explicit UK hint (e.g. country=gb, /uk/)
-    if (hasAnyHint(urlNorm, UK_URL_HINTS)) return true;
-
-    // TERTIARY: URL contains UK word boundary (only when location is empty/ambiguous)
-    if (/\b(uk|united.kingdom|england|scotland|wales|northern.ireland)\b/i.test(urlNorm)) return true;
-
-    // FOURTH: Job title contains explicit UK city/nation
-    // FOURTH: Job title contains explicit UK city/nation/region
-    const ukTerms = [
-        ...UK_COUNTRIES, ...UK_NATIONS, ...UK_CITIES
-    ].map(s => s.replace(/\s+/g, '[\\s\\.\\-]+'));
-    const titleRegex = new RegExp(`\\b(${ukTerms.join('|')})\\b`, 'i');
-    if (titleRegex.test(titleNorm)) return true;
-
-    // FIFTH: Department/team field contains UK signal (Gap 1)
-    const deptNorm = String(job.department || '').toLowerCase();
-    if (titleRegex.test(deptNorm)) return true;
-
-    // Gap 1 fallback: If location is genuinely blank/ambiguous and nothing matched, mark for review
-    if (!locationNorm) {
-        job.needs_review = true;
-        return true;
-    }
-
-    job.rejection_reason = `no_uk_signals`;
     return false;
 }
 

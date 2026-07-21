@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import * as cheerio from 'cheerio';
 import dotenv from 'dotenv';
 import { chromium } from 'playwright';
+import { isUKJob } from '../lib/ukFilter';
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
     try {
@@ -72,7 +73,9 @@ async function scrapeGoogle() {
 
             $('div.sMn82b').each((i: number, el: any) => {
                 const title = $(el).find('h3.Qk805e').text().trim() || $(el).find('h3').text().trim();
-                let location = $(el).find('span.r0wTof').text().trim() || 'United Kingdom';
+                // No fallback to a fake "United Kingdom" default here — an unparsed location
+                // must not be manufactured into a confirmed-UK signal for the filter below.
+                let location = $(el).find('span.r0wTof').text().trim();
 
                 // Cleanup "London, UKLondon, UK" duplicate strings often caused by screenreader spans
                 if (location.length > 5) {
@@ -116,7 +119,19 @@ async function scrapeGoogle() {
     }
 
     // 4. Remove Duplicates (Google infinite scroll sometimes overlays)
-    const uniqueJobs = Array.from(new Map(allJobs.map(item => [item.url, item])).values());
+    const dedupedJobs = Array.from(new Map(allJobs.map(item => [item.url, item])).values());
+
+    // The location=United%20Kingdom query param is not a guaranteed hard filter —
+    // re-validate every result before it goes anywhere near the jobs table.
+    const uniqueJobs = dedupedJobs.filter((job: any) => isUKJob({
+        locations: [job.location].filter(Boolean),
+        isRemote: /\bremote\b/i.test(job.location || ''),
+        isTrustedSource: false
+    }));
+    const rejectedCount = dedupedJobs.length - uniqueJobs.length;
+    if (rejectedCount > 0) {
+        console.log(`Filtered out ${rejectedCount} non-UK/unparsed-location jobs from the scrape results.`);
+    }
 
     console.log(`Attempting to save ${uniqueJobs.length} Google jobs to DB.`);
 

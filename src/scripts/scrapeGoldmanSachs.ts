@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import dotenv from 'dotenv';
 import * as cheerio from 'cheerio';
+import { isUKJob } from '../lib/ukFilter';
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
     try {
@@ -95,11 +96,22 @@ async function scrapeGoldmanSachs() {
         if (browser) await browser.close();
     }
 
-    // 4. Insert directly (we already filtered location in the API request)
-    console.log(`Attempting to save ${allJobs.length} Goldman Sachs jobs to DB.`);
+    // 4. The higher.gs.com LOCATION query param is not a guaranteed hard filter —
+    // re-validate every result before it goes anywhere near the jobs table.
+    const ukJobs = allJobs.filter((job: any) => isUKJob({
+        locations: [job.location].filter(Boolean),
+        isRemote: /\bremote\b/i.test(job.location || ''),
+        isTrustedSource: false
+    }));
+    const rejectedCount = allJobs.length - ukJobs.length;
+    if (rejectedCount > 0) {
+        console.log(`Filtered out ${rejectedCount} non-UK jobs from the scrape results.`);
+    }
 
-    if (allJobs.length > 0) {
-        const jobsToInsert = allJobs.map((job: any) => ({
+    console.log(`Attempting to save ${ukJobs.length} Goldman Sachs jobs to DB.`);
+
+    if (ukJobs.length > 0) {
+        const jobsToInsert = ukJobs.map((job: any) => ({
             company_id: company.id,
             title: job.title,
             location: job.location,
@@ -114,10 +126,10 @@ async function scrapeGoldmanSachs() {
 
     // 5. Update Exact Count Tracking
     await supabase.from('companies').update({
-        active_jobs_count: allJobs.length
+        active_jobs_count: ukJobs.length
     }).eq('id', company.id);
 
-    console.log(`Successfully completed Goldman Sachs ingestion! Inserted ${allJobs.length} jobs.`);
+    console.log(`Successfully completed Goldman Sachs ingestion! Inserted ${ukJobs.length} jobs.`);
 }
 
 scrapeGoldmanSachs().catch(console.error);

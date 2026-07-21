@@ -113,7 +113,10 @@ export function workdayToJobLocationInput(job: any): JobLocationInput {
     return {
         locations,
         isRemote: rawLocations.some((l: string) => containsRemote(l)),
-        isTrustedSource: !!job.verified,
+        // job.verified reflects a small-sample heuristic used to pick which facet/endpoint
+        // to paginate through — it is not reliable enough to skip per-job location
+        // validation, so every Workday job still has to pass the real geography check below.
+        isTrustedSource: false,
     };
 }
 

@@ -8,6 +8,7 @@ import { PlaywrightCrawler, log } from 'crawlee';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
+import { isIrelandJob } from '../lib/irelandFilter';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -145,8 +146,18 @@ async function scrapeLinkedin() {
         return;
     }
 
+    // LinkedIn's public search location param is not a strict geo filter — it
+    // regularly returns jobs based elsewhere (other EU cities, the US, etc).
+    // Re-validate every scraped location before it's allowed anywhere near jobs_IR.
+    const irelandJobs = allJobs.filter(j => isIrelandJob(j.location));
+    const rejectedCount = allJobs.length - irelandJobs.length;
+    if (rejectedCount > 0) {
+        log.info(`Filtered out ${rejectedCount} non-Ireland jobs from the scrape results.`);
+    }
+
+    // Map companies and insert missing ones
     log.info('Resolving companies...');
-    const companyNames = [...new Set(allJobs.map((j) => j.company))];
+    const companyNames = [...new Set(irelandJobs.map((j) => j.company))];
     const companyMap = new Map<string, number>();
     let companiesCreated = 0;
 
@@ -233,8 +244,8 @@ async function scrapeLinkedin() {
     let upserted = 0;
     let upsertErrors = 0;
 
-    for (let i = 0; i < allJobs.length; i += 500) {
-        const batch = allJobs
+    for (let i = 0; i < irelandJobs.length; i += 500) {
+        const batch = irelandJobs
             .slice(i, i + 500)
             .map((j) => ({
                 company_id: companyMap.get(j.company),

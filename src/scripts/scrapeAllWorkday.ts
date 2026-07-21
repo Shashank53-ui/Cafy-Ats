@@ -2,6 +2,8 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import * as crypto from 'crypto';
+import { isUKJob } from '../lib/ukFilter';
+import { workdayToJobLocationInput } from '../lib/ukFilterAdapters';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
@@ -10,38 +12,9 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const UK_COUNTRIES = ['uk', 'united kingdom', 'gb', 'gbr', 'great britain'];
-const UK_NATIONS = ['england', 'scotland', 'wales', 'northern ireland'];
-const UK_CITIES = ['london', 'manchester', 'birmingham', 'leeds', 'glasgow', 'edinburgh', 'bristol', 'liverpool', 'nottingham', 'sheffield', 'cardiff', 'belfast', 'newcastle', 'cambridge', 'oxford', 'reading', 'brighton', 'southampton', 'coventry', 'leicester', 'york', 'bath', 'milton keynes', 'derby', 'portsmouth', 'exeter', 'plymouth', 'aberdeen', 'dundee', 'stoke', 'luton', 'swindon', 'warrington', 'bolton', 'rochdale', 'sunderland'];
-
-function normalizeLocation(str: string) {
-    return String(str || '').toLowerCase().replace(/[()]/g, '').replace(/[\/\-_|,]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function isUKLocation(loc: string) {
+function isUKLocation(loc: string, url?: string) {
     if (!loc) return false;
-    const normalized = normalizeLocation(loc);
-
-    if (normalized.includes('ukraine')) return false;
-
-    if (normalized.includes('remote') && (normalized.includes('uk') || normalized.includes('united kingdom'))) {
-        return true;
-    }
-
-    const tokens = normalized.split(/\s+/);
-    for (const token of tokens) {
-        if (UK_COUNTRIES.includes(token) || UK_NATIONS.includes(token) || UK_CITIES.includes(token)) {
-            return true;
-        }
-    }
-
-    const multiWords = [...UK_COUNTRIES, ...UK_NATIONS, ...UK_CITIES].filter(w => w.includes(' '));
-    for (const phrase of multiWords) {
-        if (normalized.includes(phrase)) {
-            return true;
-        }
-    }
-    return false;
+    return isUKJob(workdayToJobLocationInput({ locationsText: loc, url }));
 }
 
 function safeStr(s: any, maxLen = 500) {
@@ -161,11 +134,12 @@ async function scrapeWorkdayJobs(companyId: number, tradingName: string, token: 
                     for (const j of currentPosts) {
                         // Accenture-style: locationsText is undefined, location is in bulletFields[1]
                         const loc = j.locationsText || j.bulletFields?.[1] || 'UK';
-                        if (isUKLocation(loc) || payload.appliedFacets.locationCountry) {
+                        const jobUrl = safeStr(`${publicBase}${j.externalPath}`, 500);
+                        if (isUKLocation(loc, jobUrl)) {
                             allJobs.push({
                                 title: safeStr(j.title),
                                 location: safeStr(loc),
-                                url: safeStr(`${publicBase}${j.externalPath}`, 500),
+                                url: jobUrl,
                                 department: safeStr(j.jobFamilyGroup || j.jobFamily || '') || null
                             });
                         }
@@ -188,7 +162,7 @@ async function scrapeWorkdayJobs(companyId: number, tradingName: string, token: 
 
     // Deduplicate
     const uniqueJobs = Array.from(new Map(allJobs.map(item => [item.url, item])).values())
-        .filter(j => isUKLocation(j.location));
+        .filter(j => isUKLocation(j.location, j.url));
     console.log(`  -> Extracted ${uniqueJobs.length} live UK roles.`);
 
     if (uniqueJobs.length > 0) {
