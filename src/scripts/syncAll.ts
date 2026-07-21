@@ -106,6 +106,7 @@ interface JobRow {
     level: string | null;
     sector: string | null;
     updated_at: string;
+    source?: 'ats' | 'linkedin';
 }
 
 // Rejection log array to track dropped jobs
@@ -127,6 +128,8 @@ interface CompanyRow {
     careers_url?: string | null;
     url?: string | null;
     company_sector?: string | null;
+    /** uk = default UK pipeline; ireland = write jobs_IR only; both = dual-write */
+    sync_market?: 'uk' | 'ireland' | 'both' | null;
 }
 
 interface AtsOverrideRow {
@@ -1145,11 +1148,27 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
 
     if (specificIds && specificIds.length > 0) {
         try {
-            const { data, error } = await supabase
+            let data: any[] | null = null;
+            let error: { message: string } | null = null;
+
+            const withMarket = await supabase
                 .from('companies')
-                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
+                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market')
                 .in('id', specificIds)
                 .order('trading_name');
+
+            if (withMarket.error && /sync_market/i.test(withMarket.error.message)) {
+                const fallback = await supabase
+                    .from('companies')
+                    .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
+                    .in('id', specificIds)
+                    .order('trading_name');
+                data = fallback.data;
+                error = fallback.error;
+            } else {
+                data = withMarket.data;
+                error = withMarket.error;
+            }
 
             if (error) {
                 throw new Error(error.message);
@@ -1162,7 +1181,8 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
                 const override = overrides.get(company.id);
                 const base = {
                     ...company,
-                    careers_url: company.url
+                    careers_url: company.url,
+                    sync_market: company.sync_market || (company.id >= 900000 ? 'ireland' : 'uk'),
                 };
                 if (!override) return base;
 
@@ -1184,21 +1204,30 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
     const pageSize = 1000;
     let from = 0;
     const all: CompanyRow[] = [];
+    let selectWithMarket = true;
 
     try {
         while (true) {
             const to = from + pageSize - 1;
+            const selectCols = selectWithMarket
+                ? 'id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market'
+                : 'id, trading_name, ats_provider, ats_board_token, url, company_sector';
             const { data, error } = await supabase
                 .from('companies')
-                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
+                .select(selectCols)
                 .order('id', { ascending: true })
                 .range(from, to);
 
             if (error) {
+                if (selectWithMarket && /sync_market/i.test(error.message)) {
+                    console.warn('companies.sync_market missing — run supabase/add_ireland_source_and_market.sql');
+                    selectWithMarket = false;
+                    continue;
+                }
                 throw new Error(`Could not load companies page ${from}-${to}: ${error.message}`);
             }
 
-            const rows = (data || []) as CompanyRow[];
+            const rows = (data || []) as unknown as CompanyRow[];
             if (rows.length === 0) break;
 
             all.push(...rows);
@@ -1213,7 +1242,8 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
             const override = overrides.get(company.id);
             const base = {
                 ...company,
-                careers_url: company.url
+                careers_url: company.url,
+                sync_market: company.sync_market || (company.id >= 900000 ? 'ireland' : 'uk'),
             };
             if (!override) return base;
 
@@ -3829,6 +3859,11 @@ export async function syncAll() {
 
     const includeLinkedin = !args.includes('--exclude-linkedin');
 
+    const marketIndex = args.indexOf('--market');
+    const targetMarket = marketIndex !== -1
+        ? String(args[marketIndex + 1] || '').toLowerCase()
+        : null;
+
     if (fallbackOnlyDryRun) {
         console.log('Running in custom fallback DRY RUN mode (no DB writes)');
     }
@@ -3836,6 +3871,9 @@ export async function syncAll() {
         console.log('LinkedIn companies are INCLUDED in this run (use --exclude-linkedin to skip)');
     } else {
         console.log('LinkedIn companies will be SKIPPED');
+    }
+    if (targetMarket) {
+        console.log(`Filtering companies by sync_market=${targetMarket}`);
     }
 
     if (specificIds) {
@@ -3848,6 +3886,21 @@ export async function syncAll() {
     } catch (e: any) {
         console.error('❌ Could not load companies from DB:', e.message);
         return;
+    }
+
+    if (targetMarket === 'ireland') {
+        companies = companies.filter((c) => {
+            const market = String(c.sync_market || 'uk').toLowerCase();
+            const provider = String(c.ats_provider || '').toLowerCase();
+            return market === 'ireland' || market === 'both' || provider === 'linkedin' || c.id >= 900000;
+        });
+        console.log(`Ireland-market companies: ${companies.length}`);
+    } else if (targetMarket === 'uk') {
+        companies = companies.filter((c) => {
+            const market = String(c.sync_market || 'uk').toLowerCase();
+            return market === 'uk' || market === 'both';
+        });
+        console.log(`UK-market companies: ${companies.length}`);
     }
 
     const { count: statusCount, error: statusCountError } = await supabase
@@ -3952,6 +4005,8 @@ export async function syncAll() {
             const irelandJobs: Job[] = [];
             let rejectedCount = 0;
             let needsReviewCount = 0;
+            const syncMarket = String(company.sync_market || 'uk').toLowerCase();
+            const irelandOnlyMarket = syncMarket === 'ireland';
 
             for (const j of allJobs) {
                 const atsProvider = j.atsProvider ?? j.source ?? '';
@@ -3979,21 +4034,40 @@ export async function syncAll() {
                     }
                 }
 
-
-                // Fix empty/generic remote locations based on job title
-                                if (!isValidJobTitle(j.title)) {
+                if (!isValidJobTitle(j.title)) {
                     rejectedCount++;
                     continue;
                 }
-                if (isTrustedUKCompany || isUKJob(locationInput)) {
-                    ukJobs.push(j);
-                    if (j.needs_review) needsReviewCount++;
+
+                const matchesIreland = isIrelandJob(j.location, locationInput.locations);
+                const matchesUK = isTrustedUKCompany || isUKJob(locationInput);
+
+                // Ireland-market companies: only write RoI jobs to jobs_IR (never UK table).
+                if (irelandOnlyMarket) {
+                    if (matchesIreland) {
+                        irelandJobs.push(j);
+                    } else {
+                        rejectedCount++;
+                        globalRejectionLog.push({
+                            company: trading_name,
+                            provider: displayProvider,
+                            title: j.title,
+                            location: j.location,
+                            url: j.url,
+                            reason: j.rejection_reason || 'not_ireland_market'
+                        });
+                    }
                     continue;
                 }
 
-                if (isIrelandJob(j.location, locationInput.locations)) {
+                // Dual-write for multi-location posts (e.g. "London | Dublin").
+                if (matchesUK) {
+                    ukJobs.push(j);
+                    if (j.needs_review) needsReviewCount++;
+                }
+                if (matchesIreland) {
                     irelandJobs.push(j);
-                } else {
+                } else if (!matchesUK) {
                     rejectedCount++;
                     globalRejectionLog.push({
                         company: trading_name,
@@ -4011,27 +4085,47 @@ export async function syncAll() {
             result.rejected = rejectedCount;
             result.needsReview = needsReviewCount;
 
-            const ukRows = await buildRowsForJobs(company, id, ukJobs);
-            const irelandRows = await buildRowsForJobs(company, id, irelandJobs);
+            const ukRows = irelandOnlyMarket ? [] : await buildRowsForJobs(company, id, ukJobs);
+            const irelandRows = (await buildRowsForJobs(company, id, irelandJobs)).map((row) => ({
+                ...row,
+                source: 'ats' as const,
+            }));
 
             const persistRows = async (tableName: 'jobs' | 'jobs_IR', rows: JobRow[]) => {
+                // Never wipe LinkedIn-sourced Ireland rows during ATS sync.
                 if (!rows.length) {
-                    await supabase.from(tableName).delete().eq('company_id', id);
+                    if (tableName === 'jobs_IR') {
+                        const { error: delErr } = await supabase.from(tableName).delete().eq('company_id', id).eq('source', 'ats');
+                        if (delErr && /source/i.test(delErr.message)) {
+                            // Schema not migrated yet: delete only non-LinkedIn URLs for this company
+                            const { data: existing } = await supabase.from(tableName).select('url').eq('company_id', id);
+                            const stale = (existing || []).map((r) => r.url).filter((u) => !/linkedin\.com|lnkd\.in/i.test(u));
+                            for (const chunk of chunkArray(stale, 100)) {
+                                await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
+                            }
+                        }
+                    } else {
+                        await supabase.from(tableName).delete().eq('company_id', id);
+                    }
                     return 0;
                 }
 
                 const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
                 if (jobErr) {
-                    if (tableName === 'jobs_IR' && /sector|schema cache/i.test(jobErr.message)) {
-                        const fallbackRows = rows.map(({ sector, ...rest }) => rest);
+                    if (tableName === 'jobs_IR' && /sector|schema cache|source/i.test(jobErr.message)) {
+                        const fallbackRows = rows.map(({ sector, source, ...rest }) => rest);
                         const { error: fallbackErr } = await supabase.from(tableName).upsert(fallbackRows, { onConflict: 'url' });
                         if (!fallbackErr) {
-                            console.warn(`[${displayProvider}] ${trading_name} jobs_IR upsert retried without sector because the table schema does not expose that column yet.`);
+                            console.warn(`[${displayProvider}] ${trading_name} jobs_IR upsert retried without sector/source (schema may be missing columns).`);
 
                             const currentUrls = fallbackRows.map(row => row.url);
-                            const { data: existingJobs } = await supabase.from(tableName).select('url').eq('company_id', id);
+                            let existingQuery = supabase.from(tableName).select('url').eq('company_id', id);
+                            // Best-effort: only consider ATS rows stale when source column exists
+                            const { data: existingJobs } = await existingQuery;
                             if (existingJobs && existingJobs.length > 0) {
-                                const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
+                                const staleUrls = existingJobs
+                                    .map(r => r.url)
+                                    .filter(url => !currentUrls.includes(url) && !/linkedin\.com|lnkd\.in/i.test(url));
                                 if (staleUrls.length > 0) {
                                     for (const chunk of chunkArray(staleUrls, 100)) {
                                         await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
@@ -4048,12 +4142,31 @@ export async function syncAll() {
                 }
 
                 const currentUrls = rows.map(row => row.url);
-                const { data: existingJobs } = await supabase.from(tableName).select('url').eq('company_id', id);
+                let existingJobs: { url: string }[] | null = null;
+                if (tableName === 'jobs_IR') {
+                    const bySource = await supabase.from(tableName).select('url').eq('company_id', id).eq('source', 'ats');
+                    if (bySource.error && /source/i.test(bySource.error.message)) {
+                        const allForCompany = await supabase.from(tableName).select('url').eq('company_id', id);
+                        existingJobs = (allForCompany.data || []).filter((r) => !/linkedin\.com|lnkd\.in/i.test(r.url));
+                    } else {
+                        existingJobs = bySource.data;
+                    }
+                } else {
+                    const res = await supabase.from(tableName).select('url').eq('company_id', id);
+                    existingJobs = res.data;
+                }
                 if (existingJobs && existingJobs.length > 0) {
                     const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
                     if (staleUrls.length > 0) {
                         for (const chunk of chunkArray(staleUrls, 100)) {
-                            await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
+                            let del = supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
+                            if (tableName === 'jobs_IR') {
+                                del = del.eq('source', 'ats');
+                            }
+                            const { error: delErr } = await del;
+                            if (delErr && /source/i.test(delErr.message)) {
+                                await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
+                            }
                         }
                     }
                 }
@@ -4062,7 +4175,7 @@ export async function syncAll() {
             };
 
             if (!fallbackOnlyDryRun) {
-                const savedUK = await persistRows('jobs', ukRows);
+                const savedUK = irelandOnlyMarket ? 0 : await persistRows('jobs', ukRows);
                 const savedIreland = await persistRows('jobs_IR', irelandRows);
                 result.saved = savedUK + savedIreland;
                 result.savedIreland = savedIreland;
@@ -4080,10 +4193,12 @@ export async function syncAll() {
                 }).eq('id', id);
             }
 
-            // Update active jobs count
-            if (!fallbackOnlyDryRun) {
+            // Update active jobs count — skip for Ireland-only market so they don't dominate UK browse.
+            if (!fallbackOnlyDryRun && !irelandOnlyMarket) {
                 const { count: finalCount } = await supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('company_id', id);
                 await supabase.from('companies').update({ active_jobs_count: finalCount || 0 }).eq('id', id);
+            } else if (!fallbackOnlyDryRun && irelandOnlyMarket) {
+                await supabase.from('companies').update({ active_jobs_count: 0 }).eq('id', id);
             }
 
             const statusEmoji = (result.ukJobs + result.irelandJobs) > 0 ? '✅' : '⚪';

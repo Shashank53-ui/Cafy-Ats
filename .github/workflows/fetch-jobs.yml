@@ -9,6 +9,7 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository
@@ -43,17 +44,24 @@ jobs:
           npx playwright install --with-deps chromium
           python -m playwright install chromium
 
-      # 4. Run Job Sync
-      - name: Run Fetch/Sync Script
+      # 4. ATS sync (skip LinkedIn provider boards — LinkedIn step owns that volume)
+      - name: Run ATS Sync
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
-        run: npm run sync
+        run: npx tsx src/scripts/syncAll.ts --exclude-linkedin
 
-      # 5. Run LinkedIn Scraper
+      # 5. LinkedIn Ireland (primary jobs_IR volume) — existing single entrypoint
       - name: Run LinkedIn Ireland Scraper
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run sync:linkedin
+
+      # 6. Fail the workflow if Ireland inventory is below SLA
+      - name: Check jobs_IR count >= 6000
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx src/scripts/checkJobsIrCount.ts --min 6000
