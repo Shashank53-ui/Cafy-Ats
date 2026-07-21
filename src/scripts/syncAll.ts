@@ -24,6 +24,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
+import { fetchCustom } from './customScrapers';
 import { chromium } from 'playwright';
 import { inferJobLevel } from '../lib/inferJobLevel';
 import { inferJobSector } from '../lib/inferJobSector';
@@ -119,7 +120,7 @@ interface RejectionLogEntry {
 }
 const globalRejectionLog: RejectionLogEntry[] = [];
 
-interface CompanyRow {
+export interface CompanyRow {
     id: number;
     trading_name: string;
     ats_provider: string;
@@ -141,7 +142,7 @@ interface AtsOverrideRow {
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-async function fetchWithTimeout(url: string, options: any = {}, timeout = 15000) {
+export async function fetchWithTimeout(url: string, options: any = {}, timeout = 15000) {
     const controller = new AbortController();
     // Keep the abort timer running through the body read, not just headers
     const id = setTimeout(() => controller.abort(), timeout);
@@ -614,7 +615,8 @@ function resolveProviderAndToken(
                 return { provider: route.fetcher, token: lookupStr };
             }
         }
-        // No matching custom route — fall through to URL inference below
+        // Route everything else marked as custom to our generic custom fetcher
+        return { provider: 'custom', token: lookupStr };
     }
 
     // Normalize provider and apply alias
@@ -1025,7 +1027,7 @@ async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOn
         if (!fetcher) continue;
 
         try {
-            let jobs = await fetcher(attempt.token);
+            let jobs = await fetcher(attempt.token, company);
             jobs = jobs.filter(j => isValidJobTitle(j.title));
             if (jobs.length > 0) {
                 return {
@@ -1755,7 +1757,7 @@ async function fetchPersonio(token: string): Promise<Job[]> {
             return {
                 title: get('name') || get('title'),
                 location: get('office') || get('location'),
-                url: get('jobUrl') || `https://${token}.jobs.personio.de`,
+                url: get('jobUrl') || `https://${token}.jobs.personio.de/job/${get('id')}?display=en`,
                 department: get('department'),
                 salary: undefined
             };
@@ -2015,20 +2017,53 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 }
 
 async function fetchOracleCloud(token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
     try {
-        const [domain, site] = token.split('|');
-        const url = `https://${domain}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.workLocation,requisitionList.otherWorkLocations,requisitionList.secondaryLocations,flexFieldsFacet.values,requisitionList.requisitionFlexFields&finder=findReqs;siteNumber=${site},facetsList=LOCATIONS%3BWORK_LOCATIONS%3BWORKPLACE_TYPES%3BTITLES%3BCATEGORIES%3BORGANIZATIONS%3BPOSTING_DATES%3BFLEX_FIELDS,limit=100,sortBy=POSTING_DATES_DESC`;
-        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (!res.ok) return [];
-        const data: any = await res.json();
-        return (data.items?.[0]?.requisitionList || []).map((j: any) => ({
-            title: j.Title || '',
-            location: j.PrimaryLocation || j.workLocation?.Region || '',
-            url: `https://${domain}/hcmUI/CandidateExperience/en/sites/${site}/job/${j.Id}`,
-            department: j.Organization || '',
-            salary: undefined
-        }));
-    } catch { return []; }
+        let [domain, site] = token.split('|');
+        if (!site) site = 'CX_1'; // Default site for Oracle Cloud HCM
+        
+        // Fix incomplete domains from legacy data (e.g., jpmc.fa or *.fa.ocs)
+        if (!domain.includes('.com') && !domain.includes('.co.uk') && !domain.includes('.org') && domain.includes('.fa')) {
+            domain += '.oraclecloud.com';
+        }
+
+        let offset = 0;
+        const limit = 100;
+        let hasMore = true;
+
+        while (hasMore) {
+            const url = `https://${domain}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.workLocation,requisitionList.otherWorkLocations,requisitionList.secondaryLocations,flexFieldsFacet.values,requisitionList.requisitionFlexFields&finder=findReqs;siteNumber=${site},facetsList=LOCATIONS%3BWORK_LOCATIONS%3BWORKPLACE_TYPES%3BTITLES%3BCATEGORIES%3BORGANIZATIONS%3BPOSTING_DATES%3BFLEX_FIELDS,limit=${limit},offset=${offset},sortBy=POSTING_DATES_DESC`;
+            
+            const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) break;
+
+            const data: any = await res.json();
+            const payload = data.items?.[0];
+            if (!payload) break;
+
+            const reqList = payload.requisitionList || [];
+            for (const j of reqList) {
+                allJobs.push({
+                    title: j.Title || '',
+                    location: j.PrimaryLocation || j.workLocation?.Region || '',
+                    url: `https://${domain}/hcmUI/CandidateExperience/en/sites/${site}/job/${j.Id}`,
+                    department: j.Organization || '',
+                    salary: undefined
+                });
+            }
+
+            const totalCount = payload.TotalJobsCount || 0;
+            offset += limit;
+            hasMore = offset < totalCount;
+            
+            // Safety bound: Oracle HCM usually maxes out or times out if >10000 jobs are listed in a single site
+            if (offset > 10000) break;
+        }
+
+        return allJobs;
+    } catch (e) {
+        return allJobs; 
+    }
 }
 
 async function fetchWipro(token: string): Promise<Job[]> {
@@ -2186,35 +2221,45 @@ async function fetchEightfold(token: string): Promise<Job[]> {
 
 async function fetchICIMS(token: string): Promise<Job[]> {
     try {
-        // iCIMS usually has a job search JSON endpoint at [customer].icims.com/jobs/search?pr=[page]&in_iframe=1&schemaId=job&json=1
-        // But for LSL Property Services specifically, we might need a different pattern if the above fails.
-        // Let's implement a robust version that tries the common JSON endpoint.
         const allJobs: Job[] = [];
         let pr = 0;
 
         while (true) {
-            const url = `https://${token}.icims.com/jobs/search?pr=${pr}&in_iframe=1&schemaId=job&json=1`;
+            const url = `https://${token}.icims.com/jobs/search?pr=${pr}&in_iframe=1`;
             const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
             if (!res.ok) break;
 
-            const data: any = await res.json();
-            // iCIMS JSON structure is often an array of job objects directly or in a 'results' field
-            const results = Array.isArray(data) ? data : (data.results || []);
-            if (results.length === 0) break;
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            const cards = $('.iCIMS_JobsTable .iCIMS_JobCardItem');
+            
+            if (cards.length === 0) break;
 
-            allJobs.push(...results.map((j: any) => ({
-                title: j.title || j.JobTitle || '',
-                location: j.location || j.JobLocation || '',
-                url: j.url || `https://${token}.icims.com/jobs/${j.id || j.JobId}/job`,
-                department: j.department || j.JobCategory || '',
-                salary: undefined
-            })));
+            cards.each((_, el) => {
+                const title = $(el).find('h3').text().trim();
+                const jobUrl = $(el).find('a.iCIMS_Anchor').attr('href') || '';
+                const location = $(el).find('.header span').not('.sr-only').text().replace(/\s+/g, ' ').trim();
+                const department = $(el).find('dt:contains("Category")').next('dd').text().replace(/\s+/g, ' ').trim();
 
-            if (results.length < 10) break; // Arbitrary small page size check
+                if (title && jobUrl) {
+                    allJobs.push({
+                        title,
+                        location,
+                        url: jobUrl.split('?')[0],
+                        department,
+                        salary: undefined
+                    });
+                }
+            });
+
+            if (cards.length < 5) break;
             pr++;
         }
         return allJobs;
-    } catch { return []; }
+    } catch (e: any) {
+        console.error(`[iCIMS] ${token} error: ${e.message}`);
+        return [];
+    }
 }
 
 async function fetchRippling(token: string): Promise<Job[]> {
@@ -2229,10 +2274,39 @@ async function fetchRippling(token: string): Promise<Job[]> {
         const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
         if (!match) return [];
         const data = JSON.parse(match[1]);
-        // Job data is nested in dehydratedState queries
+        
+        const buildId = data.buildId;
+        const allItems: any[] = [];
+        
+        // Extract page 0 jobs
         const queries = data?.props?.pageProps?.dehydratedState?.queries || [];
-        const items: any[] = queries.flatMap((q: any) => q?.state?.data?.items || []);
-        return items.map((j: any) => ({
+        const jobQuery = queries.find((q: any) => q?.queryKey?.includes('job-posts'));
+        
+        if (jobQuery?.state?.data) {
+            allItems.push(...(jobQuery.state.data.items || []));
+            
+            const totalPages = jobQuery.state.data.totalPages || 1;
+            for (let p = 1; p < totalPages; p++) {
+                try {
+                    const pageUrl = `https://ats.rippling.com/_next/data/${buildId}/${token}/jobs.json?page=${p}`;
+                    const pageRes = await fetchWithTimeout(pageUrl, {
+                        headers: { 'User-Agent': 'Mozilla/5.0' }
+                    });
+                    if (pageRes.ok) {
+                        const pageData = await pageRes.json();
+                        const pageQueries = pageData?.pageProps?.dehydratedState?.queries || [];
+                        const pageJobQuery = pageQueries.find((q: any) => q?.queryKey?.includes('job-posts'));
+                        if (pageJobQuery?.state?.data?.items) {
+                            allItems.push(...pageJobQuery.state.data.items);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`[Rippling] ${token} error fetching page ${p}:`, e);
+                }
+            }
+        }
+
+        return allItems.map((j: any) => ({
             title: j.name || '',
             location: (j.locations || []).map((l: any) => l.name || l.city || '').join(', '),
             url: j.url || `https://ats.rippling.com/${token}/jobs/${j.id}`,
@@ -3636,7 +3710,8 @@ async function fetchRecruiterbox(token: string): Promise<Job[]> {
 }
 
 
-export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
+export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => Promise<Job[]>> = {
+    custom: fetchCustom,
     greenhouse: fetchGreenhouse,
     ashby: fetchAshby,
     lever: fetchLever,
