@@ -240,7 +240,7 @@ export function buildLocationInput(job: Job) {
     };
 }
 
-async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Job[]): Promise<JobRow[]> {
+async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Job[], market: 'uk' | 'ireland' = 'uk'): Promise<JobRow[]> {
     if (!jobs.length) return [];
 
     const dedupedJobs = new Map<string, Job>();
@@ -256,7 +256,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
     if (!uniqueJobs.length) return [];
 
     const rawLocations = uniqueJobs.map(j => j.location ?? '');
-    const normalizedLocs = await normalizeLocationsViaPython(rawLocations);
+    const normalizedLocs = await normalizeLocationsViaPython(rawLocations, market);
     const normalizedMap = new Map<string, NormalizedLocation>();
     for (let i = 0; i < uniqueJobs.length; i++) {
         const n = normalizedLocs[i];
@@ -3593,6 +3593,7 @@ export interface NormalizedLocation {
  */
 export async function normalizeLocationsViaPython(
     locations: string[],
+    market: 'uk' | 'ireland' = 'uk',
 ): Promise<NormalizedLocation[]> {
     if (locations.length === 0) return [];
 
@@ -3600,7 +3601,7 @@ export async function normalizeLocationsViaPython(
         path.dirname(fileURLToPath(import.meta.url)),
         'normalizeLocations.py',
     );
-    const payload = JSON.stringify(locations.map(l => ({ location: l })));
+    const payload = JSON.stringify(locations.map(l => ({ location: l, market })));
 
     return new Promise(resolve => {
         // Try python3 first, fall back to python
@@ -3649,6 +3650,12 @@ export function formatNormalizedLocation(n: NormalizedLocation): string | null {
     if (n.country && n.country !== 'United Kingdom') parts.push(n.country);
 
     if (parts.length === 0) {
+        // A multi-office posting can be UK/Ireland-eligible with no single
+        // office in that country resolving to a specific city (e.g. the
+        // raw text just says "United Kingdom" as one of many offices) —
+        // show the country name rather than falling through to a
+        // different office's raw text.
+        if (n.country === 'United Kingdom') return 'United Kingdom';
         if (n.is_remote) return 'Remote';
         return null;
     }
@@ -3909,8 +3916,8 @@ export async function syncAll() {
             result.rejected = rejectedCount;
             result.needsReview = needsReviewCount;
 
-            const ukRows = irelandOnlyMarket ? [] : await buildRowsForJobs(company, id, ukJobs);
-            const irelandRows = (await buildRowsForJobs(company, id, irelandJobs)).map((row) => ({
+            const ukRows = irelandOnlyMarket ? [] : await buildRowsForJobs(company, id, ukJobs, 'uk');
+            const irelandRows = (await buildRowsForJobs(company, id, irelandJobs, 'ireland')).map((row) => ({
                 ...row,
                 source: 'ats' as const,
             }));

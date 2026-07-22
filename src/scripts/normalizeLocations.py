@@ -180,6 +180,22 @@ COUNTRY_ALIASES: dict[str, str] = {
     "saudi arabia": "Saudi Arabia",
     # Qatar
     "qatar": "Qatar",
+    # Caucasus / Eastern Europe
+    "armenia": "Armenia", "azerbaijan": "Azerbaijan", "cyprus": "Cyprus",
+    "serbia": "Serbia", "bulgaria": "Bulgaria", "slovakia": "Slovakia",
+    "slovenia": "Slovenia", "lithuania": "Lithuania", "latvia": "Latvia",
+    "estonia": "Estonia", "greece": "Greece", "iceland": "Iceland",
+    "malta": "Malta", "bosnia": "Bosnia", "montenegro": "Montenegro",
+    "north macedonia": "North Macedonia", "albania": "Albania",
+    "moldova": "Moldova", "belarus": "Belarus", "kazakhstan": "Kazakhstan",
+    # APAC / South Asia / Africa / LATAM
+    "philippines": "Philippines", "vietnam": "Vietnam",
+    "indonesia": "Indonesia", "pakistan": "Pakistan",
+    "bangladesh": "Bangladesh", "sri lanka": "Sri Lanka", "nepal": "Nepal",
+    "egypt": "Egypt", "nigeria": "Nigeria", "kenya": "Kenya",
+    "ghana": "Ghana", "morocco": "Morocco",
+    "chile": "Chile", "peru": "Peru", "ecuador": "Ecuador",
+    "venezuela": "Venezuela", "costa rica": "Costa Rica", "panama": "Panama",
 }
 
 # ── US states ─────────────────────────────────────────────────────────────────
@@ -207,6 +223,7 @@ US_STATE_NAMES_LOWER: dict[str, str] = {v.lower(): k for k, v in US_STATES.items
 
 _UK = "United Kingdom"
 _US = "United States"
+_IE = "Ireland"
 
 CITY_COUNTRY_MAP: dict[str, tuple[str, Optional[str]]] = {
     # UK cities
@@ -473,8 +490,19 @@ def _find_geo(segment: str) -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def clean_location_entry(raw: str) -> dict:
-    """Normalise one raw location string into a structured record."""
+def clean_location_entry(raw: str, market: str = "uk") -> dict:
+    """
+    Normalise one raw location string into a structured record.
+
+    `market` picks which target table this record is being built for ("uk" or
+    "ireland"). A single multi-office posting (e.g. "Armenia | Cyprus | ... |
+    United Kingdom") can legitimately be written to both jobs and jobs_IR, but
+    each row needs its OWN preferred country/city — otherwise a job that is
+    only being written because it has a UK office would show a random other
+    office's name (or vice-versa for jobs_IR). See _find_geo's per-segment
+    output: only a segment whose own country matches the target market is
+    eligible to supply the displayed city.
+    """
     out: dict = {
         "raw_string": raw,
         "is_remote": False,
@@ -504,49 +532,54 @@ def clean_location_entry(raw: str) -> dict:
     if not segments:
         segments = [normalized]
 
-    # Collect geo from all segments
-    cities: list[str] = []
-    countries: list[str] = []
-    states: list[str] = []
+    target_country = _IE if market == "ireland" else _UK
 
-    for seg in segments:
-        geo = _find_geo(seg)
-        if geo["city"]:
-            cities.append(geo["city"])
-        if geo["country"]:
-            countries.append(geo["country"])
-        if geo["state_province"]:
-            states.append(geo["state_province"])
+    # Collect geo from all segments — keep each segment's city/country paired
+    # together instead of two separately-deduped lists (that mismatch in
+    # length whenever some segments resolve to a city and others to a bare
+    # country, silently breaking any "prefer city from the target country"
+    # lookup based on zipping them back together).
+    segment_geos = [_find_geo(seg) for seg in segments]
 
-    # Deduplicate preserving order
     def _dedup(lst: list) -> list:
         seen: set = set()
         return [x for x in lst if not (x in seen or seen.add(x))]  # type: ignore[func-returns-value]
 
-    cities = _dedup(cities)
-    countries = _dedup(countries)
-    states = _dedup(states)
+    all_cities = _dedup([g["city"] for g in segment_geos if g["city"]])
+    all_countries = _dedup([g["country"] for g in segment_geos if g["country"]])
+    all_states = _dedup([g["state_province"] for g in segment_geos if g["state_province"]])
 
-    # Primary city: prefer UK city when multiple countries present
-    uk_cities = [
-        c for c, cty in zip(cities, countries) if cty == _UK
-    ] if len(cities) == len(countries) else []
-    out["city"] = uk_cities[0] if uk_cities else (cities[0] if cities else None)
+    # Primary country: the target market wins if any segment matches it
+    out["country"] = target_country if target_country in all_countries else (
+        all_countries[0] if all_countries else None
+    )
 
-    # Primary country: UK wins if any segment is UK
-    out["country"] = _UK if _UK in countries else (countries[0] if countries else None)
+    # Primary city: only pull from a segment whose OWN resolved country
+    # matches the primary country just picked above. A segment that fell
+    # back to "city = raw text" because it didn't match any known city or
+    # country (e.g. an unrecognised country name) has country=None, so it
+    # is correctly excluded here rather than being mistaken for the
+    # displayed city of a UK/Ireland row.
+    if out["country"] is not None:
+        matching_cities = [
+            g["city"] for g in segment_geos
+            if g["city"] and g["country"] == out["country"]
+        ]
+        out["city"] = matching_cities[0] if matching_cities else None
+    else:
+        out["city"] = all_cities[0] if all_cities else None
 
     # State: first found (only meaningful when country is US/CA)
-    out["state_province"] = states[0] if states else None
+    out["state_province"] = all_states[0] if all_states else None
 
-    # is_uk_job determination:
+    # is_uk_job determination (always UK-specific regardless of `market`):
     #   - country is UK
     #   - OR remote with no identified country (bare "Remote" → potentially UK)
     #   - OR remote AND UK present in the segments
     out["is_uk_job"] = (
         out["country"] == _UK
         or (out["is_remote"] and out["country"] is None)
-        or (out["is_remote"] and _UK in countries)
+        or (out["is_remote"] and _UK in all_countries)
     )
 
     return out
@@ -554,13 +587,18 @@ def clean_location_entry(raw: str) -> dict:
 
 def clean_locations(data: list) -> list:
     """
-    Process a list of {location: str} objects (or plain strings).
+    Process a list of {location: str, market?: str} objects (or plain strings).
     Returns a list of normalised location records in the same order.
     """
     results = []
     for item in data:
-        raw = item.get("location", "") if isinstance(item, dict) else str(item)
-        results.append(clean_location_entry(str(raw) if raw is not None else ""))
+        if isinstance(item, dict):
+            raw = item.get("location", "")
+            market = item.get("market", "uk")
+        else:
+            raw = str(item)
+            market = "uk"
+        results.append(clean_location_entry(str(raw) if raw is not None else "", market))
     return results
 
 

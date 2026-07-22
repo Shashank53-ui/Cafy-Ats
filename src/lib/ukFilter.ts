@@ -82,6 +82,13 @@ const HARD_BLOCKS = [
     "south korea", "japan", "china", "hong kong", "malaysia", "thailand",
     "new zealand", "south africa", "brazil", "argentina", "mexico",
     "ukraine", "russia",
+    "armenia", "azerbaijan", "cyprus", "serbia", "bulgaria", "slovakia",
+    "slovenia", "lithuania", "latvia", "estonia", "greece", "iceland",
+    "malta", "bosnia", "montenegro", "north macedonia", "albania",
+    "moldova", "belarus", "kazakhstan",
+    "philippines", "vietnam", "indonesia", "pakistan", "bangladesh",
+    "sri lanka", "nepal", "egypt", "nigeria", "kenya", "ghana", "morocco",
+    "chile", "peru", "ecuador", "venezuela", "colombia", "costa rica", "panama",
     // Ireland (must NOT block "Northern Ireland")
     "dublin", "ireland",
     // US States (full names)
@@ -153,6 +160,10 @@ function isUKTerm(loc: string): boolean {
         if (term === 'york' && /\bnew\s+york\b/.test(l)) return false;
         // "washington" in UK context is rare — block if it looks like US state
         if (term === 'washington' && /\bwashington\s+(d\.?c\.?|state|dc)\b/.test(l)) return false;
+        // "wales" must not match Australia's "New South Wales"
+        if (term === 'wales' && /\bnew\s+south\s+wales\b/.test(l)) return false;
+        // "england" must not match the US "New England" region
+        if (term === 'england' && /\bnew\s+england\b/.test(l)) return false;
         return re.test(l);
     });
 }
@@ -172,12 +183,18 @@ function isBlockedTerm(loc: string): boolean {
 // Used when a hard-block is present to avoid false positives like "London, Ontario, Canada".
 function hasDefinitiveUKSignal(combined: string): boolean {
     if (/\b[a-z]{1,2}\d[a-z\d]?\s?\d[a-z]{2}\b/.test(combined)) return true;
+    // "New South Wales" (Australia) and "New England" (US) both contain a bare
+    // UK nation name as a literal word — strip them before testing below so a
+    // structured "Sydney, New South Wales, Australia" string can't false-positive.
+    const guarded = combined
+        .replace(/\bnew\s+south\s+wales\b/g, '')
+        .replace(/\bnew\s+england\b/g, '');
     const definitive = [
         'england', 'scotland', 'wales', 'northern ireland',
         'united kingdom', 'great britain', 'remote uk', 'hybrid uk',
         'uk', 'u\\.k\\.', 'gbr',
     ];
-    if (definitive.some(term => new RegExp(`\\b${term}\\b`).test(combined))) return true;
+    if (definitive.some(term => new RegExp(`\\b${term}\\b`).test(guarded))) return true;
     // "London" alone (not "London, Ontario" / "London, Canada") is sufficiently unambiguous
     if (/\blondon\b/.test(combined) && !/\blondon[\s,]+(ontario|canada|ohio)\b/.test(combined)) return true;
     return false;

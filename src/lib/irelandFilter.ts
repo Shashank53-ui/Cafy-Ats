@@ -41,6 +41,13 @@ const HARD_BLOCKS = [
     'south korea', 'japan', 'china', 'hong kong', 'malaysia', 'thailand', 'new zealand',
     'south africa', 'brazil', 'argentina', 'mexico', 'ukraine', 'russia',
     'united states', 'usa', 'u.s.a.',
+    'armenia', 'azerbaijan', 'cyprus', 'serbia', 'bulgaria', 'slovakia',
+    'slovenia', 'lithuania', 'latvia', 'estonia', 'greece', 'iceland',
+    'malta', 'bosnia', 'montenegro', 'north macedonia', 'albania',
+    'moldova', 'belarus', 'kazakhstan',
+    'philippines', 'vietnam', 'indonesia', 'pakistan', 'bangladesh',
+    'sri lanka', 'nepal', 'egypt', 'nigeria', 'kenya', 'ghana', 'morocco',
+    'chile', 'peru', 'ecuador', 'venezuela', 'colombia', 'costa rica', 'panama',
     // US states (Dublin, Cork, etc. all have namesake towns in several of these)
     'alabama', 'alaska', 'arizona', 'arkansas', 'california', 'colorado', 'connecticut',
     'delaware', 'florida', 'georgia', 'hawaii', 'idaho', 'illinois', 'indiana', 'iowa', 'kansas',
