@@ -1,0 +1,100 @@
+name: Santhosh ATS Sync (manual / long run)
+
+# GitHub-hosted runners time out at 6 hours. Re-run with start_from_id to continue.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Sync mode'
+        required: true
+        type: choice
+        options:
+          - santhosh
+          - santhosh-all
+          - production
+        default: santhosh-all
+      start_from_id:
+        description: 'Resume from company id (optional, e.g. 661)'
+        required: false
+        type: string
+        default: ''
+      exclude_linkedin:
+        description: 'Skip LinkedIn provider companies'
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: cafy-jobs-santhosh-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build sync command
+        id: cmd
+        run: |
+          set -euo pipefail
+          ARGS=()
+          case "${{ inputs.mode }}" in
+            santhosh)
+              ARGS+=(--test-santhosh)
+              ;;
+            santhosh-all)
+              ARGS+=(--test-santhosh --include-dead)
+              ;;
+            production)
+              ;;
+          esac
+          if [ -n "${{ inputs.start_from_id }}" ]; then
+            ARGS+=(--start-from-id "${{ inputs.start_from_id }}")
+          fi
+          if [ "${{ inputs.exclude_linkedin }}" = "true" ]; then
+            ARGS+=(--exclude-linkedin)
+          fi
+          echo "args=${ARGS[*]}" >> "$GITHUB_OUTPUT"
+          echo "Running: npx tsx src/scripts/syncAll.ts ${ARGS[*]}"
+
+      - name: Run sync
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: npx tsx src/scripts/syncAll.ts ${{ steps.cmd.outputs.args }}
+
+      - name: Upload sync logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: santhosh-sync-logs-${{ github.run_id }}
+          path: |
+            acceptance_log.json
+            rejection_log.json
+            duplication_log.json
+            logs/
+          if-no-files-found: ignore
+          retention-days: 14
