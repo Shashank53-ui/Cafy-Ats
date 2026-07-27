@@ -1,5 +1,6 @@
 [
   {
+<<<<<<< Updated upstream
     "company": "Accenture",
     "provider": "WORKDAY",
     "title": "SAP Functional Consultant - Process Excellence",
@@ -853,6 +854,13 @@
     "title": "JDE Consultant, Managed Services - Functional Distribution / EMEA",
     "location": "Location Negotiable",
     "url": "https://accenture.wd103.myworkdayjobs.com/en-US/accenturecareers/job/Glasgow/JDE-Consultant--Managed-Services---Functional-Distribution---EMEA_R00278840",
+=======
+    "company": "Serco",
+    "provider": "CUSTOM",
+    "title": "Facilities Co-Ordinator",
+    "location": "Greenock, Renfrewshire, United States",
+    "url": "https://careers.serco.com/gb/en/job/311152/facilities-co-ordinator",
+>>>>>>> Stashed changes
     "reason": "unknown"
   }
 ]

@@ -1325,6 +1325,20 @@ async function fetchTeamtailor(token: string): Promise<Job[]> {
                     salary: undefined
                 }));
             }
+            if (d.items?.length > 0) {
+                return d.items.map((j: any) => {
+                    const city = j._jobposting?.jobLocation?.[0]?.address?.addressLocality || '';
+                    const country = j._jobposting?.jobLocation?.[0]?.address?.addressCountry || '';
+                    const loc = [city, country].filter(Boolean).join(', ');
+                    return {
+                        title: j.title || '',
+                        location: loc,
+                        url: j.url || '',
+                        department: '',
+                        salary: undefined
+                    };
+                });
+            }
         }
     } catch { }
 
@@ -1340,12 +1354,16 @@ async function fetchTeamtailor(token: string): Promise<Job[]> {
 
         $('item').each((_, el) => {
             const item = $(el);
+            const city = item.find('tt\\:city').text().trim();
+            const country = item.find('tt\\:country').text().trim();
+            const ttLoc = [city, country].filter(Boolean).join(', ');
+            
             jobs.push({
                 title: item.find('title').text().trim(),
-                location: item.find('description').text().split('·')[1]?.trim() || '',
+                location: ttLoc || item.find('description').text().split('·')[1]?.trim() || '',
                 url: item.find('link').text().trim(),
                 department: item.find('category').first().text().trim(),
-                salary: (typeof item !== 'undefined' && (item as any)?.salary) ? String(typeof (item as any).salary === 'object' ? JSON.stringify((item as any).salary) : (item as any).salary) : undefined
+                salary: undefined
             });
         });
         return jobs;
