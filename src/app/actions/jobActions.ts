@@ -11,6 +11,7 @@ export interface Job {
     location: string;
     department?: string;
     level?: string | null;
+    sector?: string | null;
     created_at: string;
     company_id: number;
     company?: {
@@ -22,6 +23,7 @@ export interface Job {
         description: string | null;
         licensed_sponsor: boolean;
         active_jobs_count: number;
+        company_sector?: string | null;
     };
 }
 
@@ -56,11 +58,9 @@ export async function getJobs(params: {
 
     const isGraduate = params.type === 'graduate';
 
-    const adminClient = createAdminClient();
-
     let query = isGraduate
-        ? adminClient.from('graduate_roles').select('*', { count: 'exact' })
-        : adminClient.from('jobs').select('*, level, company:companies!inner(*)', { count: 'exact' });
+        ? supabaseServer.from('graduate_roles').select('*', { count: 'exact' })
+        : supabaseServer.from('jobs').select('*, level, company:companies!inner(*)', { count: 'exact' });
 
     // 0. Exclusions for stability and diversity
     if (params.excludedJobIds && params.excludedJobIds.length > 0) {
@@ -81,7 +81,7 @@ export async function getJobs(params: {
             query = query.or(`title.ilike.%${searchTerm}%,trading_name.ilike.%${searchTerm}%`);
         } else {
             // Find matching companies first
-            const { data: matchedCompanies } = await adminClient
+            const { data: matchedCompanies } = await supabaseServer
                 .from('companies')
                 .select('id')
                 .ilike('trading_name', `%${searchTerm}%`);

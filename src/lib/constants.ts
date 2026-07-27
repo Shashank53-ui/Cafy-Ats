@@ -17,6 +17,7 @@ export const ALLOWED_LOCATIONS = [
 
 export const ALLOWED_SECTORS = [
     'Business & Strategy',
+    'Construction & Infrastructure',
     'Customer Success',
     'Data',
     'Design',
@@ -25,8 +26,10 @@ export const ALLOWED_SECTORS = [
     'Engineering (Software)',
     'Finance',
     'Healthcare',
+    'Healthcare & Social Care',
     'HR / People',
     'Legal',
+    'Logistics & Transport',
     'Marketing & PR',
     'Media & Journalism',
     'Operations',
@@ -35,5 +38,6 @@ export const ALLOWED_SECTORS = [
     'Project Management',
     'Research (Non-technical)',
     'Research (Technical)',
+    'Retail & Hospitality',
     'Sales & Partnerships',
 ] as const;

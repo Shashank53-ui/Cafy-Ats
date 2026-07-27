@@ -72,16 +72,48 @@ export function workableToJobLocationInput(job: any): JobLocationInput {
     };
 }
 
+// Workday tenants sometimes return vague placeholder strings instead of a real city.
+// These carry no geographic signal so we ignore them and fall back to the URL path.
+const WORKDAY_VAGUE_LOCATIONS = new Set([
+    'location negotiable', 'negotiable', 'tbd', 'to be confirmed',
+    'various', 'various locations', 'see description', 'see job description',
+    'multiple locations', 'not specified',
+]);
+
+// "2 Locations", "3 Locations" etc — Workday aggregate text, carries no geographic info
+const WORKDAY_N_LOCATIONS_RE = /^\d+\s+locations?$/i;
+
 export function workdayToJobLocationInput(job: any): JobLocationInput {
-    const locations = (job.locationsText || '')
+    const rawText = job.locationsText || '';
+    const rawLocations = rawText
         .split(',')
         .map((s: string) => s.trim())
         .filter(Boolean);
 
+    // Drop vague placeholder strings and "N Locations" aggregate text — no geographic signal.
+    const locations = rawLocations.filter(
+        (l: string) => !WORKDAY_VAGUE_LOCATIONS.has(l.toLowerCase()) && !WORKDAY_N_LOCATIONS_RE.test(l)
+    );
+
+    // Fall back to the path segment in the Workday URL when no real location exists.
+    // e.g. /job/London/Role-Title → "London"
+    //      /job/US-CA-Santa-Clara/Role-Title → "United States" (US-XX-City pattern)
+    if (locations.length === 0 && job.url) {
+        const pathSegment = (job.url as string).match(/\/job\/([^/]+)\//)?.[1] || '';
+        if (pathSegment) {
+            // Workday US jobs encode location as "US-{StateCode}-{City}"
+            if (/^US-[A-Z]{2}-/i.test(pathSegment)) {
+                locations.push('United States');
+            } else {
+                locations.push(pathSegment.replace(/-/g, ' '));
+            }
+        }
+    }
+
     return {
         locations,
-        isRemote: locations.some((l: string) => containsRemote(l)),
-        isTrustedSource: !!job.verified // Use the existing verified/facetIsTrusted flag
+        isRemote: rawLocations.some((l: string) => containsRemote(l)),
+        isTrustedSource: !!job.verified,
     };
 }
 
@@ -137,7 +169,8 @@ export function breezyToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function recruiteeToJobLocationInput(job: any): JobLocationInput {
-    const locations = [job.location, job.city].filter(Boolean);
+    // Include country field so "York, United States" doesn't pass as UK via city match
+    const locations = [job.city, job.country, job.location].filter(Boolean);
     return {
         locations,
         isRemote: locations.some((l: string) => containsRemote(l)),

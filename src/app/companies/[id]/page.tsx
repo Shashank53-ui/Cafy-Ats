@@ -1,7 +1,7 @@
 import { Building, MapPin, Briefcase, Users, CheckCircle, ArrowLeft, ExternalLink, Globe, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { supabase } from '../../../lib/supabase';
+import { createClient } from '../../../utils/supabase/server';
 import Logo from '../../../components/Logo';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +27,8 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
     const { id } = await params;
     const companyId = parseInt(id);
     if (isNaN(companyId)) notFound();
+
+    const supabase = await createClient();
 
     const [{ data: company }, { data: jobs }] = await Promise.all([
         supabase

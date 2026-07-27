@@ -10,6 +10,8 @@
     "lint": "eslint",
     "ingest": "tsx src/scripts/ingestJobs.ts",
     "sync": "tsx src/scripts/syncAll.ts",
+    "sync:linkedin": "tsx src/scripts/scrapeLinkedinIreland.ts",
+    "backfill:sectors": "tsx src/scripts/backfillJobSectors.ts",
     "test:fetchers": "tsx src/scripts/testNewFetchers.ts",
     "validate:ats": "tsx src/scripts/validateAtsTokens.ts",
     "repair:ats": "tsx src/scripts/repairBadTokens.ts",
@@ -19,7 +21,8 @@
     "detect:ats:single": "tsx src/scripts/detectAtsFromCareersPage.ts --company-id",
     "import:ats:csv": "tsx src/scripts/importAtsFromCsv.ts",
     "seed:companies": "tsx src/scripts/seedCompaniesFromCsv.ts",
-    "import:full": "tsx src/scripts/importFullCompanies.ts"
+    "import:full": "tsx src/scripts/importFullCompanies.ts",
+    "extract:ireland:dryrun": "tsx src/scripts/extractIrelandJobsDryRun.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -33,12 +36,15 @@
     "axios": "^1.13.6",
     "cheerio": "^1.2.0",
     "crawlee": "^3.16.0",
+    "csv-parse": "^7.0.1",
+    "csv-stringify": "^6.8.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.3.1",
     "fast-xml-parser": "^5.4.2",
     "framer-motion": "^12.35.0",
     "lucide-react": "^0.576.0",
     "next": "^15.5.15",
+    "p-limit": "^7.3.0",
     "papaparse": "^5.5.3",
     "pg": "^8.20.0",
     "playwright": "^1.58.2",
@@ -62,7 +68,7 @@
     "eslint-config-next": "^15.5.15",
     "stripe-cli": "^0.1.0",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

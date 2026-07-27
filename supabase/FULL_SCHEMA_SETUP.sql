@@ -77,6 +77,22 @@ CREATE TABLE public.jobs (
     updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+
+  CREATE TABLE public."jobs_IR" (
+    id          SERIAL PRIMARY KEY,
+    company_id  INTEGER REFERENCES public.companies(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    url         TEXT UNIQUE NOT NULL,
+    location    TEXT,
+    department  TEXT,
+    description TEXT,
+    salary      TEXT,
+    level       TEXT,
+    sector      TEXT DEFAULT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
 -- =============================================================================
 -- STEP 4: USER-LINKED TABLES
 -- =============================================================================
@@ -199,6 +215,12 @@ CREATE INDEX IF NOT EXISTS idx_jobs_location     ON public.jobs(location);
 CREATE INDEX IF NOT EXISTS idx_jobs_level        ON public.jobs(level);
 CREATE INDEX IF NOT EXISTS idx_jobs_created_at   ON public.jobs(created_at DESC);
 
+-- jobs_IR
+CREATE INDEX IF NOT EXISTS idx_jobs_ir_company_id   ON public."jobs_IR"(company_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_ir_location     ON public."jobs_IR"(location);
+CREATE INDEX IF NOT EXISTS idx_jobs_ir_level        ON public."jobs_IR"(level);
+CREATE INDEX IF NOT EXISTS idx_jobs_ir_created_at   ON public."jobs_IR"(created_at DESC);
+
 -- companies
 CREATE INDEX IF NOT EXISTS idx_companies_trading_name      ON public.companies(trading_name);
 CREATE INDEX IF NOT EXISTS idx_companies_licensed_sponsor  ON public.companies(licensed_sponsor);
@@ -234,6 +256,9 @@ ALTER TABLE public.companies DISABLE ROW LEVEL SECURITY;
 
 -- ── jobs ── (RLS OFF — public data, sync scripts need full write access)
 ALTER TABLE public.jobs DISABLE ROW LEVEL SECURITY;
+
+-- ── jobs_IR ── (RLS OFF — same write path as jobs)
+ALTER TABLE public."jobs_IR" DISABLE ROW LEVEL SECURITY;
 
 -- ── customers ──
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;

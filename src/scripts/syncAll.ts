@@ -2,8 +2,8 @@
  * syncAll.ts — Master Daily Sync Script
  *
  * Dynamically reads ALL companies from Supabase, routes each to the correct
- * ATS fetcher based on ats_provider, filters for UK-only jobs, and upserts
- * to the jobs table.
+ * ATS fetcher based on ats_provider, filters for UK and Ireland jobs, and
+ * upserts to the jobs and jobs_IR tables.
  *
  * Adding a new company to the DB is all that's needed — this script picks it up
  * automatically on the next run. No code changes required.
@@ -24,17 +24,24 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
+import { fetchCustom } from './customScrapers';
 import { chromium } from 'playwright';
 import { inferJobLevel } from '../lib/inferJobLevel';
+import { inferJobSector } from '../lib/inferJobSector';
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
+import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import * as Adapters from '../lib/ukFilterAdapters';
+import { isIrelandJob } from '../lib/irelandFilter';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+if (!supabaseUrl) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL.');
+}
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseKey) {
@@ -65,7 +72,7 @@ const SERPER_DISCOVERY_SITE_HINTS = [
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Job {
+export interface Job {
     title: string;
     location: string;
     url: string;
@@ -83,10 +90,23 @@ interface SyncResult {
     provider: string;
     fetched: number;
     ukJobs: number;
+    irelandJobs: number;
     saved: number;
+    savedIreland: number;
     rejected: number;
     needsReview: number;
     error?: string;
+}
+
+interface JobRow {
+    company_id: number;
+    title: string;
+    location: string;
+    url: string;
+    department: string | null;
+    level: string | null;
+    sector: string | null;
+    updated_at: string;
 }
 
 // Rejection log array to track dropped jobs
@@ -100,13 +120,14 @@ interface RejectionLogEntry {
 }
 const globalRejectionLog: RejectionLogEntry[] = [];
 
-interface CompanyRow {
+export interface CompanyRow {
     id: number;
     trading_name: string;
     ats_provider: string;
     ats_board_token: string;
     careers_url?: string | null;
     url?: string | null;
+    company_sector?: string | null;
 }
 
 interface AtsOverrideRow {
@@ -121,15 +142,22 @@ interface AtsOverrideRow {
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-async function fetchWithTimeout(url: string, options: any = {}, timeout = 15000) {
+export async function fetchWithTimeout(url: string, options: any = {}, timeout = 15000) {
     const controller = new AbortController();
+    // Keep the abort timer running through the body read, not just headers
     const id = setTimeout(() => controller.abort(), timeout);
     try {
         const response = await fetch(url, {
             ...options,
             signal: controller.signal
         });
-        clearTimeout(id);
+        // Wrap body methods to clear timer after body is fully read
+        const originalText = response.text.bind(response);
+        const originalJson = response.json.bind(response);
+        const originalBuffer = response.arrayBuffer.bind(response);
+        (response as any).text = async () => { const r = await originalText(); clearTimeout(id); return r; };
+        (response as any).json = async () => { const r = await originalJson(); clearTimeout(id); return r; };
+        (response as any).arrayBuffer = async () => { const r = await originalBuffer(); clearTimeout(id); return r; };
         return response;
     } catch (error) {
         clearTimeout(id);
@@ -189,11 +217,6 @@ const NON_UK_LOCATION_PHRASES = [
     "norway", "denmark", "finland", "switzerland", "austria", "belgium",
     "poland", "ukraine", "russia", "china", "japan", "south korea",
     "singapore", "hong kong", "united arab emirates", "dubai", "israel", "ireland", "eire",
-    "philippines", "brazil", "mexico", "south africa", "argentina", "colombia",
-    "vietnam", "thailand", "malaysia", "indonesia", "nigeria", "egypt", "kenya",
-    "pakistan", "bangladesh", "sri lanka", "turkey", "romania", "bulgaria",
-    "serbia", "greece", "cyprus", "malta", "latvia", "lithuania", "estonia", "czech republic",
-    "slovakia", "hungary", "croatia", "slovenia", "taiwan", "chile", "peru", "uruguay",
     // US cities
     "new york", "new jersey", "san francisco", "los angeles", "seattle", "chicago", "boston", "austin", "dallas", "houston", "denver", "atlanta",
     "miami", "phoenix", "las vegas", "san jose", "san diego", "whippany", "wilmington", "st louis", "new hampshire", "california", "texas", "virginia", "mclean", "richmond", "plano", "georgia", "illinois", "maryland", "pennsylvania", "north carolina",
@@ -210,6 +233,26 @@ const UK_URL_HINTS = [
     "city=london", "city=manchester", "city=birmingham", "city=leeds", "city=bristol", "city=liverpool",
     "city=edinburgh", "city=glasgow", "city=cardiff", "city=belfast",
     "/en-gb/", "-gb-", "region=uk", "region=gb"
+];
+
+const IRELAND_CITIES = [
+    "Dublin", "Cork", "Limerick", "Galway", "Waterford", "Drogheda", "Kilkenny", "Wexford", "Sligo", "Clonmel",
+    "Dundalk", "Bray", "Navan", "Ennis", "Tralee", "Carlow", "Naas", "Athlone", "Letterkenny", "Tullamore",
+    "Killarney", "Arklow", "Cobh", "Castlebar", "Midleton", "Mallow", "Ballina", "Enniscorthy", "Wicklow", "Cavan",
+    "Athy", "Longford", "Dungarvan", "Nenagh", "Trim", "New Ross", "Thurles", "Youghal", "Monaghan", "Buncrana",
+    "Ballinasloe", "Fermoy", "Westport", "Carrick-on-Suir", "Kells", "Birr", "Tipperary", "Carrickmacross", "Kinsale", "Listowel",
+    "Clonakilty", "Cashel", "Macroom", "Castleblayney", "Kilrush", "Skibbereen", "Bundoran", "Templemore", "Clones", "Newbridge",
+    "Portlaoise", "Mullingar", "Balbriggan", "Greystones", "Leixlip", "Tramore", "Shannon", "Gorey", "Tuam", "Edenderry",
+    "Bandon", "Passage West", "Loughrea", "Ardee", "Mountmellick", "Bantry", "Muine Bheag", "Boyle", "Ballyshannon", "Cootehill",
+    "Ballybay", "Belturbet", "Lismore", "Kilkee", "Granard"
+];
+
+const IRELAND_LOCATION_PHRASES = [
+    "ireland",
+    "republic of ireland",
+    "eire",
+    "éire",
+    ...IRELAND_CITIES,
 ];
 
 const NON_UK_URL_HINTS = [
@@ -236,13 +279,106 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
     return chunks;
 }
 
-function isUKLocationInternal(normalized: string): boolean {
+export function buildLocationInput(job: Job) {
+    const raw = job.location ?? '';
+    const parts = raw.split(/\s*[|·•]\s*/).map((s: string) => s.trim()).filter(Boolean);
+    const locs = parts.length > 0 ? parts : (raw ? [raw] : []);
+    return {
+        locations: locs,
+        isRemote: /\bremote\b/i.test(raw),
+        isTrustedSource: false,
+    };
+}
+
+export function isLikelyIrelandJob(job: Job, locationInput: any): boolean {
+    const locationNorm = normalizeLocation(job.location);
+    const titleNorm = normalizeLocation(job.title);
+    const deptNorm = normalizeLocation(job.department || '');
+
+    // Hard block: US-based Dublin locations
+    if (locationNorm.includes('us-ca-dublin') || locationNorm.includes('dublin, ca') || locationNorm.includes('dublin, oh') || locationNorm.includes('dublin, california') || locationNorm.includes('dublin, ohio')) {
+        return false;
+    }
+
+    // Hard block: UK locations that aren't Northern Ireland
+    if (isUKJob(locationInput) && !locationNorm.includes('northern ireland')) {
+        return false;
+    }
+
+    const locationCandidates = (locationInput.locations || []).map(normalizeLocation).filter(Boolean);
+
+    if (!locationNorm && !titleNorm && !deptNorm && !locationCandidates.length) {
+        return false;
+    }
+
+    if (locationNorm.includes('northern ireland') || titleNorm.includes('northern ireland') || deptNorm.includes('northern ireland')) {
+        return false;
+    }
+
+    const irelandMatches = [locationNorm, titleNorm, deptNorm, ...locationCandidates]
+        .some((text) => text && IRELAND_LOCATION_PHRASES.some((phrase) => text.includes(normalizeLocation(phrase))));
+    if (irelandMatches) return true;
+
+    return false;
+}
+
+async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Job[]): Promise<JobRow[]> {
+    if (!jobs.length) return [];
+
+    const dedupedJobs = new Map<string, Job>();
+    for (const j of jobs) {
+        if (!j.url || !j.title) continue;
+        const dedupKey = `${companyId}_${j.title.toLowerCase().trim()}_${(j.location || '').toLowerCase().trim()}`;
+        if (!dedupedJobs.has(dedupKey) && !Array.from(dedupedJobs.values()).some(existing => existing.url === j.url)) {
+            dedupedJobs.set(dedupKey, j);
+        }
+    }
+
+    const uniqueJobs = Array.from(dedupedJobs.values());
+    if (!uniqueJobs.length) return [];
+
+    const rawLocations = uniqueJobs.map(j => j.location ?? '');
+    const normalizedLocs = await normalizeLocationsViaPython(rawLocations);
+    const normalizedMap = new Map<string, NormalizedLocation>();
+    for (let i = 0; i < uniqueJobs.length; i++) {
+        const n = normalizedLocs[i];
+        if (n) normalizedMap.set(uniqueJobs[i].url, n);
+    }
+
+    return uniqueJobs.map(j => {
+        const n = normalizedMap.get(j.url);
+        const cleanedLocation = n
+            ? (formatNormalizedLocation(n) ?? safeStr(j.location, 255))
+            : safeStr(j.location, 255);
+        return {
+            company_id: companyId,
+            title: safeStr(j.title, 255),
+            location: safeStr(cleanedLocation, 255),
+            url: j.url,
+            department: j.department ? safeStr(j.department, 255) : null,
+            level: inferJobLevel(safeStr(j.title)),
+            sector: inferJobSector(safeStr(j.title), j.department, company.company_sector),
+            updated_at: new Date().toISOString()
+        };
+    });
+}
+
+function isUKLocation(loc: any): boolean {
+    if (!loc) return false;
+    const normalized = normalizeLocation(loc);
+    if (!normalized) return false;
+
+    // console.log(`      [isUKLocation] Normalized: "${normalized}"`);
+
     // Hard block: bare "remote" with no explicit UK signal → not UK
+    // e.g. "Remote", "Anywhere", "Remote - Worldwide" all fail
     if (/^remote$/.test(normalized) || normalized === 'anywhere' || normalized === 'worldwide') {
         return false;
     }
 
     // Gap 5: Ireland Hybrid Roles
+    // Hard block: Irish locations (Republic of Ireland, NOT Northern Ireland)
+    // Only block if there is NO UK signal
     for (const irish of IRELAND_LOCATIONS) {
         if (normalized.includes(irish) && !normalized.includes('northern ireland')) {
             const hasUkSignal = UK_COUNTRIES.some(uk => normalized.includes(uk.toLowerCase())) ||
@@ -262,17 +398,21 @@ function isUKLocationInternal(normalized: string): boolean {
         "massachusetts", "california", "texas", "florida", "washington state"
     ];
     for (const blocked of blockList) {
+        // Special carve-out: "northern ireland" must not be blocked by "ireland"
         if (blocked === 'ireland' && normalized.includes('northern ireland')) continue;
         if (normalized.includes(blocked)) return false;
     }
 
-    // Hard block: US state/country 2-letter codes
-    if (/\b(usa?|ny|nj|ca|tx|ma|il|wa|fl|ga|nc|va|pa|oh|mi|mn|co|az|or|nv|vt|nh|me|ct|ri|ky|tn|nc|sc|ga|fl|al|ms|la|ar|ok|ks|ne|sd|nd|mt|wy|id|ut|nm)\b/.test(normalized)) {
+    // Hard block: US state/country 2-letter codes as isolated tokens
+    if (/\b(usa?|ny|nj|ca|tx|ma|il|wa|fl|ga|nc|va|pa|oh|mi|mn|co|az|or|nv|md|va|pa|oh|mi|mn|co|az|or|nv|vt|nh|me|ct|ri|ky|tn|nc|sc|ga|fl|al|ms|la|ar|ok|ks|ne|sd|nd|mt|wy|id|ut|nm)\b/.test(normalized)) {
+        // But allow "wa" only if surrounded by full UK context (e.g., "wa1" postcodes)
+        // Postcode pattern: letters+digits — if it looks like a UK postcode don't block
         if (!/\b[a-z]{1,2}\d[a-z\d]?\s*\d[a-z]{2}\b/.test(normalized)) {
             return false;
         }
     }
 
+    // ✅ UK Remote — explicit UK remote signal
     if (normalized.includes('remote') && (
         normalized.includes('uk') || normalized.includes('united kingdom') ||
         normalized.includes('england') || normalized.includes('britain')
@@ -280,48 +420,30 @@ function isUKLocationInternal(normalized: string): boolean {
         return true;
     }
 
-    const cleanLoc = normalized.replace(/[,;()\/|]/g, ' ').replace(/\s+/g, ' ');
-    const tokens = cleanLoc.split(/\s+/);
+    // ✅ Token-level match against known UK countries/nations/cities
+    const tokens = normalized.split(/\s+/);
     for (const token of tokens) {
-        if (UK_COUNTRIES.map(c => c.toLowerCase()).includes(token)) return true;
-        if (UK_NATIONS.map(n => n.toLowerCase()).includes(token)) return true;
-        if (UK_CITIES.map(c => c.toLowerCase()).includes(token)) return true;
+        if (UK_COUNTRIES.includes(token)) return true;
+        if (UK_NATIONS.includes(token)) return true;
+        if (UK_CITIES.includes(token)) return true;
     }
 
+    // ✅ Word-boundary match for England specifically
     if (/\bengland\b/.test(normalized)) return true;
+
+    // ✅ UK postcode pattern (e.g., "EC2V 8RF", "W1A 1AA", "SW1A 2AA")
     if (/\b[a-z]{1,2}\d[a-z\d]?\s?\d[a-z]{2}\b/.test(normalized)) return true;
 
-    const multiWordUK = [...UK_COUNTRIES, ...UK_NATIONS, ...UK_CITIES]
-        .map(w => w.toLowerCase())
-        .filter(w => w.includes(' '));
+    // ✅ Multi-word phrase match for city names with spaces
+    const multiWordUK = [
+        ...UK_COUNTRIES, ...UK_NATIONS, ...UK_CITIES
+    ].filter(w => w.includes(' '));
     for (const phrase of multiWordUK) {
         if (normalized.includes(phrase)) return true;
     }
 
     return false;
 }
-
-function isUKLocation(loc: any): boolean {
-    if (!loc) return false;
-    const normalizedFull = normalizeLocation(loc);
-    if (!normalizedFull) return false;
-
-    // Evaluate whole string first
-    if (isUKLocationInternal(normalizedFull)) return true;
-
-    // Split multi-locations (e.g. "London | New York")
-    const subLocations = normalizedFull.split(/\||\/|;|\band\b|\bor\b|&/i).map(s => s.trim()).filter(Boolean);
-    for (const subLoc of subLocations) {
-        if (isUKLocationInternal(subLoc)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// ---------------------------------------------
-// The following removes the old logic body
-
 
 function hasAnyHint(text: string, hints: string[]): boolean {
     return hints.some((hint) => text.includes(hint));
@@ -351,13 +473,6 @@ function isLikelyUKJob(job: Job): boolean {
         return false;
     }
 
-    // Hard block: title signals non-UK phrase
-    const badTitlePhrase = NON_UK_LOCATION_PHRASES.find((p) => titleNorm.includes(p));
-    if (badTitlePhrase && !titleNorm.includes('northern ireland')) {
-        job.rejection_reason = `non_uk_title: ${badTitlePhrase}`;
-        return false;
-    }
-
     if (job.verified) return true;
 
     // PRIMARY: location field is the strongest signal
@@ -365,25 +480,21 @@ function isLikelyUKJob(job: Job): boolean {
         const ukFromLoc = isUKLocation(locationNorm);
         if (ukFromLoc) return true;
 
-        // --- THE USER'S EXACT STRICT REMOTE RULES ---
-        // 1. "if only remote is present as locaton nothing else is there other then remote in the place of location -> take it"
-        if (locationNorm === 'remote' || locationNorm === '(remote)') {
+        // EXCEPTION: if location is just 'remote' but the URL is explicitly UK
+        // e.g. jobs.company.co.uk/remote-role
+        if (/^remote$/.test(locationNorm) && (
+            urlNorm.includes('.uk') ||
+            urlNorm.includes('.co.uk') ||
+            urlNorm.includes('country=gb') ||
+            urlNorm.includes('country=uk')
+        )) {
             return true;
         }
 
-        // 2. "if remote + other location there not , seperated or any seperated for example remote (India)-> dont take it"
-        // At this point, we know it's NOT a UK location (ukFromLoc is false), and it's NOT strictly "remote".
-        // So if it contains the word "remote", it must be "remote + other non-UK location" (e.g. "remote india", "remote europe").
-        if (/\bremote\b/.test(locationNorm)) {
-            job.rejection_reason = `strict_remote_rule_rejected: ${locationNorm}`;
-            return false;
-        }
-        // ---------------------------------------------
-
-        // Location is present but NOT UK and NOT remote — don't fall through to URL/title signals
+        // Location is present but NOT UK — don't fall through to URL/title signals
         // (avoids "Senior Engineer - New York" matching title-based UK city checks)
         // EXCEPTION: if location is truly ambiguous (e.g. 'remote', 'flexible')
-        const isAmbiguous = /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified|remote other|remot other|multiple locations)$/.test(locationNorm) ||
+        const isAmbiguous = /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified|remote other|remot other|multiple locations|location negotiable|negotiable|tbd|to be confirmed|various|various locations|see description|see job description)$/.test(locationNorm) ||
             /\d+\s+locations?/.test(locationNorm);
 
         if (!isAmbiguous) {
@@ -430,7 +541,9 @@ function safeStr(s: any, maxLen = 500): string {
     return String(s || '').slice(0, maxLen);
 }
 
-function isValidJobTitle(title: string): boolean {
+const LOW_PROFILE_TITLE_PATTERN = /\b(customer (assistant|team member|colleague|care advi[cs]or)|sales assistant|store assistant|shop assistant|checkout (operator|assistant|colleague)|night fill|shelf (stacker|filler|colleague)|replenishment (assistant|colleague|operator)|van driver|delivery driver|picker|packer|warehouse (operative|assistant|colleague)|stock (replenishment|assistant|colleague)|counter assistant|retail (assistant|adviser|advisor|store manager|sales advi[cs]or|advi[cs]or)|store manager|assistant store manager|visual merchandis|till operator|shop floor|consumer sales advi[cs]or|webchat sales advi[cs]or|barista|bar staff|waiter|waitress|food runner|kitchen (porter|assistant|crew)|dishwasher|clean(er|ers|ing)\b|cleaning (operative|supervisor|team leader|manager|coordinator|assistant|technician|controller|inspector)|hgv driver|security (guard|officer|operative|supervisor|team leader|warden|patrol)|(relief|mobile|static|door|night|site) security (officer|guard|operative)|cctv (operator|officer|monitor)|door supervisor|crowd steward|event steward|match day steward|housekeeper|housekeeping|waste (operative|collector|handler|driver|technician)|janitor|caretaker|groundsman|groundswoman|grounds maintenance|groundskeeper|window clean|pest control|laundry (operative|assistant)|room attendant|maintenance operative|car park (attendant|operative|marshal)|parking (attendant|warden|marshal)|domestic (operative|assistant|services team)|porter(?! manage))\b/i;
+
+export function isValidJobTitle(title: string): boolean {
     if (!title || title.length < 3) return false;
     const lower = title.toLowerCase().trim();
     const junk = [
@@ -441,14 +554,12 @@ function isValidJobTitle(title: string): boolean {
         'get started', 'apply now', 'view details', 'view job', 'read more',
         'open positions', 'current openings', 'our roles', 'work with us',
         'explore careers', 'early careers', 'experienced hires', 'alumni',
-        'jobs and careers', 'careers', 'our vacancies', 'view vacancies'
+        'jobs and careers', 'careers', 'our vacancies', 'view vacancies', 'vacancies', 'details', 'view details & apply',
+        'view role ↗', 'more detail'
     ];
-    // Check if it's an exact match or if it's one of the junk phrases
     if (junk.includes(lower)) return false;
-    // Check if it starts with a junk phrase followed by a space (e.g., "See all jobs in...")
-    // but only if the title is relatively short (less than 40 chars) to avoid false positives
     if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return false;
-    
+    if (LOW_PROFILE_TITLE_PATTERN.test(title)) return false;
     return true;
 }
 
@@ -469,16 +580,6 @@ const PROVIDER_ALIAS: Record<string, string> = {
 
 // Custom company token → fetcher routing
 const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
-    { pattern: /join\.com/i, fetcher: 'join_com' },
-    { pattern: /jazzhr\.com|applytojob\.com/i, fetcher: 'jazzhr' },
-    { pattern: /eploy\.net/i, fetcher: 'eploy' },
-    { pattern: /csod\.com/i, fetcher: 'cornerstone' },
-    { pattern: /gem\.com/i, fetcher: 'gem' },
-    { pattern: /mercor\.com/i, fetcher: 'mercor' },
-    { pattern: /phenompeople\.com/i, fetcher: 'phenom' },
-    { pattern: /recruiterbox\.com/i, fetcher: 'recruiterbox' },
-    { pattern: /taleo\.net/i, fetcher: 'oracle_taleo' },
-
     { pattern: /jpmc\.fa\.oraclecloud|jpmorgan|jpmorganchase/i, fetcher: 'jpmc' },
     { pattern: /higher\.gs\.com|goldman.?sachs/i, fetcher: 'goldmansachs' },
     { pattern: /amazon\.jobs/i, fetcher: 'amazon' },
@@ -514,7 +615,8 @@ function resolveProviderAndToken(
                 return { provider: route.fetcher, token: lookupStr };
             }
         }
-        // No matching custom route — fall through to URL inference below
+        // Route everything else marked as custom to our generic custom fetcher
+        return { provider: 'custom', token: lookupStr };
     }
 
     // Normalize provider and apply alias
@@ -925,7 +1027,7 @@ async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOn
         if (!fetcher) continue;
 
         try {
-            let jobs = await fetcher(attempt.token);
+            let jobs = await fetcher(attempt.token, company);
             jobs = jobs.filter(j => isValidJobTitle(j.title));
             if (jobs.length > 0) {
                 return {
@@ -1022,11 +1124,10 @@ async function loadAtsOverrides(companyIds: number[]): Promise<Map<number, AtsOv
 async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRow[]> {
     const EXCEL_PATH_NEW = path.resolve(process.cwd(), 'data/excel/Testing_jobs_data.xlsx');
     const EXCEL_PATH_OLD = path.resolve(process.cwd(), 'Testing_jobs_data.xlsx');
-    const EXCEL_PATH = fs.existsSync(EXCEL_PATH_NEW) ? EXCEL_PATH_NEW : EXCEL_PATH_OLD;
 
-    if (fs.existsSync(EXCEL_PATH)) {
-        console.log(`[INPUT] Reading companies from ${EXCEL_PATH}...`);
-        const workbook = XLSX.readFile(EXCEL_PATH);
+    const loadFromExcel = (excelPath: string): CompanyRow[] => {
+        console.log(`[INPUT] Reading companies from ${excelPath}...`);
+        const workbook = XLSX.readFile(excelPath);
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(sheet);
 
@@ -1042,24 +1143,75 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
             return companies.filter(c => specificIds.includes(c.id));
         }
         return companies;
+    };
+
+    if (specificIds && specificIds.length > 0) {
+        try {
+            const { data, error } = await supabase
+                .from('companies')
+                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
+                .in('id', specificIds)
+                .order('trading_name');
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            const companies = (data || []) as CompanyRow[];
+            const overrides = await loadAtsOverrides(companies.map(c => c.id));
+
+            return companies.map(company => {
+                const override = overrides.get(company.id);
+                const base = {
+                    ...company,
+                    careers_url: company.url
+                };
+                if (!override) return base;
+
+                return {
+                    ...base,
+                    ats_provider: normalizeProviderName(override.sync_provider || override.provider_raw) || company.ats_provider,
+                    ats_board_token: override.board_token_raw?.trim() || company.ats_board_token,
+                    careers_url: normalizeCareersUrl(override.careers_url_raw) || base.careers_url,
+                };
+            });
+        } catch (error: any) {
+            console.warn(`Could not load filtered companies from Supabase, falling back to Excel: ${error.message}`);
+            if (fs.existsSync(EXCEL_PATH_NEW)) return loadFromExcel(EXCEL_PATH_NEW);
+            if (fs.existsSync(EXCEL_PATH_OLD)) return loadFromExcel(EXCEL_PATH_OLD);
+            throw error;
+        }
     }
 
-    // ─── DATABASE LOAD FALLBACK ───
-    if (specificIds && specificIds.length > 0) {
-        const { data, error } = await supabase
-            .from('companies')
-            .select('id, trading_name, ats_provider, ats_board_token, url')
-            .in('id', specificIds)
-            .order('trading_name');
+    const pageSize = 1000;
+    let from = 0;
+    const all: CompanyRow[] = [];
 
-        if (error) {
-            throw new Error(`Could not load filtered companies: ${error.message}`);
+    try {
+        while (true) {
+            const to = from + pageSize - 1;
+            const { data, error } = await supabase
+                .from('companies')
+                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
+                .order('id', { ascending: true })
+                .range(from, to);
+
+            if (error) {
+                throw new Error(`Could not load companies page ${from}-${to}: ${error.message}`);
+            }
+
+            const rows = (data || []) as CompanyRow[];
+            if (rows.length === 0) break;
+
+            all.push(...rows);
+
+            if (rows.length < pageSize) break;
+            from += pageSize;
         }
 
-        const companies = (data || []) as CompanyRow[];
-        const overrides = await loadAtsOverrides(companies.map(c => c.id));
+        const overrides = await loadAtsOverrides(all.map(c => c.id));
 
-        return companies.map(company => {
+        const merged = all.map(company => {
             const override = overrides.get(company.id);
             const base = {
                 ...company,
@@ -1074,52 +1226,14 @@ async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRo
                 careers_url: normalizeCareersUrl(override.careers_url_raw) || base.careers_url,
             };
         });
+
+        return merged.sort((a, b) => a.trading_name.localeCompare(b.trading_name));
+    } catch (error: any) {
+        console.warn(`Could not load companies from Supabase, falling back to Excel: ${error.message}`);
+        if (fs.existsSync(EXCEL_PATH_NEW)) return loadFromExcel(EXCEL_PATH_NEW);
+        if (fs.existsSync(EXCEL_PATH_OLD)) return loadFromExcel(EXCEL_PATH_OLD);
+        throw error;
     }
-
-    const pageSize = 1000;
-    let from = 0;
-    const all: CompanyRow[] = [];
-
-    while (true) {
-        const to = from + pageSize - 1;
-        const { data, error } = await supabase
-            .from('companies')
-            .select('id, trading_name, ats_provider, ats_board_token, url')
-            .order('id', { ascending: true })
-            .range(from, to);
-
-        if (error) {
-            throw new Error(`Could not load companies page ${from}-${to}: ${error.message}`);
-        }
-
-        const rows = (data || []) as CompanyRow[];
-        if (rows.length === 0) break;
-
-        all.push(...rows);
-
-        if (rows.length < pageSize) break;
-        from += pageSize;
-    }
-
-    const overrides = await loadAtsOverrides(all.map(c => c.id));
-
-    const merged = all.map(company => {
-        const override = overrides.get(company.id);
-        const base = {
-            ...company,
-            careers_url: company.url
-        };
-        if (!override) return base;
-
-        return {
-            ...base,
-            ats_provider: normalizeProviderName(override.sync_provider || override.provider_raw) || company.ats_provider,
-            ats_board_token: override.board_token_raw?.trim() || company.ats_board_token,
-            careers_url: normalizeCareersUrl(override.careers_url_raw) || base.careers_url,
-        };
-    });
-
-    return merged.sort((a, b) => a.trading_name.localeCompare(b.trading_name));
 }
 
 function normalizeTeamtailorHtmlToken(token: string): string {
@@ -1216,13 +1330,11 @@ async function fetchLever(token: string): Promise<Job[]> {
                     const jobs: Job[] = [];
                     d.forEach((group: any) => {
                         (group.postings || []).forEach((p: any) => {
-                            // Gap 3: Combines location and team/department and tags
                             const loc = p.categories?.location || p.workplaceType || '';
                             const team = p.categories?.department || p.categories?.team || group.title || '';
-                            const tags = (p.tags || []).join(' ');
                             jobs.push({
                                 title: p.text || '',
-                                location: `${loc} ${team} ${tags}`.trim(),
+                                location: loc,
                                 url: p.hostedUrl || '',
                                 department: team,
                                 salary: undefined
@@ -1241,10 +1353,9 @@ async function fetchLever(token: string): Promise<Job[]> {
                     return d2.map((p: any) => {
                         const loc = p.categories?.location || p.workplaceType || '';
                         const team = p.categories?.department || p.categories?.team || '';
-                        const tags = (p.tags || []).join(' ');
                         return {
                             title: p.text || '',
-                            location: `${loc} ${team} ${tags}`.trim(),
+                            location: loc,
                             url: p.hostedUrl || '',
                             department: team,
                             salary: undefined
@@ -1260,44 +1371,56 @@ async function fetchLever(token: string): Promise<Job[]> {
 async function fetchWorkable(token: string): Promise<Job[]> {
     const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0';
 
-    // 1. Try public detail API (most reliable/fastest)
-    try {
-        const r = await fetchWithTimeout(`https://www.workable.com/api/accounts/${token}?detail=true`, {
-            headers: { 'User-Agent': ua, 'Accept': 'application/json' }
-        });
-        if (r.ok) {
-            const d = await r.json();
-            if (Array.isArray(d.jobs)) {
-                return d.jobs.map((j: any) => ({
-                    title: j.title || '',
-                    location: [j.city, j.state, j.country].filter(Boolean).join(', ') || (j.telecommuting ? 'Remote' : ''),
-                    url: j.url || j.shortlink || `https://apply.workable.com/j/${j.shortcode}`,
-                    department: j.department || '',
-                    salary: undefined
-                }));
-            }
+    const workableFetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3): Promise<Response | null> => {
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                const r = await fetchWithTimeout(url, options);
+                if (r.status === 429) {
+                    const rawRetry = parseInt(r.headers.get('retry-after') || '0') || (2 ** attempt) * 2;
+                    const retryAfter = Math.min(rawRetry, 30); // cap at 30s so one company can't stall the whole run
+                    await sleep(retryAfter * 1000);
+                    continue;
+                }
+                return r;
+            } catch { }
         }
-    } catch { }
+        return null;
+    };
 
-    // 2. Try v3 API fallback (in case public API fails/different structure)
-    try {
-        const body = { query: '', location: [], department: [], worktype: [], remote: [] };
-        const r = await fetchWithTimeout(`https://apply.workable.com/api/v3/accounts/${token}/jobs`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'User-Agent': ua },
-            body: JSON.stringify(body)
-        });
-        if (r.ok) {
-            const d = await r.json();
-            return (d.results || []).map((j: any) => ({
+    // 1. Try public detail API (most reliable/fastest)
+    const r1 = await workableFetchWithRetry(`https://www.workable.com/api/accounts/${token}?detail=true`, {
+        headers: { 'User-Agent': ua, 'Accept': 'application/json' }
+    });
+    if (r1?.ok) {
+        const d = await r1.json();
+        if (Array.isArray(d.jobs)) {
+            return d.jobs.map((j: any) => ({
                 title: j.title || '',
-                location: [j.location?.city, j.location?.region, j.location?.country].filter(Boolean).join(', ') || (j.remote ? 'Remote' : ''),
-                url: `https://apply.workable.com/${token}/j/${j.shortcode}/`,
+                location: [j.city, j.state, j.country].filter(Boolean).join(', ') || (j.telecommuting ? 'Remote' : ''),
+                url: j.url || j.shortlink || `https://apply.workable.com/j/${j.shortcode}`,
                 department: j.department || '',
                 salary: undefined
             }));
         }
-    } catch { }
+    }
+
+    // 2. Try v3 API fallback
+    const body = { query: '', location: [], department: [], worktype: [], remote: [] };
+    const r2 = await workableFetchWithRetry(`https://apply.workable.com/api/v3/accounts/${token}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': ua },
+        body: JSON.stringify(body)
+    });
+    if (r2?.ok) {
+        const d = await r2.json();
+        return (d.results || []).map((j: any) => ({
+            title: j.title || '',
+            location: [j.location?.city, j.location?.region, j.location?.country].filter(Boolean).join(', ') || (j.remote ? 'Remote' : ''),
+            url: `https://apply.workable.com/${token}/j/${j.shortcode}/`,
+            department: j.department || '',
+            salary: undefined
+        }));
+    }
 
     return [];
 }
@@ -1376,25 +1499,17 @@ async function fetchBambooHR(token: string): Promise<Job[]> {
         const r = await fetchWithTimeout(`https://${token}.bamboohr.com/careers/list`);
         if (r.ok) {
             const d = await r.json();
-            return (d.result || []).map((j: any) => {
-                const isRemote = j.isRemote === true || j.locationType === '1' || j.locationType === 'Remote';
-                const locPieces = [
+            return (d.result || []).map((j: any) => ({
+                title: j.jobOpeningName || '',
+                location: [
                     j.location?.city,
                     j.location?.state,
                     j.location?.country
-                ].filter(Boolean);
-                let locStr = locPieces.join(', ');
-                if (isRemote && !locStr) locStr = 'Remote';
-                else if (isRemote && locStr && !locStr.toLowerCase().includes('remote')) locStr += ' (Remote)';
-                
-                return {
-                    title: j.jobOpeningName || '',
-                    location: locStr,
-                    url: `https://${token}.bamboohr.com/careers/${j.id}`,
-                    department: '',
-                    salary: undefined
-                };
-            });
+                ].filter(Boolean).join(', '),
+                url: `https://${token}.bamboohr.com/careers/${j.id}`,
+                department: '',
+                salary: undefined
+            }));
         }
         // Fallback: applicant tracking API
         const r2 = await fetchWithTimeout(
@@ -1403,20 +1518,13 @@ async function fetchBambooHR(token: string): Promise<Job[]> {
         );
         if (!r2.ok) return [];
         const d2 = await r2.json();
-        return (d2 || []).map((j: any) => {
-            const isRemote = j.locationType?.id === '2' || j.locationType?.label === 'Remote' || j.isRemote || String(j.locationType) === '1';
-            let locStr = j.location?.label || '';
-            if (isRemote && !locStr) locStr = 'Remote';
-            else if (isRemote && locStr && !locStr.toLowerCase().includes('remote')) locStr += ' (Remote)';
-            
-            return {
-                title: j.jobTitle?.label || j.title || '',
-                location: locStr,
-                url: `https://${token}.bamboohr.com/jobs/${j.id}/`,
-                department: j.department?.label || '',
-                salary: undefined
-            };
-        });
+        return (d2 || []).map((j: any) => ({
+            title: j.jobTitle?.label || j.title || '',
+            location: j.location?.label || '',
+            url: `https://${token}.bamboohr.com/jobs/${j.id}/`,
+            department: j.department?.label || '',
+            salary: undefined
+        }));
     } catch { return []; }
 }
 
@@ -1435,7 +1543,9 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
 
             allJobs.push(...content.map((j: any) => ({
                 title: j.name || '',
-                location: `${j.location?.city || ''} ${j.location?.country || ''}`.trim(),
+                // fullLocation gives "London, England, United Kingdom" / "Saint Helier, Jersey"
+                // which catches Channel Islands and avoids 2-letter country code ambiguity
+                location: j.location?.fullLocation || `${j.location?.city || ''} ${j.location?.country || ''}`.trim(),
                 url: `https://jobs.smartrecruiters.com/${token}/${j.id}`,
                 department: j.department?.label || '',
                 salary: undefined
@@ -1502,10 +1612,11 @@ async function fetchRecruitee(token: string): Promise<Job[]> {
         const d = await r.json();
         return (d.offers || []).map((j: any) => ({
             title: j.title || '',
-            location: j.location || j.city || '',
+            location: [j.city, j.country].filter(Boolean).join(', ') || j.location || '',
             url: j.careers_url || '',
             department: j.department || '',
-            salary: undefined
+            salary: undefined,
+            country: j.country || '',
         }));
     } catch { return []; }
 }
@@ -1664,7 +1775,7 @@ async function fetchPersonio(token: string): Promise<Job[]> {
             return {
                 title: get('name') || get('title'),
                 location: get('office') || get('location'),
-                url: get('jobUrl') || `https://${token}.jobs.personio.de`,
+                url: get('jobUrl') || `https://${token}.jobs.personio.de/job/${get('id')}?display=en`,
                 department: get('department'),
                 salary: undefined
             };
@@ -1719,7 +1830,7 @@ async function fetchWorkday(token: string): Promise<Job[]> {
     const isWorkdaySite = slug === 'wf' || slug.includes('hcahealthcare');
 
     // Subdomains to try. If we detected one from the URL, put it first.
-    const wds = ['wd3', 'wd1', 'wd5', 'wd103', 'wd107', 'wd108', 'wd12', 'wd2'];
+    const wds = ['wd3', 'wd1', 'wd5', 'wd103', 'wd107', 'wd108', 'wd12', 'wd2', 'wd10', 'wd8', 'wd6', 'wd4', 'wd9', 'wd1001'];
     if (detectedWd && wds.includes(detectedWd)) {
         wds.splice(wds.indexOf(detectedWd), 1);
         wds.unshift(detectedWd);
@@ -1738,12 +1849,9 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 
             try {
                 let currentFacets: any = { locationCountry: [ukFacetId] };
-                if (dbAppliedFacets?.locations) {
-                    currentFacets = { locations: dbAppliedFacets.locations };
-                } else if (dbAppliedFacets?.locationCountry) {
-                    currentFacets = { locationCountry: dbAppliedFacets.locationCountry };
-                } else if (dbAppliedFacets?.Location_Country) {
-                    currentFacets = { Location_Country: dbAppliedFacets.Location_Country };
+                if (dbAppliedFacets && Object.keys(dbAppliedFacets).length > 0) {
+                    // Use whatever facet key the company config specifies (e.g. locationHierarchy1 for NVIDIA)
+                    currentFacets = dbAppliedFacets;
                 }
 
                 let res = await fetchWithTimeout(apiUrl, {
@@ -1784,23 +1892,57 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 
                 const data = await res.json();
                 let posts = data?.jobPostings || [];
-
                 let total = data.total || 0;
+                const facetWasApplied = Object.keys(currentFacets).length > 0;
 
-                // If UK facet returned 0, but the company is expected to have jobs, try without facet
-                if (posts.length === 0) {
-                    currentFacets = {};
-                    const noFacetRes = await fetchWithTimeout(apiUrl, {
+                // Always fetch the global (no-facet) count so we can judge whether the UK
+                // facet is actually filtering, or just returning the full board.
+                let globalTotal = 0;
+                try {
+                    const globalRes = await fetchWithTimeout(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
-                        body: JSON.stringify({ appliedFacets: currentFacets, limit: 20, offset: 0, searchText: '' })
+                        body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText: '' })
                     });
-                    if (noFacetRes.ok) {
-                        const noFacetData = await noFacetRes.json();
-                        posts = noFacetData.jobPostings || [];
-                        total = noFacetData.total || 0;
+                    if (globalRes.ok) {
+                        const gd = await globalRes.json();
+                        globalTotal = gd.total || 0;
+                        // If facet returned 0 jobs but the board has jobs, try alternate
+                        // facet key names before falling back to the full global board.
+                        // Different Workday tenants use different keys:
+                        //   locationCountry — most boards (default)
+                        //   Country         — e.g. RBC, Baxter
+                        //   Location_Country — e.g. Pfizer
+                        if (posts.length === 0 && (gd.jobPostings || []).length > 0 && !dbAppliedFacets) {
+                            for (const altKey of ['Country', 'Location_Country']) {
+                                try {
+                                    const altRes = await fetchWithTimeout(apiUrl, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
+                                        body: JSON.stringify({ appliedFacets: { [altKey]: [ukFacetId] }, limit: 20, offset: 0, searchText: '' })
+                                    });
+                                    if (altRes.ok) {
+                                        const cd = await altRes.json();
+                                        const cPosts = cd.jobPostings || [];
+                                        const cTotal = cd.total || 0;
+                                        if (cPosts.length > 0 && cTotal < globalTotal) {
+                                            posts = cPosts;
+                                            total = cTotal;
+                                            currentFacets = { [altKey]: [ukFacetId] };
+                                            break;
+                                        }
+                                    }
+                                } catch { /* ignore */ }
+                            }
+                        }
+                        // Still 0 after all facet attempts — fall back to full global board
+                        if (posts.length === 0 && (gd.jobPostings || []).length > 0) {
+                            posts = gd.jobPostings;
+                            total = globalTotal;
+                            currentFacets = {};
+                        }
                     }
-                }
+                } catch { /* ignore — proceed with facet results */ }
 
                 if (posts.length === 0) {
                     if (isWorkdaySite) break;
@@ -1809,31 +1951,45 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 
                 const allJobs: Job[] = [];
                 let offset = 0;
-                const finalFacets = data.appliedFacets || currentFacets || {};
 
-                // Sanity check: did the UK facet actually work?
-                let facetIsTrusted = Object.keys(finalFacets).length > 0;
-                if (facetIsTrusted && posts.length > 0) {
-                    const sample = posts.slice(0, 20);
-                    let hasExplicitUK = false;
-                    let hasExplicitNonUK = false;
+                // ── Step 1: Is the UK facet genuinely filtering? ─────────────────────
+                // If faceted count ≈ global count (ratio ≥ 0.75), the facet is not
+                // filtering by country at all.
+                const facetReducedCount = facetWasApplied && globalTotal > 0 && (total / globalTotal) < 0.75;
+                let finalFacets: any = (facetWasApplied && facetReducedCount)
+                    ? (data.appliedFacets || currentFacets)
+                    : {};
 
-                    for (const p of sample) {
-                        const loc = normalizeLocation(p.locationsText || p.bulletFields?.[1] || '');
-                        const isUK = isUKLocation(loc);
-                        const isNonUK = !isUK && !/^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified)$/.test(loc) && !/\d+\s+locations?/.test(loc);
+                let facetIsTrusted = facetWasApplied && facetReducedCount;
 
-                        if (isUK) hasExplicitUK = true;
-                        if (isNonUK) {
-                            hasExplicitNonUK = true;
-                            break;
-                        }
-                    }
+                // ── Step 2: Sample the first page for explicit non-UK locations ───────
+                // Even a working facet can mis-fire. Also used to detect UK-only boards.
+                let explicitNonUKCount = 0;
+                let explicitUKCount = 0;
+                for (const p of posts.slice(0, 20)) {
+                    const loc = normalizeLocation(p.locationsText || p.bulletFields?.[1] || '');
+                    const isUK = isUKLocation(loc);
+                    const isAmbiguous = !loc || /\d+\s+locations?/.test(loc)
+                        || /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified|location negotiable|negotiable|tbd|various|see description)$/.test(loc);
+                    if (isUK) explicitUKCount++;
+                    else if (!isAmbiguous) explicitNonUKCount++;
+                }
 
-                    // If we found ANY explicit non-UK, or we found NO explicit UK (only ambiguous), don't trust.
-                    if (hasExplicitNonUK || !hasExplicitUK) {
-                        facetIsTrusted = false;
-                    }
+                if (facetIsTrusted && explicitNonUKCount > explicitUKCount) {
+                    // Majority of sample is non-UK → facet is not filtering usefully.
+                    // Switch to global fetch and update total so we paginate all jobs.
+                    facetIsTrusted = false;
+                    finalFacets = {};
+                    total = globalTotal;
+                }
+
+                // ── Step 3: UK-only board detection ──────────────────────────────────
+                // If the facet isn't filtering BUT the first page shows zero explicit
+                // non-UK locations, this is almost certainly a UK-only job board
+                // (e.g. Lloyds, Harrods, Railpen). Trust all results directly.
+                if (!facetIsTrusted && explicitNonUKCount === 0) {
+                    facetIsTrusted = true;
+                    finalFacets = {}; // paginate without facet to get all jobs
                 }
 
                 while (offset < total || (offset === 0 && posts.length > 0)) {
@@ -1842,10 +1998,7 @@ async function fetchWorkday(token: string): Promise<Job[]> {
                         const nextRes = await fetchWithTimeout(apiUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
-                            body: JSON.stringify({
-                                appliedFacets: finalFacets,
-                                limit: 20, offset, searchText: ''
-                            })
+                            body: JSON.stringify({ appliedFacets: finalFacets, limit: 20, offset, searchText: '' })
                         });
                         if (nextRes.ok) {
                             const nextData = await nextRes.json();
@@ -1882,20 +2035,53 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 }
 
 async function fetchOracleCloud(token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
     try {
-        const [domain, site] = token.split('|');
-        const url = `https://${domain}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.workLocation,requisitionList.otherWorkLocations,requisitionList.secondaryLocations,flexFieldsFacet.values,requisitionList.requisitionFlexFields&finder=findReqs;siteNumber=${site},facetsList=LOCATIONS%3BWORK_LOCATIONS%3BWORKPLACE_TYPES%3BTITLES%3BCATEGORIES%3BORGANIZATIONS%3BPOSTING_DATES%3BFLEX_FIELDS,limit=100,sortBy=POSTING_DATES_DESC`;
-        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (!res.ok) return [];
-        const data: any = await res.json();
-        return (data.items?.[0]?.requisitionList || []).map((j: any) => ({
-            title: j.Title || '',
-            location: j.PrimaryLocation || j.workLocation?.Region || '',
-            url: `https://${domain}/hcmUI/CandidateExperience/en/sites/${site}/job/${j.Id}`,
-            department: j.Organization || '',
-            salary: undefined
-        }));
-    } catch { return []; }
+        let [domain, site] = token.split('|');
+        if (!site) site = 'CX_1'; // Default site for Oracle Cloud HCM
+        
+        // Fix incomplete domains from legacy data (e.g., jpmc.fa or *.fa.ocs)
+        if (!domain.includes('.com') && !domain.includes('.co.uk') && !domain.includes('.org') && domain.includes('.fa')) {
+            domain += '.oraclecloud.com';
+        }
+
+        let offset = 0;
+        const limit = 100;
+        let hasMore = true;
+
+        while (hasMore) {
+            const url = `https://${domain}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.workLocation,requisitionList.otherWorkLocations,requisitionList.secondaryLocations,flexFieldsFacet.values,requisitionList.requisitionFlexFields&finder=findReqs;siteNumber=${site},facetsList=LOCATIONS%3BWORK_LOCATIONS%3BWORKPLACE_TYPES%3BTITLES%3BCATEGORIES%3BORGANIZATIONS%3BPOSTING_DATES%3BFLEX_FIELDS,limit=${limit},offset=${offset},sortBy=POSTING_DATES_DESC`;
+            
+            const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) break;
+
+            const data: any = await res.json();
+            const payload = data.items?.[0];
+            if (!payload) break;
+
+            const reqList = payload.requisitionList || [];
+            for (const j of reqList) {
+                allJobs.push({
+                    title: j.Title || '',
+                    location: j.PrimaryLocation || j.workLocation?.Region || '',
+                    url: `https://${domain}/hcmUI/CandidateExperience/en/sites/${site}/job/${j.Id}`,
+                    department: j.Organization || '',
+                    salary: undefined
+                });
+            }
+
+            const totalCount = payload.TotalJobsCount || 0;
+            offset += limit;
+            hasMore = offset < totalCount;
+            
+            // Safety bound: Oracle HCM usually maxes out or times out if >10000 jobs are listed in a single site
+            if (offset > 10000) break;
+        }
+
+        return allJobs;
+    } catch (e) {
+        return allJobs; 
+    }
 }
 
 async function fetchWipro(token: string): Promise<Job[]> {
@@ -2053,35 +2239,45 @@ async function fetchEightfold(token: string): Promise<Job[]> {
 
 async function fetchICIMS(token: string): Promise<Job[]> {
     try {
-        // iCIMS usually has a job search JSON endpoint at [customer].icims.com/jobs/search?pr=[page]&in_iframe=1&schemaId=job&json=1
-        // But for LSL Property Services specifically, we might need a different pattern if the above fails.
-        // Let's implement a robust version that tries the common JSON endpoint.
         const allJobs: Job[] = [];
         let pr = 0;
 
         while (true) {
-            const url = `https://${token}.icims.com/jobs/search?pr=${pr}&in_iframe=1&schemaId=job&json=1`;
+            const url = `https://${token}.icims.com/jobs/search?pr=${pr}&in_iframe=1`;
             const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
             if (!res.ok) break;
 
-            const data: any = await res.json();
-            // iCIMS JSON structure is often an array of job objects directly or in a 'results' field
-            const results = Array.isArray(data) ? data : (data.results || []);
-            if (results.length === 0) break;
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            const cards = $('.iCIMS_JobsTable .iCIMS_JobCardItem');
+            
+            if (cards.length === 0) break;
 
-            allJobs.push(...results.map((j: any) => ({
-                title: j.title || j.JobTitle || '',
-                location: j.location || j.JobLocation || '',
-                url: j.url || `https://${token}.icims.com/jobs/${j.id || j.JobId}/job`,
-                department: j.department || j.JobCategory || '',
-                salary: undefined
-            })));
+            cards.each((_, el) => {
+                const title = $(el).find('h3').text().trim();
+                const jobUrl = $(el).find('a.iCIMS_Anchor').attr('href') || '';
+                const location = $(el).find('.header span').not('.sr-only').text().replace(/\s+/g, ' ').trim();
+                const department = $(el).find('dt:contains("Category")').next('dd').text().replace(/\s+/g, ' ').trim();
 
-            if (results.length < 10) break; // Arbitrary small page size check
+                if (title && jobUrl) {
+                    allJobs.push({
+                        title,
+                        location,
+                        url: jobUrl.split('?')[0],
+                        department,
+                        salary: undefined
+                    });
+                }
+            });
+
+            if (cards.length < 5) break;
             pr++;
         }
         return allJobs;
-    } catch { return []; }
+    } catch (e: any) {
+        console.error(`[iCIMS] ${token} error: ${e.message}`);
+        return [];
+    }
 }
 
 async function fetchRippling(token: string): Promise<Job[]> {
@@ -2096,10 +2292,39 @@ async function fetchRippling(token: string): Promise<Job[]> {
         const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
         if (!match) return [];
         const data = JSON.parse(match[1]);
-        // Job data is nested in dehydratedState queries
+        
+        const buildId = data.buildId;
+        const allItems: any[] = [];
+        
+        // Extract page 0 jobs
         const queries = data?.props?.pageProps?.dehydratedState?.queries || [];
-        const items: any[] = queries.flatMap((q: any) => q?.state?.data?.items || []);
-        return items.map((j: any) => ({
+        const jobQuery = queries.find((q: any) => q?.queryKey?.includes('job-posts'));
+        
+        if (jobQuery?.state?.data) {
+            allItems.push(...(jobQuery.state.data.items || []));
+            
+            const totalPages = jobQuery.state.data.totalPages || 1;
+            for (let p = 1; p < totalPages; p++) {
+                try {
+                    const pageUrl = `https://ats.rippling.com/_next/data/${buildId}/${token}/jobs.json?page=${p}`;
+                    const pageRes = await fetchWithTimeout(pageUrl, {
+                        headers: { 'User-Agent': 'Mozilla/5.0' }
+                    });
+                    if (pageRes.ok) {
+                        const pageData = await pageRes.json();
+                        const pageQueries = pageData?.pageProps?.dehydratedState?.queries || [];
+                        const pageJobQuery = pageQueries.find((q: any) => q?.queryKey?.includes('job-posts'));
+                        if (pageJobQuery?.state?.data?.items) {
+                            allItems.push(...pageJobQuery.state.data.items);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`[Rippling] ${token} error fetching page ${p}:`, e);
+                }
+            }
+        }
+
+        return allItems.map((j: any) => ({
             title: j.name || '',
             location: (j.locations || []).map((l: any) => l.name || l.city || '').join(', '),
             url: j.url || `https://ats.rippling.com/${token}/jobs/${j.id}`,
@@ -2615,10 +2840,9 @@ async function fetchNHS(token: string): Promise<Job[]> {
     return allJobs;
 }
 
-
-
-// --- NEW SCRAPERS ---
-
+// ─── JazzHR ─────────────────────────────────────────────────────────────────
+// Public job board at {token}.applytojob.com/apply — HTML scraped with Cheerio.
+// Token is either a company slug ("vyne") or numeric ID ("558485").
 async function fetchJazzHR(token: string): Promise<Job[]> {
     try {
         const url = `https://${token}.applytojob.com/apply`;
@@ -2637,8 +2861,8 @@ async function fetchJazzHR(token: string): Promise<Job[]> {
             if (!title || !jobUrl) return;
 
             const listItems = $(el).find('ul.list-inline li');
-            // First li = location (icon is an empty <i> tag so .text() is just the location)
-            const location = listItems.eq(0).text().trim();
+            // First li = location (has map-marker icon), second = department/type
+            const location = listItems.eq(0).text().replace(/^\s*\S+\s*/, '').trim(); // strip icon char
             const department = listItems.eq(1).text().trim();
 
             jobs.push({ title, location, url: jobUrl, department, salary: undefined });
@@ -2648,7 +2872,7 @@ async function fetchJazzHR(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-// ΓöÇΓöÇΓöÇ Oracle Taleo ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Oracle Taleo ────────────────────────────────────────────────────────────
 // Token is a full URL like https://arm.taleo.net/careersection/arm_external/joblist.ftl
 // We extract tenant + section and hit the public REST API.
 async function fetchOracleTaleo(token: string): Promise<Job[]> {
@@ -2668,7 +2892,7 @@ async function fetchOracleTaleo(token: string): Promise<Job[]> {
 
         if (!tenant) return [];
 
-        // Taleo public REST API ΓÇö no auth required for published jobs
+        // Taleo public REST API — no auth required for published jobs
         const apiUrl = `https://${tenant}.taleo.net/careersection/rest/jobboard/requisition?lang=en&start=0&end=100${section ? `&src=${section}` : ''}`;
         const r = await fetchWithTimeout(apiUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
@@ -2689,7 +2913,7 @@ async function fetchOracleTaleo(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-// ΓöÇΓöÇΓöÇ Eploy ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Eploy ────────────────────────────────────────────────────────────────────
 // Token is either a company slug ("vanquisbankinggroup") or a full careers URL.
 // Eploy exposes a public vacancy search JSON endpoint.
 async function fetchEploy(token: string): Promise<Job[]> {
@@ -2697,12 +2921,12 @@ async function fetchEploy(token: string): Promise<Job[]> {
         let base = '';
 
         if (token.startsWith('http')) {
-            // Full URL ΓÇö extract the hostname-based eploy subdomain if present
+            // Full URL — extract the hostname-based eploy subdomain if present
             const parsed = new URL(token);
             if (parsed.hostname.includes('eploy.net')) {
                 base = `https://${parsed.hostname}`;
             } else {
-                // Custom domain with Eploy backend ΓÇö try appending the known API path
+                // Custom domain with Eploy backend — try appending the known API path
                 base = `https://${parsed.hostname}`;
             }
         } else {
@@ -2726,6 +2950,540 @@ async function fetchEploy(token: string): Promise<Job[]> {
             salary: undefined,
         })).filter((j: Job) => j.title && j.url);
     } catch { return []; }
+}
+
+// ─── AstraZeneca (Playwright / TalentBrew SPA) ───────────────────────────────
+// Token: "astrazeneca" — JS-rendered careers.astrazeneca.com
+async function fetchAstraZeneca(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        // Intercept JSON API responses from TalentBrew / Radancy backend
+        const apiJobs: Job[] = [];
+        page.on('response', async (response) => {
+            const url = response.url();
+            if ((url.includes('position') || url.includes('jobs') || url.includes('search')) &&
+                response.headers()['content-type']?.includes('json')) {
+                try {
+                    const data = await response.json();
+                    const positions = data?.positions || data?.jobs || data?.results || data?.reqs || [];
+                    for (const j of positions) {
+                        const title = j.title || j.jobTitle || j.Title || '';
+                        const loc = j.jobLocation || j.location || j.primaryLocation || '';
+                        const url = j.applyUrl || j.url || j.jobUrl || j.detailUrl || '';
+                        if (title && url) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || loc.country || ''), url, department: j.category || '', salary: undefined });
+                    }
+                } catch { /* not JSON or wrong format */ }
+            }
+        });
+
+        await page.goto('https://careers.astrazeneca.com/search-jobs?k=&l=United+Kingdom', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+
+        // Use API-intercepted jobs if available
+        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
+        else {
+            // Fallback: parse rendered HTML
+            const jobs = await page.$$eval(
+                'a[href*="job"], li[class*="job"], .job-result, article[class*="job"]',
+                els => els.map(el => ({
+                    title: el.querySelector('[class*="title"], h2, h3')?.textContent?.trim() || el.textContent?.trim() || '',
+                    url:   (el as HTMLAnchorElement).href || el.querySelector('a')?.href || '',
+                    location: el.querySelector('[class*="location"], [class*="city"]')?.textContent?.trim() || '',
+                    department: '', salary: undefined as any,
+                })).filter(j => j.title && j.url)
+            );
+            allJobs.push(...jobs);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[AstraZeneca] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return allJobs;
+}
+
+// ─── Tesco (Playwright / careers.tesco.com) ───────────────────────────────────
+// Token: "tesco"
+async function fetchTesco(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        // Intercept API calls
+        const apiJobs: Job[] = [];
+        page.on('response', async (response) => {
+            const url = response.url();
+            if (url.includes('/jobs') && response.headers()['content-type']?.includes('json')) {
+                try {
+                    const data = await response.json();
+                    const items = data?.jobs || data?.results || data?.postings || data?.data || [];
+                    if (Array.isArray(items)) {
+                        for (const j of items) {
+                            const title = j.title || j.jobTitle || j.name || '';
+                            const loc = j.location || j.city || j.locationName || '';
+                            const href = j.url || j.applyUrl || j.canonicalPositionUrl || j.jobUrl || '';
+                            if (title && href) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || ''), url: href, department: j.department || j.category || '', salary: undefined });
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+        });
+
+        await page.goto('https://careers.tesco.com/en_GB/careers/SearchJobs', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+
+        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
+        else {
+            const jobs = await page.$$eval(
+                'a[href*="job"], [class*="job-card"], [class*="position-card"], li[class*="result"]',
+                els => els.map(el => ({
+                    title: el.querySelector('[class*="title"], h2, h3')?.textContent?.trim() || el.textContent?.trim() || '',
+                    url:   (el as HTMLAnchorElement).href || el.querySelector('a')?.href || '',
+                    location: el.querySelector('[class*="location"]')?.textContent?.trim() || 'United Kingdom',
+                    department: '', salary: undefined as any,
+                })).filter(j => j.title && j.url)
+            );
+            allJobs.push(...jobs);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[Tesco] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return allJobs;
+}
+
+// ─── EasyJet (Playwright / easyjet.taleo.net) ────────────────────────────────
+// Token: "easyjet"
+async function fetchEasyJet(token: string): Promise<Job[]> {
+    const tenant = token || 'easyjet';
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        const apiJobs: Job[] = [];
+        page.on('response', async (response) => {
+            if (response.url().includes('requisition') && response.headers()['content-type']?.includes('json')) {
+                try {
+                    const d = await response.json();
+                    const items = d?.requisitionList || d?.reqs || [];
+                    for (const j of items) {
+                        const title = j.title || j.jobTitle || '';
+                        const refNum = j.referenceNumber || j.id || '';
+                        const loc = j.location || j.locationDescr || '';
+                        if (title && refNum) apiJobs.push({
+                            title, location: loc,
+                            url: `https://${tenant}.taleo.net/careersection/2/jobdetail.ftl?job=${refNum}&lang=en`,
+                            department: '', salary: undefined
+                        });
+                    }
+                } catch { /* ignore */ }
+            }
+        });
+
+        await page.goto(`https://${tenant}.taleo.net/careersection/2/jobsearch.ftl?lang=en`, { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+
+        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
+        else {
+            // Parse Taleo rendered table
+            const jobs = await page.$$eval('tr[id]', rows => rows.map(row => ({
+                title: row.querySelector('a')?.textContent?.trim() || '',
+                url:   row.querySelector('a')?.href || '',
+                location: row.querySelector('td:nth-child(3), .location')?.textContent?.trim() || '',
+                department: '', salary: undefined as any,
+            })).filter(j => j.title && j.url));
+            allJobs.push(...jobs);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[EasyJet] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return allJobs;
+}
+
+// ─── BT Group (Playwright / careers.bt.com) ──────────────────────────────────
+// Token: "bt"
+async function fetchBTGroup(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        const apiJobs: Job[] = [];
+        page.on('response', async (response) => {
+            const url = response.url();
+            if ((url.includes('/jobs') || url.includes('/search') || url.includes('positions')) &&
+                response.headers()['content-type']?.includes('json')) {
+                try {
+                    const d = await response.json();
+                    const items = d?.jobs || d?.results || d?.postings || d?.positions || [];
+                    if (Array.isArray(items)) {
+                        for (const j of items) {
+                            const title = j.title || j.jobTitle || j.name || '';
+                            const loc = j.location || j.city || j.locationName || '';
+                            const href = j.url || j.canonicalPositionUrl || j.applyUrl || j.jobDetailUrl || '';
+                            if (title && href) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || ''), url: href, department: j.department || '', salary: undefined });
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+        });
+
+        await page.goto('https://careers.bt.com/global/en/search-results', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+
+        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
+        else {
+            const jobs = await page.$$eval(
+                'a[href*="/job/"], [class*="job-card"] a, [class*="position"] a, li[class*="result"] a',
+                els => els.map(el => ({
+                    title: el.textContent?.trim() || '',
+                    url:   (el as HTMLAnchorElement).href,
+                    location: el.closest('li,article,div')?.querySelector('[class*="location"]')?.textContent?.trim() || 'United Kingdom',
+                    department: '', salary: undefined as any,
+                })).filter(j => j.title && j.url && j.url.includes('bt.com'))
+            );
+            allJobs.push(...jobs);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[BT Group] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return allJobs;
+}
+
+// ─── Standard Chartered (Playwright + Workday fallback) ──────────────────────
+// Token: "standardchartered"
+async function fetchStandardChartered(token: string): Promise<Job[]> {
+    const slug = token || 'standardchartered';
+
+    // First: try Workday API (fastest)
+    for (const board of ['SCBExternalCareers', 'External', 'SC_External', 'StanChartExternal']) {
+        try {
+            const jobs = await fetchWorkday(`${slug}/${board}`);
+            if (jobs.length > 0) return jobs;
+        } catch { /* try next */ }
+    }
+
+    // Playwright fallback
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+        const apiJobs: Job[] = [];
+
+        page.on('response', async (response) => {
+            const url = response.url();
+            if ((url.includes('/jobs') || url.includes('/search') || url.includes('requisition')) &&
+                response.headers()['content-type']?.includes('json')) {
+                try {
+                    const d = await response.json();
+                    const items = d?.jobs || d?.results || d?.requisitionList || d?.postings || [];
+                    if (Array.isArray(items)) {
+                        for (const j of items) {
+                            const title = j.title || j.jobTitle || j.Title || '';
+                            const loc = j.location || j.primaryLocation || j.locationDescr || '';
+                            const href = j.url || j.applyUrl || j.jobDetailUrl || '';
+                            if (title && href) apiJobs.push({ title, location: typeof loc === 'string' ? loc : '', url: href, department: '', salary: undefined });
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+        });
+
+        await page.goto('https://scb.taleo.net/careersection/2/jobsearch.ftl?lang=en', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+        await browser.close();
+        if (apiJobs.length > 0) return apiJobs;
+    } catch (e: any) {
+        console.error('[Standard Chartered] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return [];
+}
+
+// ─── Microsoft (Phenom pcsx API at apply.careers.microsoft.com) ──────────────
+// Debug revealed the actual API: apply.careers.microsoft.com/api/pcsx/search
+// No Playwright needed — direct REST call identical to fetchEightfold pattern.
+async function fetchMicrosoft(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let start = 0;
+    const PAGE_SIZE = 20;
+
+    while (true) {
+        try {
+            // location= filters by country; filter_country= is ignored by the API
+            const url = `https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&query=&location=United+Kingdom&start=${start}&sort_by=timestamp`;
+            const res = await fetchWithTimeout(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                    'Accept': 'application/json',
+                    'Referer': 'https://apply.careers.microsoft.com/',
+                }
+            }, 20000);
+            if (!res.ok) break;
+            const d = await res.json();
+            const positions: any[] = d?.data?.positions || [];
+            if (positions.length === 0) break;
+
+            for (const p of positions) {
+                const title = p.name || p.title || '';
+                // positionUrl is the canonical path e.g. /careers/job/1970393556866457
+                const positionUrl = p.positionUrl || '';
+                const loc = (p.locations || [])[0] || p.location || '';
+                if (title && positionUrl) {
+                    allJobs.push({
+                        title,
+                        location: typeof loc === 'string' ? loc : (loc?.name || ''),
+                        url: `https://apply.careers.microsoft.com${positionUrl}`,
+                        department: p.category || p.department || '',
+                        salary: undefined,
+                    });
+                }
+            }
+
+            if (positions.length < PAGE_SIZE) break;
+            start += positions.length;
+            await sleep(500);
+        } catch { break; }
+    }
+    return allJobs;
+}
+
+// ─── Arup (jobs.arup.com UKIMEA region — scroll-paginated SPA) ───────────────
+// Arup has a regional browse page for UK+Ireland+Middle East+Africa.
+// We load that, scroll to reveal all jobs, then let the UK filter remove
+// non-UK results (Ireland, UAE, SA etc.).
+async function fetchArup(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        // Load the search page; scroll aggressively to trigger infinite-load
+        await page.goto('https://jobs.arup.com/jobs?keywords=&location=United+Kingdom', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(4000);
+
+        let prevCount = 0;
+        for (let i = 0; i < 60; i++) {
+            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+            await page.waitForTimeout(1500);
+            const count: number = await page.$$eval('a[href*="/jobs/"]', els => els.length);
+            if (count === prevCount) break;
+            prevCount = count;
+        }
+
+        const jobs = await page.$$eval('a[href*="/jobs/"]', (els: Element[]) =>
+            els.map(el => {
+                const href = (el as HTMLAnchorElement).href || '';
+                if (!href.match(/\/jobs\/[^/]+-\d+$/)) return null;
+                const card = el.closest('li, article, div, section') as HTMLElement | null;
+                const rawText = card?.innerText || '';
+                // Location is in "City, -, Country" format in Arup's card
+                const locMatch = rawText.match(/([A-Za-z][A-Za-z\s]+,\s*[-A-Za-z\s]*,\s*[A-Za-z][A-Za-z\s]+)/);
+                return {
+                    title: ((el.querySelector('h2, h3, [class*="title"]') as HTMLElement)?.innerText
+                        || (el as HTMLElement).innerText || '').trim(),
+                    url: href,
+                    location: locMatch ? locMatch[1].trim() : '',
+                    department: '',
+                };
+            }).filter((j): j is NonNullable<typeof j> => !!j?.title && !!j?.url)
+        );
+
+        allJobs.push(...jobs as Job[]);
+        await browser.close();
+    } catch (e: any) {
+        console.error('[Arup] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
+}
+
+// ─── Jacobs (careers.jacobs.com — Playwright with stealth) ───────────────────
+// careers.jacobs.com uses AWS WAF. We disable automation flags and add
+// realistic timing to avoid bot detection.
+async function fetchJacobs(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({
+            headless: true,
+            args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+        });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1440, height: 900 },
+            extraHTTPHeaders: { 'Accept-Language': 'en-GB,en;q=0.9' },
+        });
+        // Mask webdriver property
+        await context.addInitScript(() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        });
+        const page = await context.newPage();
+
+        const apiJobs: Job[] = [];
+        const pending: Promise<void>[] = [];
+
+        page.on('response', (response: any) => {
+            const url = response.url();
+            if (!(url.includes('/jobs') || url.includes('/search') || url.includes('position') || url.includes('requisition'))) return;
+            if (!response.headers()['content-type']?.includes('json')) return;
+            const p = response.json().then((d: any) => {
+                const items = d?.jobs || d?.results || d?.jobPostings || d?.requisitionList ||
+                    d?.data?.positions || d?.positions || (Array.isArray(d) ? d : []);
+                for (const j of items) {
+                    const title = j.title || j.jobTitle || j.Title || j.name || '';
+                    const loc = j.location || j.primaryLocation || j.city || j.locationDescr || (j.locations || [])[0] || '';
+                    const href = j.url || j.applyUrl || j.jobDetailUrl || j.canonicalPositionUrl || '';
+                    if (title) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc?.name || ''), url: href, department: j.department || j.category || '', salary: undefined });
+                }
+            }).catch(() => {});
+            pending.push(p);
+        });
+
+        await page.waitForTimeout(1000 + Math.random() * 1000);
+        await page.goto('https://careers.jacobs.com/jobs/search?locations=United+Kingdom&keywords=', { waitUntil: 'networkidle', timeout: 90000 });
+        await page.waitForTimeout(5000);
+        await Promise.all(pending);
+
+        if (apiJobs.length > 0) {
+            allJobs.push(...apiJobs);
+        } else {
+            // HTML fallback
+            const jobs = await page.$$eval(
+                'a[href*="/jobs/"], [class*="job-card"] a, [class*="position"] a',
+                (els: Element[]) => els.map(el => ({
+                    title: ((el.querySelector('h2, h3, [class*="title"]') as HTMLElement)?.innerText || (el as HTMLElement).innerText || '').trim(),
+                    url: (el as HTMLAnchorElement).href || '',
+                    location: ((el.closest('li,article,div,[class*="card"]')?.querySelector('[class*="location"]') as HTMLElement)?.innerText || 'United Kingdom').trim(),
+                    department: ((el.closest('li,article,div,[class*="card"]')?.querySelector('[class*="department"]') as HTMLElement)?.innerText || '').trim(),
+                })).filter((j: any) => j.title && j.url)
+            );
+            allJobs.push(...jobs as Job[]);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[Jacobs] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
+}
+
+// ─── WSP UK (wsprecruit.mindmill.co.uk — Playwright, /Vacancies) ─────────────
+// Debug: page URL is /Vacancies not /Jobs. Uses JS rendering. Playwright + scroll.
+async function fetchWSP(_token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+        const page = await context.newPage();
+
+        const apiJobs: Job[] = [];
+        const pending: Promise<void>[] = [];
+
+        page.on('response', (response: any) => {
+            const url = response.url();
+            if (!response.headers()['content-type']?.includes('json')) return;
+            if (!(url.includes('Vacanc') || url.includes('vacanc') || url.includes('search') || url.includes('job'))) return;
+            const p = response.json().then((d: any) => {
+                const items = d?.jobs || d?.vacancies || d?.Vacancies || d?.results || d?.data || (Array.isArray(d) ? d : []);
+                for (const j of items) {
+                    const title = j.title || j.jobTitle || j.name || j.Title || j.VacancyTitle || '';
+                    const loc = j.location || j.Location || j.town || j.Town || j.city || 'United Kingdom';
+                    const href = j.url || j.Url || j.applyUrl || j.VacancyUrl || '';
+                    if (title) apiJobs.push({ title, location: typeof loc === 'string' ? loc : 'United Kingdom', url: href || 'https://wsprecruit.mindmill.co.uk/Vacancies', department: j.department || j.Category || '', salary: undefined });
+                }
+            }).catch(() => {});
+            pending.push(p);
+        });
+
+        await page.goto('https://wsprecruit.mindmill.co.uk/Vacancies', { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(5000);
+        await Promise.all(pending);
+
+        if (apiJobs.length > 0) {
+            allJobs.push(...apiJobs);
+        } else {
+            // Scroll and collect all job links from HTML
+            let prevCount = 0;
+            for (let i = 0; i < 10; i++) {
+                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                await page.waitForTimeout(1500);
+                const count: number = await page.$$eval('a[href*="Vacanc"], a[href*="vacanc"]', els => els.length);
+                if (count === prevCount) break;
+                prevCount = count;
+            }
+
+            const jobs = await page.$$eval(
+                'a[href*="Vacanc"], a[href*="vacanc"], a[href*="/job"]',
+                (els: Element[]) => els.map(el => {
+                    const href = (el as HTMLAnchorElement).href || '';
+                    const card = el.closest('li, article, div, tr') as HTMLElement | null;
+                    return {
+                        title: ((card?.querySelector('[class*="title"], [class*="name"], h2, h3, strong') as HTMLElement)?.innerText
+                            || (el as HTMLElement).innerText || '').trim(),
+                        url: href,
+                        location: ((card?.querySelector('[class*="location"], [class*="town"]') as HTMLElement)?.innerText || 'United Kingdom').trim(),
+                        department: ((card?.querySelector('[class*="department"], [class*="category"]') as HTMLElement)?.innerText || '').trim(),
+                    };
+                }).filter((j: any) => j.title && j.url && j.url.includes('mindmill'))
+            );
+            allJobs.push(...jobs as Job[]);
+        }
+
+        await browser.close();
+    } catch (e: any) {
+        console.error('[WSP] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => {});
+    }
+    return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
 }
 
 // --- Cornerstone ---
@@ -2873,7 +3631,7 @@ async function fetchMercor(token: string): Promise<Job[]> {
                 title,
                 url: `https://work.mercor.com/jobs/${listingId}/${slugTitle}`,
                 location: j.location || '',
-                salary: (j.rateMin || j.rateMax) ? `$${j.rateMin || ''}-${j.rateMax || ''}/${j.payRateFrequency || ''}` : undefined,
+                salary: (j.rateMin || j.rateMax) ? `${j.rateMin || ''}-${j.rateMax || ''}/${j.payRateFrequency || ''}` : undefined,
                 atsProvider: 'mercor'
             };
         }).filter((j: any) => j.title && j.url);
@@ -2969,7 +3727,9 @@ async function fetchRecruiterbox(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
+
+export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => Promise<Job[]>> = {
+    custom: fetchCustom,
     greenhouse: fetchGreenhouse,
     ashby: fetchAshby,
     lever: fetchLever,
@@ -2994,15 +3754,27 @@ export const FETCHERS: Record<string, (token: string) => Promise<Job[]>> = {
     rippling: fetchRippling,
     generic_careers: fetchGenericCareersPage,
     jazzhr: fetchJazzHR,
-    oracle_taleo: fetchOracleTaleo,
-    eploy: fetchEploy,
+    oracle: fetchOracleTaleo,
+
     cornerstone: fetchCornerstone,
     gem: fetchGem,
     join_com: fetchJoinCom,
     mercor: fetchMercor,
     phenom: fetchPhenom,
     recruiterbox: fetchRecruiterbox,
+    
+    eploy: fetchEploy,
 
+    // Company-specific scrapers
+    astrazeneca: fetchAstraZeneca,
+    tesco: fetchTesco,
+    easyjet: fetchEasyJet,
+    btgroup: fetchBTGroup,
+    standardchartered: fetchStandardChartered,
+    microsoft: fetchMicrosoft,
+    arup: fetchArup,
+    jacobs: fetchJacobs,
+    wsp: fetchWSP,
 
     // Special / Custom Scrapers
     amazon: fetchAmazon,
@@ -3038,6 +3810,89 @@ async function markCompanyFailure(companyId: number): Promise<void> {
             ats_last_validated: new Date().toISOString(),
         })
         .eq('id', companyId);
+}
+
+// ─── Python Location Normalizer ───────────────────────────────────────────────
+
+export interface NormalizedLocation {
+    raw_string: string;
+    is_remote: boolean;
+    is_hybrid: boolean;
+    is_multi_location: boolean;
+    city: string | null;
+    state_province: string | null;
+    country: string | null;
+    is_uk_job: boolean;
+}
+
+/**
+ * Batch-normalise raw location strings via the Python normalizer script.
+ * Returns results in the same order as the input array.
+ * Non-fatal: on Python error or missing interpreter, returns [].
+ */
+export async function normalizeLocationsViaPython(
+    locations: string[],
+): Promise<NormalizedLocation[]> {
+    if (locations.length === 0) return [];
+
+    const scriptPath = path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        'normalizeLocations.py',
+    );
+    const payload = JSON.stringify(locations.map(l => ({ location: l })));
+
+    return new Promise(resolve => {
+        // Try python3 first, fall back to python
+        const cmd = process.platform === 'win32' ? 'python' : 'python3';
+        const proc = spawn(cmd, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+        proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+        proc.stdin.write(payload);
+        proc.stdin.end();
+
+        proc.on('close', (code: number | null) => {
+            if (code !== 0) {
+                console.warn('[normalizeLocations] Python exited with code', code, stderr.slice(0, 300));
+                resolve([]);
+                return;
+            }
+            try {
+                resolve(JSON.parse(stdout) as NormalizedLocation[]);
+            } catch {
+                console.warn('[normalizeLocations] JSON parse error');
+                resolve([]);
+            }
+        });
+
+        // Python not installed → silent skip
+        proc.on('error', () => resolve([]));
+    });
+}
+
+/**
+ * Given a NormalizedLocation result, produce a clean display string for storage.
+ * e.g. { city: "London", country: "United Kingdom" } → "London"
+ *      { city: "New York", country: "United States", state_province: "NY" } → "New York, NY"
+ *      { country: "Ireland" } → "Ireland"
+ */
+export function formatNormalizedLocation(n: NormalizedLocation): string | null {
+    if (n.is_multi_location) return 'Multiple Locations';
+
+    const parts: string[] = [];
+    if (n.city) parts.push(n.city);
+    if (n.state_province && n.country !== 'United Kingdom') parts.push(n.state_province);
+    if (n.country && n.country !== 'United Kingdom') parts.push(n.country);
+
+    if (parts.length === 0) {
+        if (n.is_remote) return 'Remote';
+        return null;
+    }
+
+    return parts.join(', ');
 }
 
 export async function syncAll() {
@@ -3166,11 +4021,13 @@ export async function syncAll() {
         );
         const displayProvider = (resolved?.provider || normalizeProviderName(ats_provider) || ats_provider || 'custom').toUpperCase();
         const isNHS = /\bnhs\b/i.test(trading_name);
+        // Trusted UK-only companies where location may be missing from ATS data
+        const isTrustedUKCompany = isNHS || /\baddison lee\b/i.test(trading_name);
 
         const result: SyncResult = {
             company: trading_name,
             provider: displayProvider.toLowerCase(),
-            fetched: 0, ukJobs: 0, saved: 0, rejected: 0, needsReview: 0
+            fetched: 0, ukJobs: 0, irelandJobs: 0, saved: 0, savedIreland: 0, rejected: 0, needsReview: 0
         };
 
         try {
@@ -3179,12 +4036,13 @@ export async function syncAll() {
             result.fetched = allJobs.length;
 
             if (!allJobs.length) {
-                console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⚪ Fetch: 0   | UK: 0   | Dups: 0   | Saved: 0   | Rej: 0   | Rev: 0`);
+                console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⚪ Fetch: 0 | UK: 0 | Saved: 0`);
                 results.push(result);
                 continue;
             }
 
             const ukJobs: Job[] = [];
+            const irelandJobs: Job[] = [];
             let rejectedCount = 0;
             let needsReviewCount = 0;
 
@@ -3193,7 +4051,9 @@ export async function syncAll() {
                 const adapterKey = `${atsProvider.toLowerCase()}ToJobLocationInput` as keyof typeof Adapters;
                 const adapter = Adapters[adapterKey];
 
-                const locationInput = adapter ? adapter(j) : { locations: [j.location ?? ''], isRemote: false, isTrustedSource: false };
+                // Default adapter: split pipe/bullet-separated office lists so each office
+                // is checked independently (e.g. "London | New York" → ["London","New York"]).
+                const locationInput = adapter ? adapter(j) : buildLocationInput(j);
 
                 // Fix empty/generic remote locations based on job title
                 const titleLower = String(j.title || '').toLowerCase();
@@ -3209,14 +4069,23 @@ export async function syncAll() {
                         j.location = 'India Remote';
                     } else if (titleLower.includes('remote')) {
                         j.location = 'Remote';
-                    } else if (locationInput.isRemote) {
-                        j.location = 'Remote';
                     }
                 }
 
-                if (isNHS || isLikelyUKJob(j)) {
+
+                // Fix empty/generic remote locations based on job title
+                                if (!isValidJobTitle(j.title)) {
+                    rejectedCount++;
+                    continue;
+                }
+                if (isTrustedUKCompany || isUKJob(locationInput)) {
                     ukJobs.push(j);
                     if (j.needs_review) needsReviewCount++;
+                    continue;
+                }
+
+                if (isIrelandJob(j.location, locationInput.locations)) {
+                    irelandJobs.push(j);
                 } else {
                     rejectedCount++;
                     globalRejectionLog.push({
@@ -3231,59 +4100,70 @@ export async function syncAll() {
             }
 
             result.ukJobs = ukJobs.length;
+            result.irelandJobs = irelandJobs.length;
             result.rejected = rejectedCount;
             result.needsReview = needsReviewCount;
 
-            if (ukJobs.length > 0) {
-                const dedupedJobs = new Map<string, Job>();
-                for (const j of ukJobs) {
-                    if (!j.url || !j.title) continue;
-                    const dedupKey = `${id}_${j.title.toLowerCase().trim()}_${(j.location || '').toLowerCase().trim()}`;
-                    if (!dedupedJobs.has(dedupKey) && !Array.from(dedupedJobs.values()).some(existing => existing.url === j.url)) {
-                        dedupedJobs.set(dedupKey, j);
-                    }
+            const ukRows = await buildRowsForJobs(company, id, ukJobs);
+            const irelandRows = await buildRowsForJobs(company, id, irelandJobs);
+
+            const persistRows = async (tableName: 'jobs' | 'jobs_IR', rows: JobRow[]) => {
+                if (!rows.length) {
+                    await supabase.from(tableName).delete().eq('company_id', id);
+                    return 0;
                 }
 
-                const uniqueJobs = Array.from(dedupedJobs.values());
-                const rows = uniqueJobs.map(j => ({
-                    company_id: id,
-                    title: safeStr(j.title, 255),
-                    location: safeStr(j.location, 255),
-                    url: j.url,
-                    department: j.department ? safeStr(j.department, 255) : null,
-                    level: inferJobLevel(safeStr(j.title)),
-                    updated_at: new Date().toISOString()
-                }));
+                const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
+                if (jobErr) {
+                    if (tableName === 'jobs_IR' && /sector|schema cache/i.test(jobErr.message)) {
+                        const fallbackRows = rows.map(({ sector, ...rest }) => rest);
+                        const { error: fallbackErr } = await supabase.from(tableName).upsert(fallbackRows, { onConflict: 'url' });
+                        if (!fallbackErr) {
+                            console.warn(`[${displayProvider}] ${trading_name} jobs_IR upsert retried without sector because the table schema does not expose that column yet.`);
 
-                if (!fallbackOnlyDryRun) {
-                    const { error: jobErr } = await supabase.from('jobs').upsert(rows, { onConflict: 'url' });
-                    if (jobErr) {
-                        console.error(`[${displayProvider}] ${trading_name} jobs upsert failed: ${jobErr.message}`);
-                    } else {
-                        result.saved = rows.length;
-                        totalSaved += rows.length;
-
-                        // Cleanup stale jobs
-                        const currentUrls = uniqueJobs.map(j => j.url);
-                        const { data: existingJobs } = await supabase.from('jobs').select('url').eq('company_id', id);
-                        if (existingJobs && existingJobs.length > 0) {
-                            const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
-                            if (staleUrls.length > 0) {
-                                for (const chunk of chunkArray(staleUrls, 100)) {
-                                    await supabase.from('jobs').delete().in('url', chunk).eq('company_id', id);
+                            const currentUrls = fallbackRows.map(row => row.url);
+                            const { data: existingJobs } = await supabase.from(tableName).select('url').eq('company_id', id);
+                            if (existingJobs && existingJobs.length > 0) {
+                                const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
+                                if (staleUrls.length > 0) {
+                                    for (const chunk of chunkArray(staleUrls, 100)) {
+                                        await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
+                                    }
                                 }
                             }
+
+                            return fallbackRows.length;
+                        }
+                        console.error(`[${displayProvider}] ${trading_name} ${tableName} retry failed: ${fallbackErr.message}`);
+                    }
+                    console.error(`[${displayProvider}] ${trading_name} ${tableName} upsert failed: ${jobErr.message}`);
+                    return 0;
+                }
+
+                const currentUrls = rows.map(row => row.url);
+                const { data: existingJobs } = await supabase.from(tableName).select('url').eq('company_id', id);
+                if (existingJobs && existingJobs.length > 0) {
+                    const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
+                    if (staleUrls.length > 0) {
+                        for (const chunk of chunkArray(staleUrls, 100)) {
+                            await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
                         }
                     }
-                } else {
-                    result.saved = rows.length;
-                    totalSaved += rows.length;
                 }
+
+                return rows.length;
+            };
+
+            if (!fallbackOnlyDryRun) {
+                const savedUK = await persistRows('jobs', ukRows);
+                const savedIreland = await persistRows('jobs_IR', irelandRows);
+                result.saved = savedUK + savedIreland;
+                result.savedIreland = savedIreland;
+                totalSaved += result.saved;
             } else {
-                // No UK jobs fetched
-                if (!fallbackOnlyDryRun) {
-                    await supabase.from('jobs').delete().eq('company_id', id);
-                }
+                result.saved = ukRows.length + irelandRows.length;
+                result.savedIreland = irelandRows.length;
+                totalSaved += result.saved;
             }
             if (healthTrackingEnabled && !fallbackOnlyDryRun) {
                 await supabase.from('companies').update({
@@ -3299,8 +4179,8 @@ export async function syncAll() {
                 await supabase.from('companies').update({ active_jobs_count: finalCount || 0 }).eq('id', id);
             }
 
-            const statusEmoji = result.ukJobs > 0 ? '✅' : '⚪';
-            console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | Dups: ${(result.ukJobs - result.saved).toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
+            const statusEmoji = (result.ukJobs + result.irelandJobs) > 0 ? '✅' : '⚪';
+            console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | IR: ${result.irelandJobs.toString().padEnd(3)} | Dups: ${(result.ukJobs + result.irelandJobs - result.saved).toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
 
             results.push(result);
             await sleep(500); // Politeness delay

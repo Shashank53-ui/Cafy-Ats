@@ -12,10 +12,10 @@ This document explains how the master sync script works and how it fits into the
 For each company record in `companies`:
 1. Reads provider configuration (`ats_provider`, `ats_board_token`). 
 2. Calls the matching fetcher for that provider.
-3. Filters fetched jobs to UK-related jobs.
-4. Upserts jobs into `jobs` using `url` as the conflict key.
-5. Deletes stale jobs that are no longer present in the latest provider payload.
-6. Recomputes and updates `companies.active_jobs_count`.
+3. Filters fetched jobs into UK rows and Ireland rows.
+4. Upserts UK jobs into `jobs` and Ireland jobs into `jobs_IR`, both using `url` as the conflict key.
+5. Deletes stale jobs that are no longer present in the latest provider payload for each table.
+6. Recomputes and updates `companies.active_jobs_count` from the UK table.
 
 It also prints a final run summary (counts, errors, top companies by saved jobs).
 
@@ -56,6 +56,14 @@ Used for:
 
 Important constraints:
 - `jobs.url` is unique and used in `upsert(..., { onConflict: 'url' })`
+
+### `jobs_IR`
+Used for:
+- upsert of Republic of Ireland jobs
+- deletion of stale Ireland rows
+
+Important constraints:
+- `jobs_IR.url` is unique and used in `upsert(..., { onConflict: 'url' })`
 
 ## 4) Runtime and Environment
 
@@ -112,9 +120,9 @@ Import ATS config from CSV before syncing:
    - Recompute `active_jobs_count`.
 4. Print summary.
 
-## 7) UK Filtering Logic
+## 7) UK and Ireland Routing Logic
 
-The script keeps jobs if either condition matches:
+The script keeps UK jobs if either condition matches:
 - `isUKLocation(job.location)` returns true
 - title contains `uk` or `united kingdom`
 
@@ -124,6 +132,15 @@ The script keeps jobs if either condition matches:
 - blocks some US state abbreviations as standalone words
 - allows explicit remote UK patterns
 - checks against UK country/nation/city token lists
+
+Ireland routing uses the same normalized location input plus the supplied Ireland city list and explicit Ireland/Eire signals. Northern Ireland stays in the UK table.
+
+Supabase table creation steps:
+1. Run [supabase/create_jobs_ir.sql](../supabase/create_jobs_ir.sql) in the Supabase SQL editor, or apply the same SQL through your migration workflow.
+2. Confirm the table exists as `public."jobs_IR"` with the same columns as `public.jobs`.
+3. Verify the unique `url` constraint and the company/location/last_seen indexes are present.
+4. Refresh the PostgREST schema cache by running the `NOTIFY pgrst, 'reload schema';` statement from the script.
+5. Keep RLS disabled on `jobs_IR` so the sync script can write to it the same way it writes to `jobs`.
 
 ## 8) Supported Providers and Fetchers
 
@@ -181,6 +198,8 @@ Rows written to `jobs` include:
 - `department`
 - `level`
 
+Rows written to `jobs_IR` use the same shape.
+
 `level` is derived by `inferJobLevel(title)` from `src/lib/inferJobLevel.ts`.
 
 All strings are trimmed to max length via `safeStr` before writing.
@@ -188,10 +207,14 @@ All strings are trimmed to max length via `safeStr` before writing.
 ## 11) Cleanup Behavior (Very Important)
 
 After successful upsert for a company:
-- script deletes rows in `jobs` for that `company_id` where URL is not in current fetched URL list
+- script deletes rows in `jobs` for that `company_id` where URL is not in the current UK URL list
+- script deletes rows in `jobs_IR` for that `company_id` where URL is not in the current Ireland URL list
 
-If UK job list is empty:
-- script deletes all jobs for that company
+If the UK job list is empty:
+- script deletes all rows from `jobs` for that company
+
+If the Ireland job list is empty:
+- script deletes all rows from `jobs_IR` for that company
 
 This means sync is designed as a snapshot sync, not append-only history.
 
