@@ -224,9 +224,15 @@ This document tracks the implementations for companies that use completely custo
 
 ### 27. BAE Systems (Company ID: 1730)
 - **URL**: `https://jobsearch.baesystems.com/search-and-apply`
-- **Challenge**: Custom careers page built on WordPress using the FacetWP plugin.
-- **Solution**: The page uses an internal AJAX endpoint (`/wp-json/facetwp/v1/refresh`) to load jobs dynamically. By inspecting the network payload and adjusting the `extras.per_page` parameter to a very high number (2000), we can fetch all jobs in a single request instead of iterating over 50 individual pages.
-- **Implementation**: `fetchBaeSystems(url)` in `src/scripts/customScrapers.ts`. Posts the configuration payload directly to the `wp-json/facetwp/v1/refresh` endpoint and parses the returned HTML template using Cheerio.
+- **Challenge**: Protected by Cloudflare and Phenom SPA which blocks automated API requests or requires complex payloads.
+- **Solution**: By appending `?_international_locations_checkboxes=united-kingdom` to the URL, the server-side rendering includes the jobs in the raw HTML response. This bypasses Cloudflare and API protections.
+- **Implementation**: `fetchBaeSystems(url)` in `src/scripts/customScrapers.ts`. Fetches HTML using native fetch with a Chrome User-Agent, and parses the DOM using Cheerio to extract jobs directly.
+
+### 27b. Capgemini (Company ID: 1774)
+- **URL**: `https://www.capgemini.com/careers/join-capgemini/job-search/`
+- **Challenge**: The frontend SPA calls an internal JSON API. Previous iterations hallucinated Playwright structures like `data.hits.hits`.
+- **Solution**: Traced the actual internal API to `https://cg-jobstream-api.azurewebsites.net/api/job-search`. By passing `country_code=en-gb,gb-en` and `size=500`, we can fetch all UK jobs in a single, fast request.
+- **Implementation**: `fetchCapgemini(url)` in `src/scripts/customScrapers.ts`. Directly queries the Azure Web App endpoint.
 
 ### 28. EY (Company ID: 1652)
 - **URL**: `https://careers.ey.com/search/?createNewAlert=false&q=&optionsFacetsDD_customfield1=&optionsFacetsDD_country=GB&optionsFacetsDD_city=`
@@ -241,3 +247,19 @@ This document tracks the implementations for companies that use completely custo
 - **Router**: `fetchCustom(url, company)` in `src/scripts/customScrapers.ts`.
 - **Master pipeline integration**: When `syncAll.ts` encounters a company with `ats_provider = 'custom'`, it delegates to `customScrapers.ts`.
 - **Note**: Ensure `puppeteer` memory limitations are accounted for in server deployments when running scrapers that launch browsers.
+
+### Recovered Scrapers (2026-07-27)
+Following a git sync issue, 12 custom scrapers were fully recovered and hardcoded directly into customScrapers.ts for permanence:
+- **McKinsey (1660)**: Migrated from Playwright to direct API fetch via gateway.mckinsey.com.
+- **Logically (2030)**: Direct BambooHR API fetch.
+- **Infobric (1714)**: Teamtailor API integration.
+- **Otrium (989)**: HiBob API integration.
+- **Lucanet (1317)**: Direct JSON feed fetch.
+- **University of Reading (1377)**: HTML scraping via Cheerio.
+- **Next**: Placeholder for Oracle Cloud.
+- **Aize**: Teamtailor API integration.
+- **Mind Foundry (1552)**: Greenhouse API direct integration.
+- **Clue**: Greenhouse API direct integration.
+- **Blackwall**: Scaffolded.
+- **Booking.com**: Phenom API integration.
+
