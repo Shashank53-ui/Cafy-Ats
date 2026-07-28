@@ -478,6 +478,11 @@ function resolveProviderAndToken(
         return { provider: 'workday', token: rawToken };
     }
 
+    // Oracle Cloud: if token doesn't specify site, but URL does, use URL so fetcher can extract the correct site
+    if (provider === 'oracle_cloud' && !rawToken.includes('/') && !rawToken.includes('|') && rawUrl) {
+        return { provider, token: rawUrl };
+    }
+
     const result = (provider && rawToken) ? { provider, token: rawToken } : null;
     // console.log(`[RESOLVE] ${ats_provider} -> ${result?.provider || 'none'}`);
     return result;
@@ -1891,8 +1896,26 @@ async function fetchWorkday(token: string): Promise<Job[]> {
 async function fetchOracleCloud(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     try {
-        let [domain, site] = token.split('|');
+        let domain = '';
+        let site = '';
+        if (token.includes('|')) {
+            [domain, site] = token.split('|');
+        } else if (token.startsWith('http')) {
+            try {
+                const u = new URL(token);
+                domain = u.hostname;
+                const match = u.pathname.match(/\/sites\/([^\/]+)/);
+                if (match) site = match[1];
+            } catch (e) {
+                domain = token;
+            }
+        } else {
+            domain = token;
+        }
+
         if (!site) site = 'CX_1'; // Default site for Oracle Cloud HCM
+        
+        domain = domain.trim().replace(/\/+$/, '');
         
         // Fix incomplete domains from legacy data (e.g., jpmc.fa or *.fa.ocs)
         if (!domain.includes('.com') && !domain.includes('.co.uk') && !domain.includes('.org') && domain.includes('.fa')) {

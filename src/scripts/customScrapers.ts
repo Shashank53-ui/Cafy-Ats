@@ -11,6 +11,15 @@ export async function fetchCustom(url: string, company?: CompanyRow): Promise<Jo
     if (url.includes('serco.com') || company?.id === 1740) {
         return fetchSerco(url);
     }
+    if (company?.id === 220 || url.includes('jobs.nottingham.ac.uk')) {
+        return fetchNottingham(url);
+    }
+    if (company?.id === 457 || url.includes('depopcareers.com')) {
+        return fetchDepop(url);
+    }
+    if (company?.id === 308 || url.includes('stripe.com/jobs')) {
+        return fetchStripe(url);
+    }
     if (url.includes('kpmgcareers.co.uk')) {
         return fetchKPMG(url);
     }
@@ -1756,3 +1765,158 @@ async function fetchCapgemini(url: string): Promise<Job[]> {
     console.log(`[Custom: Capgemini] Found ${uniqueJobs.length} jobs.`);
     return uniqueJobs;
 }
+
+async function fetchNottingham(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    try {
+        const res = await fetchWithTimeout(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        if (!res.ok) {
+            console.log(`[Custom: Nottingham] Failed to fetch: ${res.statusText}`);
+            return [];
+        }
+
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        let currentCategory = 'Nottingham, UK';
+
+        $('.vacancylist').each((i, listDiv) => {
+            $(listDiv).children().each((j, el) => {
+                if (el.tagName === 'h3') {
+                    currentCategory = $(el).text().trim();
+                } else if (el.tagName === 'p') {
+                    const a = $(el).find('a');
+                    if (a.length) {
+                        const title = a.text().trim();
+                        const href = a.attr('href');
+                        let location = 'Nottingham, UK';
+                        if (currentCategory.includes('Ningbo')) location = 'Ningbo, China';
+                        else if (currentCategory.includes('Malaysia')) location = 'Semenyih, Malaysia';
+
+                        jobs.push({
+                            title,
+                            url: 'https://jobs.nottingham.ac.uk/' + href,
+                            location,
+                            department: currentCategory,
+                            salary: undefined
+                        });
+                    }
+                }
+            });
+        });
+    } catch (e: any) {
+        console.error(`[Custom: Nottingham] error:`, e.message);
+    }
+    return jobs;
+}
+
+async function fetchDepop(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    try {
+        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) {
+            console.log(`[Custom: Depop] Failed to fetch: ${res.statusText}`);
+            return [];
+        }
+
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        const nextData = $('#__NEXT_DATA__').html();
+        if (nextData) {
+            const data = JSON.parse(nextData);
+            
+            let foundJobs: any = null;
+            function findJobs(obj: any): any {
+                if (!obj) return null;
+                if (Array.isArray(obj)) {
+                    if (obj.length > 0 && obj[0].title && (obj[0].location || obj[0].city || obj[0].team)) return obj;
+                    for (const item of obj) {
+                        const res = findJobs(item);
+                        if (res) return res;
+                    }
+                } else if (typeof obj === 'object') {
+                    for (const key in obj) {
+                        const res = findJobs(obj[key]);
+                        if (res) return res;
+                    }
+                }
+                return null;
+            }
+            
+            foundJobs = findJobs(data);
+            if (foundJobs) {
+                for (const j of foundJobs) {
+                    jobs.push({
+                        title: j.title || '',
+                        url: j.absolute_url || url,
+                        location: j.location || j.city || '',
+                        department: j.team || '',
+                        salary: undefined
+                    });
+                }
+            }
+        }
+    } catch (e: any) {
+        console.error(`[Custom: Depop] error:`, e.message);
+    }
+    return jobs;
+}
+
+async function fetchStripe(baseUrl: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    try {
+        let skip = 0;
+        while (true) {
+            const url = `https://stripe.com/jobs/search?skip=${skip}`;
+            const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) {
+                console.log(`[Custom: Stripe] Failed to fetch skip=${skip}: ${res.statusText}`);
+                break;
+            }
+
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            
+            let pageCount = 0;
+            $('tr').each((i, el) => {
+                if (i === 0) return; // headers
+                const linkEl = $(el).find('a');
+                if (linkEl.length) {
+                    const title = linkEl.text().trim();
+                    let href = linkEl.attr('href');
+                    if (href && href.startsWith('/')) href = 'https://stripe.com' + href;
+                    
+                    const tds = $(el).find('td');
+                    let department = '';
+                    let location = '';
+                    if (tds.length >= 3) {
+                        department = $(tds[1]).text().trim();
+                        location = $(tds[2]).text().trim();
+                    } else if (tds.length === 2) {
+                        location = $(tds[1]).text().trim();
+                    }
+                    
+                    jobs.push({
+                        title,
+                        url: href || url,
+                        department,
+                        location,
+                        salary: undefined
+                    });
+                    pageCount++;
+                }
+            });
+
+            if (pageCount < 10) {
+                break;
+            }
+            skip += 100;
+            if (skip > 3000) break; // safety cap
+        }
+    } catch (e: any) {
+        console.error(`[Custom: Stripe] error:`, e.message);
+    }
+    return jobs;
+}
+
