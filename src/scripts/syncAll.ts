@@ -1269,8 +1269,13 @@ async function fetchGreenhouse(token: string): Promise<Job[]> {
             const jobs: Job[] = (d.jobs || []).map((j: any) => {
                 const offices = j.offices || [];
                 let location = j.location?.name || '';
-                // Gap 2: Read the full offices array
-                if (offices.length > 0) {
+                // Gap 2: fall back to the offices array only when the job has no
+                // specific location.name. For remote roles these can disagree —
+                // e.g. a "Remote - Ireland" posting can list offices: ["Amsterdam"]
+                // (the hiring team's hub, not where the role is based) — so
+                // overriding a real location.name with offices silently dropped
+                // the correct location and made Ireland/UK jobs undetectable.
+                if (!location && offices.length > 0) {
                     const allOffices = offices.map((o: any) => o.name || o.location).filter(Boolean);
                     if (allOffices.length > 0) {
                         location = allOffices.join(' | ');
