@@ -5,7 +5,8 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 puppeteer.use(StealthPlugin());
 export async function fetchCustom(url: string, company?: CompanyRow): Promise<Job[]> {
-    if (url.includes('careers.bbc.co.uk')) {
+    console.log(`[fetchCustom] Routing provider. Company ID: ${company?.id}, URL: "${url}"`);
+    if (company?.id === 294 || url.includes('bbc.co.uk')) {
         return fetchBBC(url);
     }
     if (url.includes('serco.com') || company?.id === 1740) {
@@ -123,21 +124,75 @@ export async function fetchCustom(url: string, company?: CompanyRow): Promise<Jo
         return fetchEY(url);
     }
     if (company?.id === 2030 || url.includes('logically.ai')) { return fetchLogically(url); }
-    if (company?.id === 1714 || url.includes('infobric.com')) { return fetchInfobric(url); }
-    if (company?.id === 989 || url.includes('otrium.com')) { return fetchOtrium(url); }
-    if (company?.id === 1317 || url.includes('lucanet.com')) { return fetchLucanet(url); }
-    if (company?.id === 1377 || url.includes('reading.ac.uk')) { return fetchReading(url); }
-    if (company?.id === 1552 || url.includes('mindfoundry.ai')) { return fetchMindFoundry(url); }
+    // ID 1714 = Kaluza (custom) — route only by URL domain, not by ID
+    if (url.includes('infobric.com')) { return fetchInfobric(url); }
+    // ID 989 = Ziff Davis (jobvite) — route only by URL domain, not by ID
+    if (url.includes('otrium.com')) { return fetchOtrium(url); }
+    // ID 1317 = YOOBIC (teamtailor) — route only by URL domain; Lucanet is ID 1692
+    if (company?.id === 1692 || url.includes('lucanet.com')) { return fetchLucanet(url); }
+    // ID 1377 = Cynergy Bank — route Reading only by URL domain
+    if (url.includes('reading.ac.uk')) { return fetchReading(url); }
+    // ID 1552 = Mind Foundry (greenhouse in DB) — route only by URL domain
+    if (url.includes('mindfoundry.ai')) { return fetchMindFoundry(url); }
     if (url.includes('next.co.uk') || url.includes('oraclecloud.com')) { return fetchNext(url); }
     if (url.includes('aize.io')) { return fetchAize(url); }
     if (url.includes('helloclue.com')) { return fetchClue(url); }
     if (url.includes('blackwall')) { return fetchBlackwall(url); }
     if (url.includes('booking.com')) { return fetchBooking(url); }
-    if (url.includes('cynergy') || company?.id === 1317) { return fetchCynergy(url); }
-    if (company?.id === 1774 || url.includes('capgemini.com')) { return fetchCapgemini(url); }
+    // ID 1377 = Cynergy Bank (custom) — correct ID assignment
+    if (company?.id === 1377 || url.includes('cynergy')) { return fetchCynergy(url); }
+    // Duplicate Capgemini entry removed — already handled at line ~71 above
     
+    // ID 1732 = Apple (custom)
+    if (company?.id === 1732 || url.includes('jobs.apple.com')) { return fetchApple(url); }
+    
+    // ID 1636 = AXA UK (custom / Jibe)
+    if (company?.id === 1636 || url.includes('axa.com')) { return fetchJibeApi('https://careers.axa.com', 'AXA'); }
+    
+    // ID 1734 = Aon (custom / Jibe)
+    if (company?.id === 1734 || url.includes('jobs.aon.com')) { return fetchJibeApi('https://jobs.aon.com', 'Aon'); }
+    
+    // ID 1682 = Fitch Group (custom)
+    if (company?.id === 1682 || url.includes('fitch.group')) { return fetchFitchGroup(url); }
+    
+    // ID 3160 = Tesco (custom)
+    if (company?.id === 3160 || url.includes('tesco-careers.com') || url.includes('careers.tesco.com')) { return fetchTesco(url); }
+
+    // ID 2695 = Ampa (custom / Pinpoint)
+    if (company?.id === 2695 || url.includes('ampa.co.uk')) { return fetchAmpa(url); }
+
     // Future custom scrapers will be routed here based on domain or company ID
     return [];
+}
+
+async function fetchAmpa(url: string): Promise<Job[]> {
+    try {
+        const r = await fetchWithTimeout(`https://careers.ampa.co.uk/postings.json`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!r.ok) return [];
+        const d = await r.json();
+        return (d.data || []).map((j: any) => {
+            const locRaw = j.location;
+            let location = '';
+            if (locRaw && typeof locRaw === 'object') {
+                const parts = [locRaw.name || locRaw.city, locRaw.province].filter(Boolean);
+                location = parts.join(', ');
+            } else {
+                location = String(locRaw || '');
+            }
+            return {
+                title: j.title || '',
+                location,
+                url: j.url || `https://careers.ampa.co.uk${j.path || ''}`,
+                department: j.job?.department?.name || '',
+                salary: undefined
+            };
+        });
+    } catch (e: any) {
+        console.error('[Custom: Ampa] Error:', e.message);
+        return []; 
+    }
 }
 
 async function fetchSerco(url: string): Promise<Job[]> {
@@ -308,14 +363,28 @@ async function fetchBBC(url: string): Promise<Job[]> {
                 const parts = jobUrl.split('/job/');
                 if (parts.length > 1) {
                     const slugPart = parts[1].split('/')[0]; // e.g. London-Senior-Software-Engineer-W1A-1AA
-                    // Decode URL components just in case
                     const decoded = decodeURIComponent(slugPart);
-                    // Replace dashes with spaces to make a readable title
-                    let title = decoded.replace(/-/g, ' ');
+                    const segments = decoded.split('-');
+                    
+                    // BBC slug format: City-JobTitle-... or City-JobTitle-Postcode-...
+                    // First segment is typically the city/location, not part of the title.
+                    // Postcodes appear as two consecutive segments (e.g. "W1A" "1AA").
+                    const postCodePattern = /^[A-Z]{1,2}[0-9][0-9A-Z]?$/;
+                    const nonTitleSegments = new Set<number>();
+                    for (let i = 0; i < segments.length - 1; i++) {
+                        if (postCodePattern.test(segments[i]) && /^[0-9][A-Z]{2}$/.test(segments[i + 1])) {
+                            nonTitleSegments.add(i);
+                            nonTitleSegments.add(i + 1);
+                        }
+                    }
+                    // Location = first segment; title = remaining minus postcode segments
+                    const location = segments[0] ? segments[0].replace(/-/g, ' ') : 'United Kingdom';
+                    const titleSegments = segments.slice(1).filter((_, i) => !nonTitleSegments.has(i + 1));
+                    const title = titleSegments.join(' ').trim() || decoded.replace(/-/g, ' ');
                     
                     jobs.push({
                         title: title,
-                        location: title, // Put title in location so ukFilter can scan it for cities
+                        location: location,
                         url: jobUrl,
                         department: '',
                         salary: undefined
@@ -484,126 +553,15 @@ async function fetchIBM(url: string): Promise<Job[]> {
 }
 
 async function fetchAlphaSights(url: string): Promise<Job[]> {
-    const jobs: Job[] = [];
-    console.log(`[Custom: AlphaSights] Fetching from Greenhouse API...`);
-    
-    try {
-        const res = await fetchWithTimeout('https://boards-api.greenhouse.io/v1/boards/alphasights/jobs');
-        if (!res.ok) {
-            console.log(`[Custom: AlphaSights] Failed to fetch: ${res.statusText}`);
-            return [];
-        }
-        
-        const data = await res.json();
-        if (data.jobs && Array.isArray(data.jobs)) {
-            for (const item of data.jobs) {
-                if (item.title && item.absolute_url) {
-                    let salary;
-                    if (item.metadata && Array.isArray(item.metadata)) {
-                        const salaryField = item.metadata.find((m: any) => m.name === 'Salary');
-                        if (salaryField && salaryField.value) {
-                            salary = salaryField.value;
-                        }
-                    }
-                    
-                    jobs.push({
-                        title: item.title,
-                        location: item.location?.name || '',
-                        url: item.absolute_url,
-                        department: '', 
-                        salary: salary
-                    });
-                }
-            }
-        }
-        console.log(`[Custom: AlphaSights] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error(`[Custom: AlphaSights] Error:`, e);
-    }
-    
-    return jobs;
+    return fetchFromGreenhouse('alphasights', 'AlphaSights');
 }
 
 async function fetchDojo(url: string): Promise<Job[]> {
-    const jobs: Job[] = [];
-    console.log(`[Custom: Dojo] Fetching from Greenhouse API...`);
-    
-    try {
-        const res = await fetchWithTimeout('https://boards-api.greenhouse.io/v1/boards/dojo/jobs');
-        if (!res.ok) {
-            console.log(`[Custom: Dojo] Failed to fetch: ${res.statusText}`);
-            return [];
-        }
-        
-        const data = await res.json();
-        if (data.jobs && Array.isArray(data.jobs)) {
-            for (const item of data.jobs) {
-                if (item.title && item.absolute_url) {
-                    let salary;
-                    if (item.metadata && Array.isArray(item.metadata)) {
-                        const salaryField = item.metadata.find((m: any) => m.name === 'Salary');
-                        if (salaryField && salaryField.value) {
-                            salary = salaryField.value;
-                        }
-                    }
-                    
-                    jobs.push({
-                        title: item.title,
-                        location: item.location?.name || '',
-                        url: item.absolute_url,
-                        department: '', 
-                        salary: salary
-                    });
-                }
-            }
-        }
-        console.log(`[Custom: Dojo] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error(`[Custom: Dojo] Error:`, e);
-    }
-    
-    return jobs;
+    return fetchFromGreenhouse('dojo', 'Dojo');
 }
 
 async function fetchSpire(url: string): Promise<Job[]> {
-    const jobs: Job[] = [];
-    console.log(`[Custom: Spire] Fetching from Greenhouse API...`);
-    
-    try {
-        const res = await fetchWithTimeout('https://boards-api.greenhouse.io/v1/boards/spire/jobs');
-        if (!res.ok) {
-            console.log(`[Custom: Spire] Failed to fetch: ${res.statusText}`);
-            return [];
-        }
-        
-        const data = await res.json();
-        if (data.jobs && Array.isArray(data.jobs)) {
-            for (const item of data.jobs) {
-                if (item.title && item.absolute_url) {
-                    let salary;
-                    if (item.metadata && Array.isArray(item.metadata)) {
-                        const salaryField = item.metadata.find((m: any) => m.name === 'Salary');
-                        if (salaryField && salaryField.value) {
-                            salary = salaryField.value;
-                        }
-                    }
-                    
-                    jobs.push({
-                        title: item.title,
-                        location: item.location?.name || '',
-                        url: item.absolute_url,
-                        department: '', 
-                        salary: salary
-                    });
-                }
-            }
-        }
-        console.log(`[Custom: Spire] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error(`[Custom: Spire] Error:`, e);
-    }
-    
-    return jobs;
+    return fetchFromGreenhouse('spire', 'Spire');
 }
 
 async function fetchMcLaren(url: string): Promise<Job[]> {
@@ -656,73 +614,29 @@ async function fetchMcLaren(url: string): Promise<Job[]> {
 }
 
 async function fetchCognism(url: string): Promise<Job[]> {
-    const jobs: Job[] = [];
-    console.log(`[Custom: Cognism] Fetching from Greenhouse API...`);
-    
-    try {
-        const res = await fetchWithTimeout('https://boards-api.greenhouse.io/v1/boards/cognism/jobs');
-        if (!res.ok) {
-            console.log(`[Custom: Cognism] Failed to fetch: ${res.statusText}`);
-            return [];
-        }
-        
-        const data = await res.json();
-        if (data.jobs && Array.isArray(data.jobs)) {
-            for (const item of data.jobs) {
-                if (item.title && item.absolute_url) {
-                    let salary;
-                    if (item.metadata && Array.isArray(item.metadata)) {
-                        const salaryField = item.metadata.find((m: any) => m.name === 'Salary');
-                        if (salaryField && salaryField.value) {
-                            salary = salaryField.value;
-                        }
-                    }
-                    
-                    jobs.push({
-                        title: item.title,
-                        location: item.location?.name || '',
-                        url: item.absolute_url,
-                        department: '', 
-                        salary: salary
-                    });
-                }
-            }
-        }
-        console.log(`[Custom: Cognism] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error(`[Custom: Cognism] Error:`, e);
-    }
-    
-    return jobs;
+    return fetchFromGreenhouse('cognism', 'Cognism');
 }
 
 async function fetchBaeSystems(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
     console.log('[Custom: BAE Systems] Fetching jobs via HTML...');
-    const cheerio = require('cheerio');
     
     try {
         let pageNum = 1;
         let hasNextPage = true;
         
         while (hasNextPage && pageNum <= 50) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
             const targetUrl = `https://jobsearch.baesystems.com/search-and-apply?_international_locations_checkboxes=united-kingdom&_paged=${pageNum}`;
             
-            const res = await fetch(targetUrl, {
-                method: 'GET',
+            const res = await fetchWithTimeout(targetUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                     'Accept-Language': 'en-US,en;q=0.9'
-                },
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
+                }
+            }, 30000);
             
             if (!res.ok) {
-                console.log(`[BAE Debug] status=${res.status}`);
                 break;
             }
             
@@ -776,23 +690,19 @@ async function fetchMcKinsey(url: string): Promise<Job[]> {
         let hasNextPage = true;
         let startOffset = 1;
         while (hasNextPage && startOffset < 1000) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
-            const res = await fetch(`https://gateway.mckinsey.com/apigw-x0cceuow60/v1/api/jobs/search?pageSize=20&start=${startOffset}&lang=en`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json, text/plain, */*',
-                    'User-Agent': 'Mozilla/5.0'
+            const res = await fetchWithTimeout(
+                `https://gateway.mckinsey.com/apigw-x0cceuow60/v1/api/jobs/search?pageSize=20&start=${startOffset}&lang=en`,
+                {
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*',
+                        'User-Agent': 'Mozilla/5.0'
+                    }
                 },
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            
-            console.log(`[McKinsey Debug] start=${startOffset} status=${res.status}`);
+                30000
+            );
             
             if (res.ok) {
                 const data = await res.json();
-                console.log(`[McKinsey Debug] results length=${data.docs?.length}`);
                 if (data.docs && data.docs.length > 0) {
                     for (const job of data.docs) {
                         let locStr = 'Remote';
@@ -858,11 +768,17 @@ async function fetchInfobric(url: string): Promise<Job[]> {
             const data = await res.json();
             if (data.items) {
                 for (const j of data.items) {
-                    jobs.push({ title: j.title, url: j.url, location: 'UK', department: '' });
+                    // Use actual location from the JSON payload; fallback to empty so ukFilter decides
+                    const loc = j._jobposting?.jobLocation?.[0]?.address?.addressLocality ||
+                                j._jobposting?.jobLocation?.[0]?.address?.addressCountry ||
+                                j['human-location'] || '';
+                    jobs.push({ title: j.title, url: j.url, location: loc, department: '' });
                 }
             } else if (data.data) {
                 for (const j of data.data) {
-                    jobs.push({ title: j.attributes.title, url: j.links.careersite_job_url, location: 'UK', department: '' });
+                    const attrs = j.attributes || {};
+                    const loc = attrs['human-location'] || '';
+                    jobs.push({ title: attrs.title, url: j.links?.careersite_job_url || '', location: loc, department: '' });
                 }
             }
         }
@@ -890,18 +806,43 @@ async function fetchLucanet(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
     console.log('[Custom: Lucanet] Fetching...');
     try {
-        const res = await fetchWithTimeout('https://jobs.lucanet.com/jobs.json');
-        if (res.ok) {
+        let hasNextPage = true;
+        let startOffset = 0;
+        
+        while (hasNextPage && startOffset < 1000) {
+            const res = await fetchWithTimeout(
+                `https://lucanet.jobs.personio.com/search.json?language=en-GB&offset=${startOffset}`, 
+                { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } }
+            );
+            
+            if (!res.ok) {
+                break;
+            }
+            
             const data = await res.json();
-            for (const j of data.items || []) {
-                let loc = 'Unknown';
-                if (j._jobposting?.jobLocation?.[0]?.address?.addressCountry) {
-                    loc = j._jobposting.jobLocation[0].address.addressCountry;
+            
+            if (data && Array.isArray(data)) {
+                if (data.length === 0) break;
+                
+                for (const j of data) {
+                    const loc = j.office || j.location || 'United Kingdom';
+                    jobs.push({ 
+                        title: j.name || j.title, 
+                        url: `https://lucanet.jobs.personio.com/job/${j.id}`, 
+                        location: loc, 
+                        department: j.department || '' 
+                    });
                 }
-                jobs.push({ title: j.title, url: j.url, location: loc, department: '' });
+                startOffset += data.length;
+            } else {
+                break;
             }
         }
-    } catch (e: any) { console.error('[Lucanet] Error:', e.message); }
+        
+        console.log(`[Custom: Lucanet] Found ${jobs.length} jobs.`);
+    } catch (e: any) { 
+        console.error('[Lucanet] Error:', e.message); 
+    }
     return jobs;
 }
 
@@ -941,7 +882,11 @@ async function fetchAize(url: string): Promise<Job[]> {
         if (res.ok) {
             const data = await res.json();
             for (const j of data.items || []) {
-                jobs.push({ title: j.title, url: j.url, location: 'UK', department: '' });
+                // Use actual location from payload so ukFilter can properly decide
+                const loc = j._jobposting?.jobLocation?.[0]?.address?.addressLocality ||
+                            j._jobposting?.jobLocation?.[0]?.address?.addressCountry ||
+                            j['human-location'] || '';
+                jobs.push({ title: j.title, url: j.url, location: loc, department: '' });
             }
         }
     } catch (e: any) { console.error('[Aize] Error:', e.message); }
@@ -984,19 +929,25 @@ async function fetchBlackwall(url: string): Promise<Job[]> {
 
 async function fetchBooking(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
-    console.log('[Custom: Booking.com] Fetching Phenom API...');
+    console.log('[Custom: Booking.com] Fetching API...');
     try {
-        const payload = {
-            "from": 0, "size": 100, "query": "*",
-            "location": [], "department": [], "city": [], "state": [], "country": ["United Kingdom"]
-        };
-        const res = await fetchWithTimeout('https://jobs.booking.com/api/jobs/search', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        const res = await fetchWithTimeout('https://jobs.booking.com/api/jobs?location=United%20Kingdom&limit=100', {
+            method: 'GET', headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
         });
         if (res.ok) {
             const data = await res.json();
             for (const j of data.jobs || []) {
-                jobs.push({ title: j.title, url: j.url, location: 'United Kingdom', department: j.category || '' });
+                if (j.data) {
+                    let dept = j.data.category || '';
+                    if (Array.isArray(dept)) dept = dept.join(', ');
+                    
+                    jobs.push({ 
+                        title: j.data.title, 
+                        url: `https://jobs.booking.com/job/${j.data.id}`, 
+                        location: j.data.location_name || 'United Kingdom', 
+                        department: dept 
+                    });
+                }
             }
         }
     } catch (e: any) { console.error('[Booking.com] Error:', e.message); }
@@ -1021,29 +972,36 @@ async function fetchDCC(url: string): Promise<Job[]> {
             
             const html = await res.text();
             const $ = cheerio.load(html);
-            // DCC Flogas Britain SuccessFactors — try both job-tile and data-row formats
-            const tiles = $('.job-tile, .data-row').toArray();
+            const tiles = ($('.job-tile').length > 0 ? $('.job-tile') : $('.data-row')).toArray();
             
             if (tiles.length === 0) break;
             
-            let newJobsOnPage = 0;
+            let jobsOnPage = 0;
             for (const el of tiles) {
-                const titleEl = $(el).find('.job-tile__title a, .jobTitle a');
-                const title = titleEl.text().trim();
+                const titleEl = $(el).find('.tiletitle a, .jobTitle a').first();
+                const rawTitle = titleEl.text().trim().split('\n')[0].trim();
+                let title = rawTitle;
+                
+                // Fix SuccessFactors title duplication bug
+                if (title.length > 0 && title.length % 2 === 0) {
+                    const half = title.length / 2;
+                    if (title.substring(0, half) === title.substring(half)) title = title.substring(0, half);
+                }
+                
                 const href = titleEl.attr('href') || '';
                 const jobUrl = href.startsWith('http') ? href : `https://careers.dcc.ie${href}`;
-                // All jobs from Flogas Britain section are UK — hardcode UK location
-                const rawLocation = $(el).find('.location, .jobFacility').text().trim();
-                const location = rawLocation ? rawLocation + ', United Kingdom' : 'United Kingdom';
+                
+                const locSegments = $(el).find('.location, .jobFacility').text().trim().split('\n').map(s => s.trim()).filter(s => s && s !== 'Location');
+                const location = locSegments.length > 0 ? locSegments.join(', ') : 'United Kingdom';
                 
                 if (title && jobUrl && !seenUrls.has(jobUrl)) {
                     seenUrls.add(jobUrl);
                     jobs.push({ title, url: jobUrl, location });
-                    newJobsOnPage++;
+                    jobsOnPage++;
                 }
             }
             
-            if (newJobsOnPage === 0) break;
+            if (jobsOnPage === 0) break;
             startrow += 25;
             await new Promise(r => setTimeout(r, 300));
         }
@@ -1091,10 +1049,11 @@ async function fetchJLR(url: string): Promise<Job[]> {
                 }
                 const href = $(el).find('.jobTitle a').attr('href') || '';
                 const jobUrl = href.startsWith('http') ? href : `https://www.jaguarlandrovercareers.com${href}`;
-                const rawLoc = $(el).find('.jobFacility .hidden-phone').text().trim() ||
-                               $(el).find('.jobFacility').text().trim();
-                // JLR is a UK manufacturer — always ensure UK appears in location
-                const location = rawLoc ? (rawLoc.toLowerCase().includes('united kingdom') ? rawLoc : rawLoc + ', United Kingdom') : 'United Kingdom';
+                let rawLoc = $(el).find('.colLocation .jobLocation').text().trim();
+                if (!rawLoc) {
+                    rawLoc = $(el).find('.jobLocation').first().text().trim();
+                }
+                const location = rawLoc || 'United Kingdom'; // Fallback if completely empty, otherwise use extracted location
                 
                 if (title && jobUrl) {
                     jobs.push({ title, url: jobUrl, location });
@@ -1170,14 +1129,13 @@ async function fetchGates(url: string): Promise<Job[]> {
 async function fetchBIC(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
     const baseUrl = 'https://careers.bic.com/search/';
-    const seenUrls = new Set<string>();
     let startrow = 0;
     
     console.log('[Custom: BIC] Fetching from SuccessFactors...');
     
     try {
         while (true) {
-            const pageUrl = `${baseUrl}?startrow=${startrow}`;
+            const pageUrl = `${baseUrl}/search/?q=&locationsearch=&optionsFacetsDD_country=GB&startrow=${startrow}`;
             const res = await fetchWithTimeout(pageUrl, {
                 headers: { 'User-Agent': 'Mozilla/5.0' }
             });
@@ -1185,26 +1143,34 @@ async function fetchBIC(url: string): Promise<Job[]> {
             
             const html = await res.text();
             const $ = cheerio.load(html);
-            const tiles = $('.job-tile').toArray();
+            const rows = ($('.job-tile').length > 0 ? $('.job-tile') : $('.data-row')).toArray();
             
-            if (tiles.length === 0) break;
+            if (rows.length === 0) break;
             
-            let newJobsOnPage = 0;
-            for (const el of tiles) {
-                const titleEl = $(el).find('.job-tile__title a');
-                const title = titleEl.text().trim();
+            let jobsOnPage = 0;
+            for (const el of rows) {
+                const titleEl = $(el).find('.tiletitle a, .jobTitle a').first();
+                const rawTitle = titleEl.text().trim().split('\n')[0].trim();
+                let title = rawTitle;
+                
+                // Fix SuccessFactors title duplication bug
+                if (title.length > 0 && title.length % 2 === 0) {
+                    const half = title.length / 2;
+                    if (title.substring(0, half) === title.substring(half)) title = title.substring(0, half);
+                }
+                
                 const href = titleEl.attr('href') || '';
                 const jobUrl = href.startsWith('http') ? href : `https://careers.bic.com${href}`;
-                const location = $(el).find('.location').text().trim();
                 
-                if (title && jobUrl && !seenUrls.has(jobUrl)) {
-                    seenUrls.add(jobUrl);
+                const locSegments = $(el).find('.location').text().trim().split('\n').map(s => s.trim()).filter(s => s && s !== 'Location');
+                const location = locSegments.length > 0 ? locSegments.join(', ') : 'United Kingdom';
+                
+                if (title && jobUrl) {
                     jobs.push({ title, url: jobUrl, location });
-                    newJobsOnPage++;
+                    jobsOnPage++;
                 }
             }
-            
-            if (newJobsOnPage === 0) break;
+            if (jobsOnPage === 0) break;
             startrow += 25;
             await new Promise(r => setTimeout(r, 300));
         }
@@ -1726,21 +1692,15 @@ async function fetchCapgemini(url: string): Promise<Job[]> {
     
     try {
         const targetUrl = `https://cg-jobstream-api.azurewebsites.net/api/job-search?country_code=en-gb%2Cgb-en%2Cen-gb%2Cgb-en&page=1&size=500`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
         
-        const res = await fetch(targetUrl, {
-            method: 'GET',
+        const res = await fetchWithTimeout(targetUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'application/json'
-            },
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+            }
+        }, 30000);
         
         if (!res.ok) {
-            console.log(`[Capgemini Debug] status=${res.status}`);
             return jobs;
         }
         
@@ -1920,3 +1880,236 @@ async function fetchStripe(baseUrl: string): Promise<Job[]> {
     return jobs;
 }
 
+async function fetchApple(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    let page = 1;
+    let totalPages = 1;
+    
+    console.log('[Custom: Apple] Fetching API...');
+    
+    try {
+        while (page <= totalPages && page <= 50) { // Safety limit of 50 pages
+            const pageUrl = `https://jobs.apple.com/en-in/search?location=united-kingdom-GBR&page=${page}`;
+            const res = await fetchWithTimeout(pageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            
+            if (!res.ok) {
+                console.log(`[Custom: Apple] Failed to fetch page ${page}: ${res.statusText}`);
+                break;
+            }
+            
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            let foundData = false;
+            
+            $('script').each((i, el) => {
+                const text = $(el).html();
+                if (text && text.includes('__staticRouterHydrationData = JSON.parse(')) {
+                    const match = text.match(/JSON\.parse\((".*?")\);/);
+                    if (match) {
+                        try {
+                            const jsonStr = JSON.parse(match[1]); 
+                            const data = JSON.parse(jsonStr);     
+                            const searchData = data?.loaderData?.search || {};
+                            if (page === 1) {
+                                const totalRecords = searchData.totalRecords || 0;
+                                totalPages = Math.ceil(totalRecords / 20) || 1;
+                            }
+                            
+                            const searchResults = searchData.searchResults || [];
+                            for (const item of searchResults) {
+                                const title = item.postingTitle;
+                                const jobId = item.positionId;
+                                const jobUrl = `https://jobs.apple.com/en-in/details/${jobId}`;
+                                const location = item.locations?.[0]?.name || 'United Kingdom';
+                                
+                                if (title && jobId) {
+                                    jobs.push({ title, url: jobUrl, location });
+                                }
+                            }
+                            foundData = true;
+                        } catch(e: any) {
+                            console.error('[Custom: Apple] JSON parse error:', e.message);
+                        }
+                    }
+                }
+            });
+            
+            if (!foundData) break;
+            
+            page++;
+            await new Promise(r => setTimeout(r, 500)); // Respectful delay
+        }
+        console.log(`[Custom: Apple] Found ${jobs.length} jobs.`);
+    } catch (e) {
+        console.error('[Custom: Apple] Error:', e);
+    }
+    
+    return jobs;
+}
+
+async function fetchJibeApi(baseUrl: string, companyName: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    let page = 1;
+    let totalPages = 1;
+    console.log(`[Custom: ${companyName}] Fetching API...`);
+    try {
+        while (page <= totalPages && page <= 50) { // Safety limit 50 pages (5000 jobs)
+            const searchUrl = `${baseUrl}/api/jobs?page=${page}&limit=100&country=United%20Kingdom`;
+            const res = await fetchWithTimeout(searchUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            
+            if (!res.ok) {
+                console.log(`[Custom: ${companyName}] Failed to fetch page ${page}: ${res.statusText}`);
+                break;
+            }
+            
+            const data: any = await res.json();
+            
+            if (page === 1) {
+                totalPages = Math.ceil((data.totalCount || 0) / 100) || 1;
+                console.log(`[Custom: ${companyName}] Found ${data.totalCount || 0} jobs. Total pages: ${totalPages}`);
+            }
+            
+            for (const item of data.jobs || []) {
+                const jData = item.data || {};
+                const title = jData.title;
+                const canonicalUrl = jData.meta_data?.canonical_url || jData.apply_url;
+                const location = jData.full_location || jData.country || 'United Kingdom';
+                const department = (jData.category && jData.category.length > 0) ? jData.category[0].trim() : '';
+                
+                if (title && canonicalUrl) {
+                    jobs.push({ title, url: canonicalUrl, location, department });
+                }
+            }
+            
+            page++;
+            await new Promise(r => setTimeout(r, 500));
+        }
+    } catch (e: any) {
+        console.error(`[Custom: ${companyName}] Error:`, e.message);
+    }
+    return jobs;
+}
+
+async function fetchFitchGroup(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    let startRow = 0;
+    let foundJobs = true;
+    let totalCount = 1000;
+    
+    console.log(`[Custom: Fitch] Fetching HTML...`);
+    try {
+        while (foundJobs && startRow <= Math.min(totalCount, 5000)) {
+            const pageUrl = `https://careers.fitch.group/search/?q=&locationsearch=uk&startrow=${startRow}`;
+            const res = await fetchWithTimeout(pageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            
+            if (!res.ok) {
+                console.log(`[Custom: Fitch] Failed to fetch startRow ${startRow}: ${res.statusText}`);
+                break;
+            }
+            
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            
+            const rows = $('tr.data-row');
+            if (rows.length === 0) {
+                foundJobs = false;
+                break;
+            }
+            
+            if (startRow === 0) {
+                const pagText = $('.paginationLabel').first().text();
+                const match = pagText.match(/of\s+(\d+)/);
+                if (match) totalCount = parseInt(match[1], 10);
+                console.log(`[Custom: Fitch] Found ${totalCount} total jobs (UK)`);
+            }
+            
+            rows.each((i, el) => {
+                const title = $(el).find('.jobTitle-link').text().trim();
+                let jobUrl = $(el).find('.jobTitle-link').attr('href');
+                if (jobUrl && !jobUrl.startsWith('http')) {
+                    jobUrl = 'https://careers.fitch.group' + jobUrl;
+                }
+                const location = $(el).find('.jobLocation').text().trim() || 'United Kingdom';
+                const department = $(el).find('.jobDepartment').text().trim();
+                
+                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location, department });
+                }
+            });
+            
+            startRow += rows.length;
+            await new Promise(r => setTimeout(r, 500));
+        }
+    } catch (e: any) {
+        console.error('[Custom: Fitch] Error:', e.message);
+    }
+    return jobs;
+}
+
+async function fetchTesco(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    let offset = 0;
+    let foundJobs = true;
+    
+    console.log(`[Custom: Tesco] Fetching HTML...`);
+    try {
+        while (foundJobs && offset <= 5000) { // Safety limit 5000 jobs
+            const searchUrl = `https://careers.tesco.com/en_GB/careers/SearchJobs/?jobRecordsPerPage=100&jobOffset=${offset}`;
+            const res = await fetchWithTimeout(searchUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            
+            if (!res.ok) {
+                console.log(`[Custom: Tesco] Failed to fetch offset ${offset}: ${res.statusText}`);
+                break;
+            }
+            
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            
+            const articles = $('article.article--result');
+            if (articles.length === 0) {
+                foundJobs = false;
+                break;
+            }
+            
+            articles.each((i, el) => {
+                const title = $(el).find('h3 a').text().trim();
+                let jobUrl = $(el).find('h3 a').attr('href');
+                let location = $(el).find('.icon--location').text().trim();
+                if (!location) {
+                    location = $(el).find('[class*="location"]').text().trim();
+                }
+                const department = $(el).find('.icon--department').text().trim() || 'Retail';
+                
+                if (jobUrl && !jobUrl.startsWith('http')) {
+                    jobUrl = 'https://careers.tesco.com' + jobUrl;
+                }
+                
+                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location: location || 'United Kingdom', department });
+                }
+            });
+            
+            console.log(`[Custom: Tesco] Offset ${offset}: Fetched ${articles.length} jobs.`);
+            offset += articles.length;
+            
+            if (articles.length < 10) {
+                console.log(`[Custom: Tesco] Reached the last page (fetched ${articles.length} < 10).`);
+                foundJobs = false;
+                break;
+            }
+            
+            await new Promise(r => setTimeout(r, 500));
+        }
+    } catch (e: any) {
+        console.error('[Custom: Tesco] Error:', e.message);
+    }
+    return jobs;
+}

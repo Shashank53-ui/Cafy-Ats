@@ -2528,54 +2528,6 @@ async function fetchGoogle(token: string): Promise<Job[]> {
     return Array.from(uniqueMap.values());
 }
 
-// ─── Apple Jobs Fetcher ────────────────────────────────────────────────────────
-// Uses Apple's public JSON search API filtered to GBR country code
-async function fetchApple(_token: string): Promise<Job[]> {
-    const allJobs: Job[] = [];
-    let page = 0;
-    const PAGE_SIZE = 20;
-
-    while (true) {
-        try {
-            const url = `https://jobs.apple.com/api/role/search?filters.countryID=GBR&page=${page}&locale=en-GB&query=`;
-            const res = await fetchWithTimeout(url, {
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                    'Referer': 'https://jobs.apple.com/en-gb/search',
-                }
-            }, 20000);
-
-            if (!res.ok) break;
-            const data: any = await res.json();
-            const roles: any[] = data?.searchResults || [];
-            if (roles.length === 0) break;
-
-            for (const r of roles) {
-                const locParts = [
-                    r.homeOffice?.name,
-                    r.locations?.[0]?.city,
-                    r.locations?.[0]?.countryCode === 'GBR' ? 'United Kingdom' : r.locations?.[0]?.countryName,
-                ].filter(Boolean);
-                allJobs.push({
-                    title: r.postingTitle || r.title || '',
-                    location: locParts.join(', ') || 'United Kingdom',
-                    url: `https://jobs.apple.com/en-gb/details/${r.positionId}`,
-                    department: r.team?.teamName || '',
-                    salary: undefined,
-                });
-            }
-
-            // Apple API returns totalRecords — stop when we've consumed all
-            const total: number = data?.totalRecords ?? 0;
-            if ((page + 1) * PAGE_SIZE >= total || roles.length < PAGE_SIZE) break;
-            page++;
-            await sleep(500);
-        } catch { break; }
-    }
-    return allJobs;
-}
-
 // ─── Meta / Facebook Jobs Fetcher ─────────────────────────────────────────────
 // Scrapes metacareers.com using Playwright since it is a heavy React SPA
 async function fetchMeta(token: string): Promise<Job[]> {
@@ -3034,63 +2986,7 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
     return allJobs;
 }
 
-// ─── Tesco (Playwright / careers.tesco.com) ───────────────────────────────────
-// Token: "tesco"
-async function fetchTesco(_token: string): Promise<Job[]> {
-    const allJobs: Job[] = [];
-    let browser;
-    try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1280, height: 900 },
-        });
-        const page = await context.newPage();
 
-        // Intercept API calls
-        const apiJobs: Job[] = [];
-        page.on('response', async (response) => {
-            const url = response.url();
-            if (url.includes('/jobs') && response.headers()['content-type']?.includes('json')) {
-                try {
-                    const data = await response.json();
-                    const items = data?.jobs || data?.results || data?.postings || data?.data || [];
-                    if (Array.isArray(items)) {
-                        for (const j of items) {
-                            const title = j.title || j.jobTitle || j.name || '';
-                            const loc = j.location || j.city || j.locationName || '';
-                            const href = j.url || j.applyUrl || j.canonicalPositionUrl || j.jobUrl || '';
-                            if (title && href) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || ''), url: href, department: j.department || j.category || '', salary: undefined });
-                        }
-                    }
-                } catch { /* ignore */ }
-            }
-        });
-
-        await page.goto('https://careers.tesco.com/en_GB/careers/SearchJobs', { waitUntil: 'networkidle', timeout: 60000 });
-        await page.waitForTimeout(5000);
-
-        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
-        else {
-            const jobs = await page.$$eval(
-                'a[href*="job"], [class*="job-card"], [class*="position-card"], li[class*="result"]',
-                els => els.map(el => ({
-                    title: el.querySelector('[class*="title"], h2, h3')?.textContent?.trim() || el.textContent?.trim() || '',
-                    url:   (el as HTMLAnchorElement).href || el.querySelector('a')?.href || '',
-                    location: el.querySelector('[class*="location"]')?.textContent?.trim() || 'United Kingdom',
-                    department: '', salary: undefined as any,
-                })).filter(j => j.title && j.url)
-            );
-            allJobs.push(...jobs);
-        }
-
-        await browser.close();
-    } catch (e: any) {
-        console.error('[Tesco] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => {});
-    }
-    return allJobs;
-}
 
 // ─── EasyJet (Playwright / easyjet.taleo.net) ────────────────────────────────
 // Token: "easyjet"
@@ -3753,6 +3649,7 @@ async function fetchRecruiterbox(token: string): Promise<Job[]> {
 
 export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => Promise<Job[]>> = {
     custom: fetchCustom,
+    apple: fetchCustom,
     greenhouse: fetchGreenhouse,
     ashby: fetchAshby,
     lever: fetchLever,
@@ -3790,7 +3687,6 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
 
     // Company-specific scrapers
     astrazeneca: fetchAstraZeneca,
-    tesco: fetchTesco,
     easyjet: fetchEasyJet,
     btgroup: fetchBTGroup,
     standardchartered: fetchStandardChartered,
@@ -3802,7 +3698,6 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     // Special / Custom Scrapers
     amazon: fetchAmazon,
     google: fetchGoogle,
-    apple: fetchApple,
     meta: fetchMeta,
     nhs: fetchNHS,
     goldmansachs: fetchGoldmanSachs,
