@@ -859,8 +859,10 @@ async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOn
         if (!fetcher) continue;
 
         try {
+            console.log(`Trying fetcher: ${attempt.provider} (token: ${attempt.token})`);
             let jobs = await fetcher(attempt.token, company);
             jobs = jobs.filter(j => isValidJobTitle(j.title));
+            console.log(`Fetcher ${attempt.provider} returned ${jobs.length} valid jobs`);
             if (jobs.length > 0) {
                 return {
                     jobs,
@@ -1289,72 +1291,89 @@ async function fetchWorkable(token: string): Promise<Job[]> {
     return [];
 }
 
-async function fetchTeamtailor(token: string): Promise<Job[]> {
+async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
     const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0';
-    // 1. Try JSON first
-    try {
-        const url = token.includes('.') ? `https://${token}/jobs.json` : `https://${token}.teamtailor.com/jobs.json`;
-        const r = await fetchWithTimeout(url, {
-            headers: {
-                'User-Agent': ua,
-                'Accept': 'application/vnd.api+json',
-                'Referer': token.includes('.') ? `https://${token}/` : `https://${token}.teamtailor.com/`
+    
+    const domainsToTry: string[] = [];
+    if (token.includes('.')) domainsToTry.push(token);
+    else domainsToTry.push(`${token}.teamtailor.com`);
+    
+    if (company?.careers_url) {
+        try {
+            const urlObj = new URL(company.careers_url);
+            if (!domainsToTry.includes(urlObj.hostname)) {
+                domainsToTry.push(urlObj.hostname);
             }
-        });
-        if (r.ok) {
-            const d = await r.json();
-            if (d.data?.length > 0) {
-                return d.data.map((j: any) => ({
-                    title: j.attributes?.title || '',
-                    location: j.attributes?.['human-location'] || '',
-                    url: j.links?.['careersite-job-url'] || '',
-                    department: '',
-                    salary: undefined
-                }));
-            }
-            if (d.items?.length > 0) {
-                return d.items.map((j: any) => {
-                    const city = j._jobposting?.jobLocation?.[0]?.address?.addressLocality || '';
-                    const country = j._jobposting?.jobLocation?.[0]?.address?.addressCountry || '';
-                    const loc = [city, country].filter(Boolean).join(', ');
-                    return {
-                        title: j.title || '',
-                        location: loc,
-                        url: j.url || '',
+        } catch {}
+    }
+
+    for (const domain of domainsToTry) {
+        // 1. Try JSON first
+        try {
+            const url = `https://${domain}/jobs.json`;
+            const r = await fetchWithTimeout(url, {
+                headers: {
+                    'User-Agent': ua,
+                    'Accept': 'application/vnd.api+json',
+                    'Referer': `https://${domain}/`
+                }
+            });
+            if (r.ok) {
+                const d = await r.json();
+                if (d.data?.length > 0) {
+                    return d.data.map((j: any) => ({
+                        title: j.attributes?.title || '',
+                        location: j.attributes?.['human-location'] || '',
+                        url: j.links?.['careersite-job-url'] || '',
                         department: '',
                         salary: undefined
-                    };
-                });
+                    }));
+                }
+                if (d.items?.length > 0) {
+                    return d.items.map((j: any) => {
+                        const city = j._jobposting?.jobLocation?.[0]?.address?.addressLocality || '';
+                        const country = j._jobposting?.jobLocation?.[0]?.address?.addressCountry || '';
+                        const loc = [city, country].filter(Boolean).join(', ');
+                        return {
+                            title: j.title || '',
+                            location: loc,
+                            url: j.url || '',
+                            department: '',
+                            salary: undefined
+                        };
+                    });
+                }
             }
-        }
-    } catch { }
+        } catch { }
 
-    // 2. Try RSS as fallback
-    try {
-        const rssUrl = token.includes('.') ? `https://${token}/jobs.rss` : `https://${token}.teamtailor.com/jobs.rss`;
-        const r = await fetchWithTimeout(rssUrl, { headers: { 'User-Agent': ua } });
-        if (!r.ok) return [];
+        // 2. Try RSS as fallback
+        try {
+            const rssUrl = `https://${domain}/jobs.rss`;
+            const r = await fetchWithTimeout(rssUrl, { headers: { 'User-Agent': ua } });
+            if (r.ok) {
+                const xml = await r.text();
+                const $ = cheerio.load(xml, { xmlMode: true });
+                const jobs: Job[] = [];
 
-        const xml = await r.text();
-        const $ = cheerio.load(xml, { xmlMode: true });
-        const jobs: Job[] = [];
-
-        $('item').each((_, el) => {
-            const item = $(el);
-            const city = item.find('tt\\:city').text().trim();
-            const country = item.find('tt\\:country').text().trim();
-            const ttLoc = [city, country].filter(Boolean).join(', ');
-            
-            jobs.push({
-                title: item.find('title').text().trim(),
-                location: ttLoc || item.find('description').text().split('·')[1]?.trim() || '',
-                url: item.find('link').text().trim(),
-                department: item.find('category').first().text().trim(),
-                salary: undefined
-            });
-        });
-        return jobs;
-    } catch { return []; }
+                $('item').each((_, el) => {
+                    const item = $(el);
+                    const city = item.find('tt\\:city').text().trim();
+                    const country = item.find('tt\\:country').text().trim();
+                    const ttLoc = [city, country].filter(Boolean).join(', ');
+                    
+                    jobs.push({
+                        title: item.find('title').text().trim(),
+                        location: ttLoc || item.find('description').text().split('·')[1]?.trim() || '',
+                        url: item.find('link').text().trim(),
+                        department: item.find('category').first().text().trim(),
+                        salary: undefined
+                    });
+                });
+                if (jobs.length > 0) return jobs;
+            }
+        } catch (e) { }
+    }
+    return [];
 }
 
 async function fetchBambooHR(token: string): Promise<Job[]> {
