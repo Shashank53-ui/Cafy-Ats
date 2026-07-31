@@ -9,6 +9,12 @@ export async function fetchCustom(url: string, company?: CompanyRow): Promise<Jo
     if (company?.id === 294 || url.includes('bbc.co.uk')) {
         return fetchBBC(url);
     }
+    if (company?.id === 966 || url.includes('prosek.com')) {
+        return fetchProsek(url);
+    }
+    if (company?.id === 1775 || url.includes('fishercareers.com')) {
+        return fetchFisher(url);
+    }
     if (url.includes('serco.com') || company?.id === 1740) {
         return fetchSerco(url);
     }
@@ -56,6 +62,21 @@ export async function fetchCustom(url: string, company?: CompanyRow): Promise<Jo
     }
     if (company?.id === 2025 || url.includes('careers.dcc.ie')) {
         return fetchDCC(url);
+    }
+    if (company?.id === 1594 || url.includes('yourcareer.rathbones.com')) {
+        return fetchRathbones(url);
+    }
+    if (company?.id === 1584 || url.includes('talents.hikma.com')) {
+        return fetchHikma(url);
+    }
+    if (company?.id === 928 || url.includes('netjets.jobs.hr.cloud.sap')) {
+        return fetchNetJets(url);
+    }
+    if (company?.id === 440 || url.includes('careers.docusign.com')) {
+        return fetchDocuSign(url);
+    }
+    if (company?.id === 1783 || url.includes('jobs.babcockinternational.com')) {
+        return fetchBabcock(url);
     }
     if (company?.id === 1689 || url.includes('jaguarlandrovercareers.com')) {
         return fetchJLR(url);
@@ -2111,5 +2132,341 @@ async function fetchTesco(url: string): Promise<Job[]> {
     } catch (e: any) {
         console.error('[Custom: Tesco] Error:', e.message);
     }
+    return jobs;
+}
+
+
+async function fetchBabcock(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    const baseUrl = 'https://jobs.babcockinternational.com/Babcock/search/';
+    let startrow = 0;
+    
+    console.log('[Custom: Babcock] Fetching from SuccessFactors...');
+    
+    try {
+        while (true) {
+            const pageUrl = `${baseUrl}?startrow=${startrow}`;
+            const res = await fetchWithTimeout(pageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!res.ok) break;
+            
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            const rows = $('.data-row').toArray();
+            
+            if (rows.length === 0) break;
+            
+            for (const el of rows) {
+                let title = $(el).find('.jobTitle .hidden-phone').text().trim();
+                if (!title) {
+                    const rawTitle = $(el).find('.jobTitle a').text().trim();
+                    if (rawTitle.length % 2 === 0) {
+                        const half = rawTitle.length / 2;
+                        title = rawTitle.substring(0, half) === rawTitle.substring(half) ? rawTitle.substring(0, half) : rawTitle;
+                    } else {
+                        title = rawTitle;
+                    }
+                }
+                const href = $(el).find('.jobTitle a').attr('href') || '';
+                const jobUrl = href.startsWith('http') ? href : `https://jobs.babcockinternational.com${href}`;
+                let rawLoc = $(el).find('.colLocation .jobLocation').text().trim();
+                if (!rawLoc) {
+                    rawLoc = $(el).find('.jobLocation').first().text().trim();
+                }
+                const location = rawLoc || 'United Kingdom';
+                
+                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location });
+                }
+            }
+            
+            startrow += 25;
+            await new Promise(r => setTimeout(r, 300));
+            if (rows.length < 25) break;
+        }
+        console.log(`[Custom: Babcock] Found ${jobs.length} jobs.`);
+    } catch (e) {
+        console.error('[Custom: Babcock] Error:', e);
+    }
+    
+    return jobs;
+}
+
+
+async function fetchRathbones(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    const baseUrl = 'https://yourcareer.rathbones.com/search/';
+    let startrow = 0;
+    
+    console.log('[Custom: Rathbones] Fetching from SuccessFactors...');
+    
+    try {
+        while (true) {
+            const pageUrl = `${baseUrl}?startrow=${startrow}`;
+            const res = await fetchWithTimeout(pageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!res.ok) break;
+            
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            const rows = $('.sub-section-desktop').toArray();
+            
+            if (rows.length === 0) break;
+            
+            for (const el of rows) {
+                let title = $(el).find('.jobTitle-link').text().trim();
+                const href = $(el).find('.jobTitle-link').attr('href') || '';
+                const jobUrl = href.startsWith('http') ? href : `https://yourcareer.rathbones.com${href}`;
+                let rawLoc = $(el).find('.section-field.location div[id*="-value"]').text().trim();
+                const location = rawLoc || 'United Kingdom';
+                
+                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location });
+                }
+            }
+            
+            startrow += 5;
+            await new Promise(r => setTimeout(r, 300));
+            if (rows.length < 5) break;
+        }
+        console.log(`[Custom: Rathbones] Found ${jobs.length} jobs.`);
+    } catch (e) {
+        console.error('[Custom: Rathbones] Error:', e);
+    }
+    
+    return jobs;
+}
+
+async function fetchHikma(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    const baseUrl = 'https://talents.hikma.com/search/';
+    let startrow = 0;
+    
+    console.log('[Custom: Hikma] Fetching from SuccessFactors...');
+    
+    try {
+        while (true) {
+            const pageUrl = `${baseUrl}?startrow=${startrow}`;
+            const res = await fetchWithTimeout(pageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!res.ok) break;
+            
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            const rows = $('.data-row').toArray();
+            
+            if (rows.length === 0) break;
+            
+            for (const el of rows) {
+                let title = $(el).find('.jobTitle .hidden-phone').text().trim();
+                if (!title) {
+                    const rawTitle = $(el).find('.jobTitle a').text().trim();
+                    if (rawTitle.length % 2 === 0) {
+                        const half = rawTitle.length / 2;
+                        title = rawTitle.substring(0, half) === rawTitle.substring(half) ? rawTitle.substring(0, half) : rawTitle;
+                    } else {
+                        title = rawTitle;
+                    }
+                }
+                const href = $(el).find('.jobTitle a').attr('href') || '';
+                const jobUrl = href.startsWith('http') ? href : `https://talents.hikma.com${href}`;
+                
+                let rawLoc = $(el).find('.colLocation .jobLocation').text().trim();
+                if (!rawLoc) {
+                    rawLoc = $(el).find('.jobLocation').first().text().trim();
+                }
+                const location = rawLoc || 'United Kingdom';
+                
+                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location });
+                }
+            }
+            
+            startrow += 50;
+            await new Promise(r => setTimeout(r, 300));
+            if (rows.length < 50) break;
+        }
+        console.log(`[Custom: Hikma] Found ${jobs.length} jobs.`);
+    } catch (e) {
+        console.error('[Custom: Hikma] Error:', e);
+    }
+    
+    return jobs;
+}
+
+async function fetchNetJets(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    const baseUrl = 'https://netjets.jobs.hr.cloud.sap/europe/search/';
+    let startrow = 0;
+    
+    console.log('[Custom: NetJets] Fetching from SuccessFactors...');
+    
+    try {
+        while (true) {
+            const pageUrl = `${baseUrl}?startrow=${startrow}`;
+            const res = await fetchWithTimeout(pageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!res.ok) break;
+            
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            const rows = $('.data-row').toArray();
+            
+            if (rows.length === 0) break;
+            
+            for (const el of rows) {
+                let title = $(el).find('.jobTitle .hidden-phone').text().trim();
+                if (!title) {
+                    const rawTitle = $(el).find('.jobTitle a').text().trim();
+                    if (rawTitle.length % 2 === 0) {
+                        const half = rawTitle.length / 2;
+                        title = rawTitle.substring(0, half) === rawTitle.substring(half) ? rawTitle.substring(0, half) : rawTitle;
+                    } else {
+                        title = rawTitle;
+                    }
+                }
+                const href = $(el).find('.jobTitle a').attr('href') || '';
+                const jobUrl = href.startsWith('http') ? href : `https://netjets.jobs.hr.cloud.sap${href}`;
+                
+                let rawLoc = $(el).find('.colLocation .jobLocation').text().trim();
+                if (!rawLoc) {
+                    rawLoc = $(el).find('.jobLocation').first().text().trim();
+                }
+                const location = rawLoc || 'United Kingdom';
+                
+                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location });
+                }
+            }
+            
+            startrow += 25;
+            await new Promise(r => setTimeout(r, 300));
+            if (rows.length < 25) break;
+        }
+        console.log(`[Custom: NetJets] Found ${jobs.length} jobs.`);
+    } catch (e) {
+        console.error('[Custom: NetJets] Error:', e);
+    }
+    
+    return jobs;
+}
+
+async function fetchDocuSign(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    let page = 1;
+
+    console.log('[Custom: DocuSign] Fetching from JSON API...');
+    
+    try {
+        while (true) {
+            const pageUrl = `https://careers.docusign.com/api/jobs?page=${page}`;
+            const res = await fetchWithTimeout(pageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!res.ok) break;
+
+            const data = await res.json();
+            if (!data.jobs || data.jobs.length === 0) break;
+
+            for (const item of data.jobs) {
+                const jobData = item.data;
+                const title = jobData.title;
+                const jobUrl = jobData.meta_data?.canonical_url || `https://careers.docusign.com/jobs/${jobData.slug}?lang=en-us`;
+                
+                const location = jobData.location_name || jobData.city || jobData.country || 'Unknown';
+                
+                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location });
+                }
+            }
+
+            page++;
+            await new Promise(r => setTimeout(r, 200));
+        }
+        console.log(`[Custom: DocuSign] Found ${jobs.length} jobs.`);
+    } catch (e) {
+        console.error('[Custom: DocuSign] Error:', e);
+    }
+    
+    return jobs;
+}
+
+async function fetchProsek(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    console.log('[Custom: Prosek] Fetching from Greenhouse API directly...');
+    try {
+        const apiUrl = 'https://boards-api.greenhouse.io/v1/boards/prosek/jobs?content=true';
+        const res = await fetchWithTimeout(apiUrl);
+        if (!res.ok) {
+            console.error('[Custom: Prosek] API returned', res.status);
+            return jobs;
+        }
+        
+        const data = await res.json();
+        if (data.jobs && Array.isArray(data.jobs)) {
+            for (const job of data.jobs) {
+                const title = job.title;
+                const jobUrl = job.absolute_url;
+                const location = job.location?.name || 'Unknown';
+                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location });
+                }
+            }
+        }
+        console.log(`[Custom: Prosek] Found ${jobs.length} jobs.`);
+    } catch (e) {
+        console.error('[Custom: Prosek] Error:', e);
+    }
+    return jobs;
+}
+
+async function fetchFisher(url: string): Promise<Job[]> {
+    const jobs: Job[] = [];
+    console.log('[Custom: Fisher] Fetching HTML pages...');
+    
+    let p = 1;
+    const seenUrls = new Set<string>();
+    
+    try {
+        while (true) {
+            const pageUrl = `https://www.fishercareers.com/search-jobs?p=${p}`;
+            const res = await fetchWithTimeout(pageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!res.ok) break;
+
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            let newJobsOnPage = 0;
+            
+            $('a').each((i, el) => {
+                const href = $(el).attr('href') || '';
+                if (href.includes('/job/')) {
+                    const title = $(el).find('.job-title').text().trim() || $(el).find('h3').text().trim();
+                    const location = $(el).find('p').first().text().trim() || 'Unknown';
+                    const jobUrl = href.startsWith('http') ? href : `https://www.fishercareers.com${href}`;
+                    
+                    if (title && jobUrl && !seenUrls.has(jobUrl)) {
+                        seenUrls.add(jobUrl);
+                        newJobsOnPage++;
+                        jobs.push({ title, url: jobUrl, location });
+                    }
+                }
+            });
+            
+            if (newJobsOnPage === 0) break;
+            
+            p++;
+            await new Promise(r => setTimeout(r, 300));
+        }
+        console.log(`[Custom: Fisher] Found ${jobs.length} jobs.`);
+    } catch (e) {
+        console.error('[Custom: Fisher] Error:', e);
+    }
+    
     return jobs;
 }
