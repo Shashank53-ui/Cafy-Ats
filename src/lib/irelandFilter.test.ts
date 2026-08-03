@@ -83,3 +83,18 @@ test('Ireland Filter: rejects foreign / UK / NI leaks', () => {
         assert.strictEqual(isIrelandJob(location), false, `${location || '(empty)'} should be rejected`);
     }
 });
+
+test('Ireland Filter: rejects US state abbrev collisions (MO/KY/MN)', () => {
+    for (const location of [
+        'Cape Girardeau Mo',
+        'Sysco Memphis - Shuttle Yard Cape Girardeau Mo',
+        'Louisville, KY',
+        'Minneapolis, MN',
+        'Atlanta, GA, United States',
+    ]) {
+        assert.strictEqual(isIrelandJob(location), false, `${location} should be rejected`);
+    }
+    // Still accept Irish town + county abbrev
+    assert.strictEqual(isIrelandJob('Dunboyne, Mh'), true);
+    assert.strictEqual(isIrelandJob('Castlebar, Mo'), true);
+});

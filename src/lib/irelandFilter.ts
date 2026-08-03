@@ -155,7 +155,10 @@ function hasIrishCountySignal(combined: string): boolean {
         containsLocationPhrase(combined, `county ${c}`) ||
         containsLocationPhrase(combined, `co ${c}`)
     )) return true;
-    return Object.keys(COUNTY_ABBREVS).some(abbr => containsLocationPhrase(combined, abbr));
+    // Two-letter ATS abbreviations alone are ambiguous (MO=Missouri, KY=Kentucky,
+    // MN=Minnesota). Only trust them alongside an Irish city/town token.
+    const hasAbbrev = Object.keys(COUNTY_ABBREVS).some(abbr => containsLocationPhrase(combined, abbr));
+    return hasAbbrev && hasIrishCitySignal(combined);
 }
 
 // Eircode routing key + unique identifier, e.g. "D02 XY01", "A65F4E2"
