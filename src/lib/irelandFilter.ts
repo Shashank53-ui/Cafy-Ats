@@ -37,7 +37,7 @@ const IRELAND_CITIES = [
     'celbridge', 'maynooth', 'clonshaugh', 'finglas', 'cabra', 'phibsborough', 'rathmines',
     'ranelagh', 'ballsbridge', 'docklands', 'ifsc', 'silicon docks', 'duleek', 'belview',
     'dunboyne', 'skerries', 'ringaskiddy', 'mahon', 'cloughvalley', 'townparks',
-    'carrick on shannon', 'carrick-on-shannon',
+    'carrick on shannon', 'carrick-on-shannon', 'carrigtwohill',
 ];
 
 /** RoI provinces — avoid bare "ulster" (includes NI). */
@@ -63,6 +63,7 @@ const FOREIGN_CITIES = [
     'amsterdam', 'berlin', 'munich', 'paris', 'madrid', 'barcelona', 'bordeaux', 'rome', 'milan',
     'brussels', 'vienna', 'zurich', 'geneva', 'stockholm', 'oslo', 'copenhagen', 'helsinki',
     'warsaw', 'prague', 'budapest', 'bucharest', 'lisbon', 'luxembourg', 'frankfurt',
+    'atlanta', 'memphis', 'nashville', 'charlotte', 'detroit', 'philadelphia', 'san diego',
     'tokyo', 'beijing', 'shanghai', 'seoul', 'taipei', 'bangkok', 'zagreb', 'jakarta', 'manila',
     'kuala lumpur', 'ho chi minh',
     'mumbai', 'delhi', 'bangalore', 'bengaluru', 'pune', 'chennai', 'hyderabad', 'kolkata',
@@ -155,7 +156,10 @@ function hasIrishCountySignal(combined: string): boolean {
         containsLocationPhrase(combined, `county ${c}`) ||
         containsLocationPhrase(combined, `co ${c}`)
     )) return true;
-    return Object.keys(COUNTY_ABBREVS).some(abbr => containsLocationPhrase(combined, abbr));
+    // Two-letter ATS abbreviations alone are ambiguous (MO=Missouri, KY=Kentucky,
+    // MN=Minnesota). Only trust them alongside an Irish city/town token.
+    const hasAbbrev = Object.keys(COUNTY_ABBREVS).some(abbr => containsLocationPhrase(combined, abbr));
+    return hasAbbrev && hasIrishCitySignal(combined);
 }
 
 // Eircode routing key + unique identifier, e.g. "D02 XY01", "A65F4E2"
