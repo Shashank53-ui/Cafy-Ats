@@ -312,7 +312,7 @@ function isUKLocation(loc: any): boolean {
     // Hard block: well-known non-UK phrases
     const blockList = [
         "ukraine", "new york", "new jersey", "new south wales", "new england",
-        "united states", "usa", "india", "canada", "australia", "germany",
+        "united states", "usa", "u.s.a", "u.s.", "u.s", "india", "canada", "australia", "germany",
         "france", "netherlands", "singapore", "hong kong", "dubai",
         "massachusetts", "california", "texas", "florida", "washington state"
     ];
@@ -3879,10 +3879,6 @@ export async function syncAll() {
                 const adapterKey = `${atsProvider.toLowerCase()}ToJobLocationInput` as keyof typeof Adapters;
                 const adapter = Adapters[adapterKey];
 
-                // Default adapter: split pipe/bullet-separated office lists so each office
-                // is checked independently (e.g. "London | New York" → ["London","New York"]).
-                const locationInput = adapter ? adapter(j) : buildLocationInput(j);
-
                 // Fix empty/generic remote locations based on job title
                 const titleLower = String(j.title || '').toLowerCase();
                 let locTrimmed = String(j.location || '').trim();
@@ -3891,7 +3887,7 @@ export async function syncAll() {
                 if (!locTrimmed || locLower === 'remote' || locLower === '(remote)') {
                     if (titleLower.includes('uk remote') || titleLower.includes('remote uk') || titleLower.includes('united kingdom remote') || titleLower.includes('remote united kingdom')) {
                         j.location = 'UK Remote';
-                    } else if (titleLower.includes('us remote') || titleLower.includes('remote us') || titleLower.includes('usa remote') || titleLower.includes('remote usa')) {
+                    } else if (titleLower.includes('us remote') || titleLower.includes('remote us') || titleLower.includes('usa remote') || titleLower.includes('remote usa') || titleLower.includes('u.s. remote') || titleLower.includes('remote u.s')) {
                         j.location = 'US Remote';
                     } else if (titleLower.includes('india remote') || titleLower.includes('remote india')) {
                         j.location = 'India Remote';
@@ -3899,6 +3895,10 @@ export async function syncAll() {
                         j.location = 'Remote';
                     }
                 }
+
+                // Rebuild location input AFTER remote title rewrites so "US Remote" /
+                // "India Remote" are not accepted as bare Remote UK jobs.
+                const locationInput = adapter ? adapter(j) : buildLocationInput(j);
 
                 if (!isValidJobTitle(j.title)) {
                     rejectedCount++;

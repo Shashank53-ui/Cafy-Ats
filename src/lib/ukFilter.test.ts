@@ -209,3 +209,73 @@ test('UK Filter: Remote with London passes', () => {
     const input: JobLocationInput = { isTrustedSource: false, locations: ["Remote", "London"], isRemote: true };
     assert.strictEqual(isUKJob(input), true, 'Remote + London should pass');
 });
+
+test('UK Filter: U.S. Travelling blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["U.S. Travelling"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'U.S. Travelling should be blocked');
+});
+
+test('UK Filter: U.S. abbreviation blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["U.S."], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Bare U.S. should be blocked');
+});
+
+test('UK Filter: United States blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["New York, NY, United States"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'United States should be blocked');
+});
+
+test('UK Filter: New South Wales Australia blocked (wales false positive)', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Sydney-New South Wales-Australia"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'NSW Australia must not pass via wales');
+});
+
+test('UK Filter: North Wales Pennsylvania blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["USA - Pennsylvania - North Wales (Upper Gwynedd)"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'US North Wales PA must be blocked');
+});
+
+test('UK Filter: Porto Portugal blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Porto, Portugal"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Portugal must be blocked');
+});
+
+test('UK Filter: Amsterdam blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Amsterdam"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Amsterdam must be blocked');
+});
+
+test('UK Filter: Singapore blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Singapore"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Singapore must be blocked');
+});
+
+test('UK Filter: bare Dublin Ireland blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Dublin, Ireland"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Dublin ROI must not be UK');
+});
+
+test('UK Filter: Dublin with only United Kingdom blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Dublin, , United Kingdom"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Dublin + bare UK label must not pass');
+});
+
+test('UK Filter: Dublin + London dual location allowed', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Dublin, Ireland | London, United Kingdom"], isRemote: false };
+    assert.strictEqual(isUKJob(input), true, 'Dublin+London dual should stay UK');
+});
+
+test('UK Filter: Hoofddorp England Netherlands blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Hoofddorp, ENGLAND, Netherlands"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Netherlands row with ENGLAND junk must be blocked');
+});
+
+test('UK Filter: Denmark Hill London NHS still UK', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["South London and Maudsley NHS Foundation Trust, , , Denmark Hill SE5 8AZ"], isRemote: false };
+    assert.strictEqual(isUKJob(input), true, 'Denmark Hill is a London address');
+});
+
+test('UK Filter: Newcastle NSW Australia blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["Newcastle-New South Wales-Australia"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'AU Newcastle must not match UK Newcastle');
+});

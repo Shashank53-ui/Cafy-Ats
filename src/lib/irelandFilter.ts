@@ -40,7 +40,8 @@ const HARD_BLOCKS = [
     'austria', 'belgium', 'italy', 'portugal', 'czech republic', 'hungary', 'romania', 'croatia',
     'south korea', 'japan', 'china', 'hong kong', 'malaysia', 'thailand', 'new zealand',
     'south africa', 'brazil', 'argentina', 'mexico', 'ukraine', 'russia',
-    'united states', 'usa', 'u.s.a.',
+    'united states', 'usa', 'u.s.a.', 'u.s.a', 'u.s.', 'u.s', 'us',
+    'porto', 'lisboa', 'holland',
     'armenia', 'azerbaijan', 'cyprus', 'serbia', 'bulgaria', 'slovakia',
     'slovenia', 'lithuania', 'latvia', 'estonia', 'greece', 'iceland',
     'malta', 'bosnia', 'montenegro', 'north macedonia', 'albania',
@@ -95,6 +96,11 @@ function hasDefinitiveIrelandSignal(combined: string): boolean {
 }
 
 function isHardBlocked(combined: string): boolean {
+    // Bare US abbreviations — "U.S. Travelling" normalizes to "u.s. travelling"
+    // and does not match HARD_BLOCKS word-boundary checks on "usa".
+    if (/(^|[^a-z])u\.?s\.?a?(?:[^a-z]|$)/i.test(combined) && !/\bireland\b|\béire\b|\beire\b/.test(combined)) {
+        return true;
+    }
     return HARD_BLOCKS.some(term => containsLocationPhrase(combined, term));
 }
 
