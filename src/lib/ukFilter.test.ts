@@ -70,22 +70,68 @@ test('UK Filter: Hard block only', () => {
     assert.strictEqual(isUKJob(input), false, 'California should return false');
 });
 
-test('UK Filter: Global signal', () => {
+test('UK Filter: Global signal alone blocked', () => {
     const input: JobLocationInput = {
         isTrustedSource: false,
         locations: ["Global"],
         isRemote: false
     };
-    assert.strictEqual(isUKJob(input), true, 'Global should return true');
+    assert.strictEqual(isUKJob(input), false, 'Bare "Global" with no UK term should return false');
 });
 
-test('UK Filter: EMEA signal', () => {
+test('UK Filter: EMEA signal alone blocked', () => {
     const input: JobLocationInput = {
         isTrustedSource: false,
         locations: ["EMEA"],
         isRemote: false
     };
-    assert.strictEqual(isUKJob(input), true, 'EMEA should return true');
+    assert.strictEqual(isUKJob(input), false, 'Bare "EMEA" with no UK term should return false');
+});
+
+test('UK Filter: EMEA with London passes', () => {
+    const input: JobLocationInput = {
+        isTrustedSource: false,
+        locations: ["EMEA - London"],
+        isRemote: false
+    };
+    assert.strictEqual(isUKJob(input), true, '"EMEA - London" should return true');
+});
+
+test('UK Filter: EMEA Remote blocked', () => {
+    const input: JobLocationInput = {
+        isTrustedSource: false,
+        locations: ["EMEA Remote"],
+        isRemote: false
+    };
+    assert.strictEqual(isUKJob(input), false, '"EMEA Remote" with no UK term should return false');
+});
+
+test('UK Filter: Europe with London passes', () => {
+    const input: JobLocationInput = {
+        isTrustedSource: false,
+        locations: ["Europe - London"],
+        isRemote: false
+    };
+    assert.strictEqual(isUKJob(input), true, '"Europe - London" should return true');
+});
+
+test('UK Filter: broad region terms blocked alone', () => {
+    for (const loc of ["APAC", "Worldwide", "Asia", "Europe", "East Coast", "NAMER", "Int'l", "International"]) {
+        const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };
+        assert.strictEqual(isUKJob(input), false, `"${loc}" with no UK term should return false`);
+    }
+});
+
+test('UK Filter: Crown Dependencies blocked', () => {
+    for (const loc of ["Jersey", "Guernsey", "Isle of Man"]) {
+        const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };
+        assert.strictEqual(isUKJob(input), false, `"${loc}" (Crown Dependency) should return false`);
+    }
+});
+
+test('UK Filter: bare US blocked', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ["US"], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Bare "US" should return false');
 });
 
 test('UK Filter: Empty everything', () => {

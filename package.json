@@ -8,11 +8,14 @@
     "build:clean": "rimraf .next && next build",
     "start": "next start",
     "lint": "eslint",
-    "ingest": "tsx src/scripts/ingestJobs.ts",
+    "ingest": "tsx src/scripts/ingestCompanies.ts",
     "sync": "tsx src/scripts/syncAll.ts",
     "sync:linkedin": "tsx src/scripts/scrapeLinkedinIreland.ts",
+    "sync:ireland": "tsx src/scripts/syncAll.ts --market ireland --exclude-linkedin",
+    "check:ireland": "tsx src/scripts/checkJobsIrCount.ts --min 6000",
+    "seed:ireland": "tsx src/scripts/seedIrelandCompaniesSafe.ts",
+    "migrate:ireland": "tsx src/scripts/applyIrelandMigration.ts",
     "backfill:sectors": "tsx src/scripts/backfillJobSectors.ts",
-    "test:fetchers": "tsx src/scripts/testNewFetchers.ts",
     "validate:ats": "tsx src/scripts/validateAtsTokens.ts",
     "repair:ats": "tsx src/scripts/repairBadTokens.ts",
     "baseline:ats": "tsx src/scripts/exportAtsBaseline.ts",
@@ -21,8 +24,7 @@
     "detect:ats:single": "tsx src/scripts/detectAtsFromCareersPage.ts --company-id",
     "import:ats:csv": "tsx src/scripts/importAtsFromCsv.ts",
     "seed:companies": "tsx src/scripts/seedCompaniesFromCsv.ts",
-    "import:full": "tsx src/scripts/importFullCompanies.ts",
-    "extract:ireland:dryrun": "tsx src/scripts/extractIrelandJobsDryRun.ts"
+    "import:full": "tsx src/scripts/importFullCompanies.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

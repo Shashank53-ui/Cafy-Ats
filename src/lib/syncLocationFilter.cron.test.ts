@@ -1,21 +1,20 @@
 /**
  * Cron-path location filter smoke tests.
- * Mirrors what /api/cron/sync-jobs → syncAll() uses: isUKJob + isLikelyIrelandJob.
+ * Mirrors what /api/cron/sync-jobs → syncAll() uses: isUKJob + isIrelandJob.
  *
  * Run: npx tsx src/lib/syncLocationFilter.cron.test.ts
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isUKJob } from './ukFilter';
-import { buildLocationInput, isLikelyIrelandJob } from '../scripts/syncAll';
+import { isIrelandJob } from './irelandFilter';
 
 function uk(location: string, isRemote = false) {
   return isUKJob({ locations: [location], isRemote, isTrustedSource: false });
 }
 
-function ie(location: string, title = 'Software Engineer') {
-  const job: any = { title, location, url: 'https://example.com/job', department: '' };
-  return isLikelyIrelandJob(job, buildLocationInput(job));
+function ie(location: string) {
+  return isIrelandJob(location);
 }
 
 test('cron UK: U.S. Travelling blocked', () => {

@@ -34,7 +34,7 @@ const UK_CITIES = [
     "peterborough", "northampton", "luton", "swindon", "bournemouth",
     "poole", "basingstoke", "guildford", "woking", "slough", "watford",
     "hemel hempstead", "st albans", "st. albans", "welwyn", "stevenage",
-    "hatfield", "harlow", "chelmsford", "ipswich", "norwich", "lincoln",
+    "hatfield", "harlow", "chelmsford", "ipswich", "norwich", "lincoln", "haverhill",
     "worcester", "gloucester", "hereford", "shrewsbury", "telford",
     "warrington", "bolton", "rochdale", "wigan", "oldham", "stockport",
     "salford", "huddersfield", "bradford", "wakefield", "halifax",
@@ -44,7 +44,7 @@ const UK_CITIES = [
     "truro", "yeovil", "taunton", "barnstaple", "torquay", "salisbury",
     "winchester", "chichester", "crawley", "horsham", "haywards heath",
     "eastbourne", "hastings", "folkestone", "dover", "maidstone", "tunbridge wells",
-    "colchester", "southend", "basildon",
+    "colchester", "southend", "basildon", "haverhill",
     "wokingham", "bracknell", "farnborough", "aldershot",
     "milton keynes", "aylesbury", "oxford", "banbury",
     "knutsford", "macclesfield", "crewe", "nantwich",
@@ -65,8 +65,6 @@ const UK_CITIES = [
     "home counties", "south east", "south west", "north east", "north west",
     "cotswolds", "chilterns", "pennines", "highlands", "lowlands", "borders",
     "east of england",
-    // Channel Islands / Crown dependencies (UK-adjacent for employment purposes)
-    "jersey", "guernsey", "isle of man",
     // Other specific locations that appear in Workday / ATS data
     "radbroke", "canary wharf", "paddington", "victoria", "waterloo",
     "euston", "king's cross", "kings cross", "london bridge",
@@ -84,6 +82,13 @@ const HARD_BLOCKS = [
     "south korea", "japan", "china", "hong kong", "malaysia", "thailand",
     "new zealand", "south africa", "brazil", "argentina", "mexico",
     "ukraine", "russia",
+    "armenia", "azerbaijan", "cyprus", "serbia", "bulgaria", "slovakia",
+    "slovenia", "lithuania", "latvia", "estonia", "greece", "iceland",
+    "malta", "bosnia", "montenegro", "north macedonia", "albania",
+    "moldova", "belarus", "kazakhstan",
+    "philippines", "vietnam", "indonesia", "pakistan", "bangladesh",
+    "sri lanka", "nepal", "egypt", "nigeria", "kenya", "ghana", "morocco",
+    "chile", "peru", "ecuador", "venezuela", "colombia", "costa rica", "panama",
     // Ireland (must NOT block "Northern Ireland")
     "dublin", "ireland",
     // US States (full names)
@@ -120,10 +125,17 @@ const HARD_BLOCKS = [
     "whippany", "mclean", "plano", "wilmington",
     // US country abbreviations in location strings (e.g. "US - CA - Bay Area")
     "bay area", "silicon valley", "research triangle", "twin cities",
-    "united states", "usa", "u.s.a.", "u.s.a", "u.s.", "u.s",
+    "united states", "usa", "u.s.a.", "u.s.a", "u.s.", "u.s", "us",
+    // Crown Dependencies (not part of the UK for visa-sponsorship purposes)
+    "jersey", "guernsey", "isle of man",
+    // Broad regional terms — must not pass without an explicit UK term alongside them
+    "emea", "apac", "worldwide", "global", "int'l", "international",
+    "asia", "europe", "east coast", "namer",
 ];
 
-const GLOBAL_SIGNALS = ["global", "worldwide", "international", "emea", "remote"];
+// Kept separate from HARD_BLOCKS: a bare "Remote" text signal remains an
+// ambiguous pass (unlike EMEA/Global/etc, which are now hard-blocked above).
+const AMBIGUOUS_REMOTE_SIGNALS = ["remote"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -157,6 +169,10 @@ function isUKTerm(loc: string): boolean {
         }
         // "washington" in UK context is rare — block if it looks like US state
         if (term === 'washington' && /\bwashington\s+(d\.?c\.?|state|dc)\b/.test(l)) return false;
+        // "wales" must not match Australia's "New South Wales"
+        if (term === 'wales' && /\bnew\s+south\s+wales\b/.test(l)) return false;
+        // "england" must not match the US "New England" region
+        if (term === 'england' && /\bnew\s+england\b/.test(l)) return false;
         return re.test(l);
     });
 }
@@ -183,10 +199,12 @@ function isBlockedTerm(loc: string): boolean {
 // Checks for unambiguous UK country/nation terms only — NOT generic city names.
 // Used when a hard-block is present to avoid false positives like "London, Ontario, Canada".
 function hasDefinitiveUKSignal(combined: string): boolean {
-    // Remove non-UK phrases that contain UK nation substrings ("New South Wales", US "North Wales")
+    // Strip phrases that embed UK nation names as false positives
+    // (New South Wales, US North Wales, New England).
     const c = combined
         .replace(/\bnew\s+south\s+wales\b/g, ' ')
-        .replace(/\bnorth\s+wales\b/g, ' ');
+        .replace(/\bnorth\s+wales\b/g, ' ')
+        .replace(/\bnew\s+england\b/g, ' ');
 
     if (/\b[a-z]{1,2}\d[a-z\d]?\s?\d[a-z]{2}\b/.test(c)) return true;
     const definitive = [
@@ -219,6 +237,8 @@ function hasUkCitySignal(combined: string): boolean {
     return UK_CITIES.some((city) => {
         const term = normalize(city);
         if (term === 'london') return false; // already handled with ontario carve-out
+        // Crown dependencies are hard-blocked above — never treat as UK city signals.
+        if (term === 'jersey' || term === 'guernsey' || term === 'isle of man') return false;
         if (term === 'york' && /\bnew\s+york\b/.test(c)) return false;
         if (term.includes(' ')) return c.includes(term);
         return new RegExp(`\\b${term.replace(/\./g, '\\.')}\\b`).test(c);
@@ -237,9 +257,7 @@ export function isUKJob(input: JobLocationInput): boolean {
     // "Remote" or "Remote UK" → accept. "Remote (USA)" / "Remote - Germany" → fall through.
     if (isRemote) {
         const combined = locations.join(' ').toLowerCase();
-        const hasNonUKCountry = isBlockedTerm(combined)
-            // Also catch bare "US" / "USA" abbreviations not matched by HARD_BLOCKS word search
-            || /\b(us|usa)\b/.test(combined);
+        const hasNonUKCountry = isBlockedTerm(combined);
         if (!hasNonUKCountry) return true;
         // Has non-UK signal — fall through to geography checks below
     }
@@ -268,9 +286,10 @@ export function isUKJob(input: JobLocationInput): boolean {
         if (isUKTerm(loc)) return true;
     }
 
-    // 6. Global/EMEA signals (treat as potentially UK — don't reject outright)
+    // 6. Bare "remote" text is still ambiguous — don't reject outright.
+    // (EMEA/Global/Worldwide/etc are handled above via HARD_BLOCKS + hasUkCitySignal.)
     for (const loc of locs) {
-        if (GLOBAL_SIGNALS.some(s => loc.includes(s))) return true;
+        if (AMBIGUOUS_REMOTE_SIGNALS.some(s => loc.includes(s))) return true;
     }
 
     // Default: reject

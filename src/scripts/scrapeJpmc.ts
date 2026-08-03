@@ -1,7 +1,7 @@
 import https from 'https';
 import { supabase } from '../lib/supabase';
 import dotenv from 'dotenv';
-import { isUKLocation } from './fallbackScraper';
+import { isUKJob } from '../lib/ukFilter';
 
 dotenv.config({ path: '.env.local' });
 
@@ -9,21 +9,9 @@ function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Ensure the local isUKLocation is duplicated here so we don't have to export it
 async function checkUK(locationStr: string): Promise<boolean> {
     if (!locationStr) return false;
-    const lower = locationStr.toLowerCase();
-    const ukKeywords = [
-        'uk', 'united kingdom', 'london', 'gb', 'england', 'scotland', 'wales',
-        'northern ireland', 'remote - uk', 'belfast', 'edinburgh', 'manchester',
-        'bristol', 'cambridge', 'oxford', 'glasgow', 'leeds', 'birmingham',
-        'knutsford', 'radbroke', 'northampton', 'halifax', 'milton keynes',
-        'chester', 'liverpool', 'sheffield', 'newcastle', 'cardiff', 'swansea',
-        'nottingham', 'southampton', 'reading', 'brighton', 'bournemouth', 'poole',
-        'jersey', 'isle of man', 'guernsey', 'city of london', 'canary wharf',
-        'lanarkshire'
-    ];
-    return ukKeywords.some(kw => lower.includes(kw));
+    return isUKJob({ locations: [locationStr], isRemote: /\bremote\b/i.test(locationStr), isTrustedSource: false });
 }
 
 function fetchPage(offset: number): Promise<any> {

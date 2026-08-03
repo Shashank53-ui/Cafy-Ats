@@ -122,25 +122,23 @@ Import ATS config from CSV before syncing:
 
 ## 7) UK and Ireland Routing Logic
 
-The script keeps UK jobs if either condition matches:
-- `isUKLocation(job.location)` returns true
-- title contains `uk` or `united kingdom`
+- Multi-location posts can dual-write: UK match → `jobs`, Ireland match → `jobs_IR` (no longer UK-first exclusive).
+- Companies with `sync_market = 'ireland'` write **only** to `jobs_IR` and keep `active_jobs_count = 0` (UK browse safe).
+- `jobs_IR.source` is `ats` or `linkedin`. ATS stale deletes only remove `source=ats` rows so LinkedIn inventory survives daily UK sync.
+- CLI: `--market ireland`, `--exclude-linkedin`.
+- LinkedIn volume: `npm run sync:linkedin` (used by `fetch-jobs.yml`), then `npm run check:ireland`.
 
-`isUKLocation` behavior:
-- normalizes location string (lowercase, punctuation cleanup)
-- blocks known false positives (example: New York)
-- blocks some US state abbreviations as standalone words
-- allows explicit remote UK patterns
-- checks against UK country/nation/city token lists
+Apply schema: [supabase/add_ireland_source_and_market.sql](../supabase/add_ireland_source_and_market.sql)
 
-Ireland routing uses the same normalized location input plus the supplied Ireland city list and explicit Ireland/Eire signals. Northern Ireland stays in the UK table.
+Ireland routing uses `isIrelandJob` (explicit RoI locations). Northern Ireland stays in the UK table.
 
 Supabase table creation steps:
 1. Run [supabase/create_jobs_ir.sql](../supabase/create_jobs_ir.sql) in the Supabase SQL editor, or apply the same SQL through your migration workflow.
-2. Confirm the table exists as `public."jobs_IR"` with the same columns as `public.jobs`.
-3. Verify the unique `url` constraint and the company/location/last_seen indexes are present.
-4. Refresh the PostgREST schema cache by running the `NOTIFY pgrst, 'reload schema';` statement from the script.
-5. Keep RLS disabled on `jobs_IR` so the sync script can write to it the same way it writes to `jobs`.
+2. Run [supabase/add_ireland_source_and_market.sql](../supabase/add_ireland_source_and_market.sql) for `source` + `sync_market`.
+3. Confirm the table exists as `public."jobs_IR"` with the same columns as `public.jobs` plus `source`.
+4. Verify the unique `url` constraint and the company/location/last_seen indexes are present.
+5. Refresh the PostgREST schema cache by running the `NOTIFY pgrst, 'reload schema';` statement from the script.
+6. Keep RLS disabled on `jobs_IR` so the sync script can write to it the same way it writes to `jobs`.
 
 ## 8) Supported Providers and Fetchers
 
