@@ -112,11 +112,15 @@ const HARD_BLOCKS = [
     "toronto", "vancouver", "montreal", "sydney", "melbourne", "brisbane",
     "auckland", "johannesburg", "cape town", "dubai", "abu dhabi",
     "riyadh", "doha", "tel aviv",
+    // Extra cities / regions seen in polluted job data
+    "porto", "lisboa", "eindhoven", "hoofddorp", "rotterdam", "utrecht", "the hague",
+    "philippines", "manila", "sao paulo", "mexico city", "shenzhen", "wellington",
+    "new south wales", "nsw",
     // US‑specific terms
     "whippany", "mclean", "plano", "wilmington",
     // US country abbreviations in location strings (e.g. "US - CA - Bay Area")
     "bay area", "silicon valley", "research triangle", "twin cities",
-    "united states", "usa", "u.s.a.",
+    "united states", "usa", "u.s.a.", "u.s.a", "u.s.", "u.s",
 ];
 
 const GLOBAL_SIGNALS = ["global", "worldwide", "international", "emea", "remote"];
@@ -146,6 +150,11 @@ function isUKTerm(loc: string): boolean {
         const re = new RegExp(`\\b${term.replace(/\./g, '\\.')}\\b`);
         // Special case: "york" must not match "new york"
         if (term === 'york' && /\bnew\s+york\b/.test(l)) return false;
+        // "wales" must not match "New South Wales" (Australia) or US "North Wales, PA"
+        if (term === 'wales') {
+            if (/\bnew\s+south\s+wales\b/.test(l)) return false;
+            if (/\bnorth\s+wales\b/.test(l) && /\b(pennsylvania|\bpa\b|united states|\busa\b|u\.s)/.test(l)) return false;
+        }
         // "washington" in UK context is rare — block if it looks like US state
         if (term === 'washington' && /\bwashington\s+(d\.?c\.?|state|dc)\b/.test(l)) return false;
         return re.test(l);
@@ -154,10 +163,18 @@ function isUKTerm(loc: string): boolean {
 
 function isBlockedTerm(loc: string): boolean {
     const l = normalize(loc);
+    // Bare US abbreviations — "U.S. Travelling" normalizes to "u.s. travelling"
+    // and does not match HARD_BLOCKS word-boundary checks on "usa".
+    if (/(^|[^a-z])u\.?s\.?a?(?:[^a-z]|$)/i.test(l) && !/\buk\b|\bu\.k\b|united kingdom|great britain/.test(l)) {
+        return true;
+    }
     return HARD_BLOCKS_LOWER.some(block => {
         // Never block "northern ireland" via the "ireland" entry
         if (block === 'ireland' && l.includes('northern ireland')) return false;
-        if (block.includes(' ')) return l.includes(block);
+        // London address "Denmark Hill" is UK, not Denmark
+        if (block === 'denmark' && /\bdenmark\s+hill\b/.test(l)) return false;
+        // Multi-word OR dotted abbreviations (u.s. / u.s.a.) — includes() is safer than \b
+        if (block.includes(' ') || block.includes('.')) return l.includes(block);
         const re = new RegExp(`\\b${block}\\b`);
         return re.test(l);
     });
@@ -166,16 +183,46 @@ function isBlockedTerm(loc: string): boolean {
 // Checks for unambiguous UK country/nation terms only — NOT generic city names.
 // Used when a hard-block is present to avoid false positives like "London, Ontario, Canada".
 function hasDefinitiveUKSignal(combined: string): boolean {
-    if (/\b[a-z]{1,2}\d[a-z\d]?\s?\d[a-z]{2}\b/.test(combined)) return true;
+    // Remove non-UK phrases that contain UK nation substrings ("New South Wales", US "North Wales")
+    const c = combined
+        .replace(/\bnew\s+south\s+wales\b/g, ' ')
+        .replace(/\bnorth\s+wales\b/g, ' ');
+
+    if (/\b[a-z]{1,2}\d[a-z\d]?\s?\d[a-z]{2}\b/.test(c)) return true;
     const definitive = [
         'england', 'scotland', 'wales', 'northern ireland',
         'united kingdom', 'great britain', 'remote uk', 'hybrid uk',
         'uk', 'u\\.k\\.', 'gbr',
     ];
-    if (definitive.some(term => new RegExp(`\\b${term}\\b`).test(combined))) return true;
+    if (definitive.some(term => new RegExp(`\\b${term}\\b`).test(c))) return true;
     // "London" alone (not "London, Ontario" / "London, Canada") is sufficiently unambiguous
-    if (/\blondon\b/.test(combined) && !/\blondon[\s,]+(ontario|canada|ohio)\b/.test(combined)) return true;
+    if (/\blondon\b/.test(c) && !/\blondon[\s,]+(ontario|canada|ohio)\b/.test(c)) return true;
     return false;
+}
+
+/** UK city-level signal — used when a foreign hard-block is present so bare "UK"/"England" is not enough */
+function hasUkCitySignal(combined: string): boolean {
+    const c = combined
+        .replace(/\bnew\s+south\s+wales\b/g, ' ')
+        .replace(/\bnorth\s+wales\b/g, ' ');
+
+    // Australia shares city names with the UK (Newcastle, Perth, Richmond…).
+    // If AU/NSW is present, only accept unambiguous UK hubs.
+    if (/\b(australia|\bnsw\b)\b/.test(combined) || /\bnew\s+south\s+wales\b/.test(combined)) {
+        return /\b(london|manchester|birmingham|leeds|edinburgh|glasgow|bristol|cardiff|belfast)\b/.test(c);
+    }
+
+    // Do NOT treat bare england/scotland/wales/uk as enough here — those appear in polluted foreign rows
+    // (e.g. "Hoofddorp, ENGLAND, Netherlands", "New South Wales").
+    if (/\blondon\b/.test(c) && !/\blondon[\s,]+(ontario|canada|ohio)\b/.test(c)) return true;
+    if (/\bnorthern ireland\b/.test(c)) return true;
+    return UK_CITIES.some((city) => {
+        const term = normalize(city);
+        if (term === 'london') return false; // already handled with ontario carve-out
+        if (term === 'york' && /\bnew\s+york\b/.test(c)) return false;
+        if (term.includes(' ')) return c.includes(term);
+        return new RegExp(`\\b${term.replace(/\./g, '\\.')}\\b`).test(c);
+    });
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
@@ -210,7 +257,10 @@ export function isUKJob(input: JobLocationInput): boolean {
     // both contain UK city terms but are clearly not UK. Require a definitive nation/country signal.
     const allCombined = locs.join(' ');
     if (isBlockedTerm(allCombined)) {
-        return hasDefinitiveUKSignal(allCombined);
+        // Foreign country / Dublin / NSW present → require a real UK *city* (or Northern Ireland).
+        // Bare "United Kingdom" / "England" is not enough (fixes NSW "wales", North Wales PA,
+        // "Hoofddorp, ENGLAND, Netherlands", "Dublin, United Kingdom").
+        return hasUkCitySignal(allCombined);
     }
 
     // No hard block — any UK geography term is sufficient

@@ -210,7 +210,7 @@ const IRELAND_LOCATIONS = [
 
 const NON_UK_LOCATION_PHRASES = [
     // Country names
-    "united states", "usa", "u.s.a", "canada", "india", "australia", "new zealand",
+    "united states", "usa", "u.s.a", "u.s.", "u.s", "canada", "india", "australia", "new zealand",
     "germany", "france", "netherlands", "spain", "portugal", "italy", "sweden",
     "norway", "denmark", "finland", "switzerland", "austria", "belgium",
     "poland", "ukraine", "russia", "china", "japan", "south korea",
@@ -220,7 +220,9 @@ const NON_UK_LOCATION_PHRASES = [
     "miami", "phoenix", "las vegas", "san jose", "san diego", "whippany", "wilmington", "st louis", "new hampshire", "california", "texas", "virginia", "mclean", "richmond", "plano", "georgia", "illinois", "maryland", "pennsylvania", "north carolina",
     // Other non-UK cities
     "auckland", "tokyo", "berlin", "munich", "hamburg", "paris", "amsterdam", "madrid", "barcelona", "stockholm", "oslo", "copenhagen",
-    "zurich", "geneva", "vienna", "warsaw", "prague", "bucharest", "budapest", "milan", "rome", "lisbon", "brussels", "luxembourg", "mexico city",
+    "zurich", "geneva", "vienna", "warsaw", "prague", "bucharest", "budapest", "milan", "rome", "lisbon", "lisboa", "porto", "brussels", "luxembourg", "mexico city",
+    "eindhoven", "hoofddorp", "rotterdam", "utrecht", "the hague", "philippines", "manila", "sao paulo", "shenzhen", "wellington",
+    "new south wales", "nsw", "pennsylvania",
     // India cities
     "pune", "mumbai", "bengaluru", "bangalore", "chennai", "hyderabad", "noida", "gurgaon", "gurugram", "delhi", "kolkata", "ahmedabad", "jaipur"
 ];
@@ -294,8 +296,38 @@ export function isLikelyIrelandJob(job: Job, locationInput: any): boolean {
     const deptNorm = normalizeLocation(job.department || '');
 
     // Hard block: US-based Dublin locations
-    if (locationNorm.includes('us-ca-dublin') || locationNorm.includes('dublin, ca') || locationNorm.includes('dublin, oh') || locationNorm.includes('dublin, california') || locationNorm.includes('dublin, ohio')) {
+    if (
+      locationNorm.includes('us-ca-dublin') ||
+      locationNorm.includes('dublin, ca') ||
+      locationNorm.includes('dublin, oh') ||
+      locationNorm.includes('dublin, california') ||
+      locationNorm.includes('dublin, ohio') ||
+      locationNorm.includes('dublin ohio') ||
+      locationNorm.includes('dublin california') ||
+      locationNorm.includes('dublin-ohio') ||
+      locationNorm.includes('dublin-california') ||
+      (locationNorm.includes('dublin') && (locationNorm.includes('ohio') || locationNorm.includes('california') || locationNorm.includes('united states')))
+    ) {
         return false;
+    }
+
+    // Hard block: clear non-Ireland countries (US/UK/etc.)
+    const nonIreland = [
+        'united states', 'usa', 'u.s.a', 'u.s.', 'u.s',
+        'united kingdom', 'great britain', 'england', 'scotland', 'wales',
+        'canada', 'australia', 'india', 'germany', 'france', 'singapore',
+        'portugal', 'porto', 'lisbon', 'lisboa', 'amsterdam', 'netherlands', 'holland',
+        'spain', 'madrid', 'barcelona', 'italy', 'milan', 'rome',
+        'belgium', 'brussels', 'sweden', 'stockholm', 'norway', 'oslo',
+        'denmark', 'finland', 'switzerland', 'austria', 'poland', 'hungary', 'romania',
+        'brazil', 'mexico', 'china', 'beijing', 'hong kong', 'japan', 'new zealand',
+        'south africa', 'philippines', 'new york', 'california', 'texas', 'florida',
+        'pennsylvania', 'new south wales',
+    ];
+    if (nonIreland.some((p) => locationNorm.includes(p)) && !locationNorm.includes('northern ireland')) {
+        // Allow only if an explicit Ireland signal is also present (rare dual-location posts)
+        const hasIreland = IRELAND_LOCATION_PHRASES.some((phrase) => locationNorm.includes(normalizeLocation(phrase)));
+        if (!hasIreland) return false;
     }
 
     // Hard block: UK locations that aren't Northern Ireland
@@ -391,7 +423,7 @@ function isUKLocation(loc: any): boolean {
     // Hard block: well-known non-UK phrases
     const blockList = [
         "ukraine", "new york", "new jersey", "new south wales", "new england",
-        "united states", "usa", "india", "canada", "australia", "germany",
+        "united states", "usa", "u.s.a", "u.s.", "u.s", "india", "canada", "australia", "germany",
         "france", "netherlands", "singapore", "hong kong", "dubai",
         "massachusetts", "california", "texas", "florida", "washington state"
     ];
@@ -3962,10 +3994,6 @@ export async function syncAll() {
                 const adapterKey = `${atsProvider.toLowerCase()}ToJobLocationInput` as keyof typeof Adapters;
                 const adapter = Adapters[adapterKey];
 
-                // Default adapter: split pipe/bullet-separated office lists so each office
-                // is checked independently (e.g. "London | New York" → ["London","New York"]).
-                const locationInput = adapter ? adapter(j) : buildLocationInput(j);
-
                 // Fix empty/generic remote locations based on job title
                 const titleLower = String(j.title || '').toLowerCase();
                 let locTrimmed = String(j.location || '').trim();
@@ -3974,7 +4002,7 @@ export async function syncAll() {
                 if (!locTrimmed || locLower === 'remote' || locLower === '(remote)') {
                     if (titleLower.includes('uk remote') || titleLower.includes('remote uk') || titleLower.includes('united kingdom remote') || titleLower.includes('remote united kingdom')) {
                         j.location = 'UK Remote';
-                    } else if (titleLower.includes('us remote') || titleLower.includes('remote us') || titleLower.includes('usa remote') || titleLower.includes('remote usa')) {
+                    } else if (titleLower.includes('us remote') || titleLower.includes('remote us') || titleLower.includes('usa remote') || titleLower.includes('remote usa') || titleLower.includes('u.s. remote') || titleLower.includes('remote u.s')) {
                         j.location = 'US Remote';
                     } else if (titleLower.includes('india remote') || titleLower.includes('remote india')) {
                         j.location = 'India Remote';
@@ -3983,9 +4011,11 @@ export async function syncAll() {
                     }
                 }
 
+                // Rebuild location input AFTER remote title rewrites so "US Remote" /
+                // "India Remote" are not accepted as bare Remote UK jobs.
+                const locationInput = adapter ? adapter(j) : buildLocationInput(j);
 
-                // Fix empty/generic remote locations based on job title
-                                if (!isValidJobTitle(j.title)) {
+                if (!isValidJobTitle(j.title)) {
                     rejectedCount++;
                     continue;
                 }
