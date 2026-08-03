@@ -420,6 +420,7 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /jobs\.bt\.com|careers\.bt\.com/i, fetcher: 'btgroup' },
     { pattern: /jobs\.siemens\.com|siemens\.avature/i, fetcher: 'siemens' },
     { pattern: /vorboss\.com/i, fetcher: 'vorboss' },
+    { pattern: /jobs\.gxo\.com|gxo\.com/i, fetcher: 'gxo' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
@@ -3121,6 +3122,62 @@ async function fetchVorboss(_token: string): Promise<Job[]> {
     }
 }
 
+// ─── GXO Logistics (jobs.gxo.com SuccessFactors Google Base feed) ───────────
+async function fetchGXO(_token: string): Promise<Job[]> {
+    const UA =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    try {
+        const res = await fetchWithTimeout('https://jobs.gxo.com/sitemal.xml', {
+            headers: { 'User-Agent': UA, Accept: 'application/xml,text/xml,*/*' },
+        });
+        if (!res.ok) {
+            console.error(`[GXO] sitemal.xml HTTP ${res.status}`);
+            return [];
+        }
+        const xml = await res.text();
+        const $ = cheerio.load(xml, { xmlMode: true });
+        const jobs: Job[] = [];
+        const seen = new Set<string>();
+
+        $('item').each((_, el) => {
+            const item = $(el);
+            const title = item.find('title').first().text().replace(/\s+/g, ' ').trim();
+            const link = item.find('link').first().text().trim();
+            const location =
+                item.find('g\\:location').first().text().trim() ||
+                item.find('location').first().text().trim() ||
+                '';
+            if (!title || !link) return;
+
+            const blob = `${location} ${title}`.toLowerCase();
+            const isGb =
+                /(^|[^a-z])gb([^a-z]|$)/i.test(location) ||
+                /,\s*gb\b/i.test(title) ||
+                /\bunited kingdom\b/i.test(blob);
+            if (!isGb) return;
+
+            const url = link.startsWith('http') ? link : `https://jobs.gxo.com${link}`;
+            if (seen.has(url)) return;
+            seen.add(url);
+
+            const cleanTitle = title.replace(/\s*\([^)]*\)\s*$/, '').trim() || title;
+            jobs.push({
+                title: cleanTitle,
+                location: location || 'United Kingdom',
+                url,
+                department: '',
+                salary: undefined,
+            });
+        });
+
+        console.log(`[GXO] sitemal: ${jobs.length} GB jobs`);
+        return jobs;
+    } catch (e: any) {
+        console.error('[GXO] sitemal error:', e.message);
+        return [];
+    }
+}
+
 // ─── Standard Chartered (Playwright + Workday fallback) ──────────────────────
 // Token: "standardchartered"
 async function fetchStandardChartered(token: string): Promise<Job[]> {
@@ -3755,6 +3812,7 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     btgroup: fetchBTGroup,
     siemens: fetchSiemens,
     vorboss: fetchVorboss,
+    gxo: fetchGXO,
     standardchartered: fetchStandardChartered,
     microsoft: fetchMicrosoft,
     arup: fetchArup,
