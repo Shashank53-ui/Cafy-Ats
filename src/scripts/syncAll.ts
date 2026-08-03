@@ -419,6 +419,7 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /jobs\.arup\.com|arup\.com/i, fetcher: 'arup' },
     { pattern: /jobs\.bt\.com|careers\.bt\.com/i, fetcher: 'btgroup' },
     { pattern: /jobs\.siemens\.com|siemens\.avature/i, fetcher: 'siemens' },
+    { pattern: /vorboss\.com/i, fetcher: 'vorboss' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
@@ -3063,6 +3064,63 @@ async function fetchSiemens(_token: string): Promise<Job[]> {
     return allJobs;
 }
 
+// ─── Vorboss (vorboss.com/careers — Cloudflare blocks plain fetch) ───────────
+async function fetchVorboss(_token: string): Promise<Job[]> {
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const page = await browser.newPage({
+            userAgent:
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        });
+        await page.goto('https://vorboss.com/careers', {
+            waitUntil: 'domcontentloaded',
+            timeout: 90000,
+        });
+        await page.waitForTimeout(3500);
+
+        const jobs = await page.evaluate(() => {
+            const out: { title: string; url: string; location: string }[] = [];
+            const seen = new Set<string>();
+            for (const a of Array.from(document.querySelectorAll('a[href*="/careers/"]')) as HTMLAnchorElement[]) {
+                const href = a.href.split('#')[0].split('?')[0];
+                if (!/\/careers\/[a-z0-9-]+$/i.test(href) || seen.has(href)) continue;
+                const card = a.closest('article, li, section, div') || a;
+                const heading = card.querySelector('h1, h2, h3, h4, h5');
+                let title = ((heading?.textContent || a.textContent || '') as string).replace(/\s+/g, ' ').trim();
+                title = title
+                    .replace(/Permanent\s*\/\s*Full-?Time.*/i, '')
+                    .replace(/View position.*/i, '')
+                    .replace(/\b(London|Bristol|Manchester|Birmingham|Remote)(,?\s*UK)?\s*$/i, '')
+                    .replace(/^(Build|IT|Networks|Commercial|Operations|Fibre,\s*Planning\s*&\s*Installation)/i, '')
+                    .trim();
+                if (!title || title.length < 3) continue;
+                const blob = (card.textContent || '').replace(/\s+/g, ' ');
+                const loc =
+                    blob.match(/\b(London|Bristol|Manchester|Birmingham|United Kingdom)(?:,?\s*UK)?\b/i)?.[0] ||
+                    'London, United Kingdom';
+                out.push({ title, url: href, location: /uk|united kingdom|london|bristol/i.test(loc) ? loc : `${loc}, United Kingdom` });
+                seen.add(href);
+            }
+            return out;
+        });
+
+        await browser.close();
+        console.log(`[Vorboss] scraped ${jobs.length} jobs`);
+        return jobs.map((j) => ({
+            title: j.title,
+            location: j.location,
+            url: j.url,
+            department: '',
+            salary: undefined,
+        }));
+    } catch (e: any) {
+        console.error('[Vorboss] scraper error:', e.message);
+        if (browser) await browser.close().catch(() => undefined);
+        return [];
+    }
+}
+
 // ─── Standard Chartered (Playwright + Workday fallback) ──────────────────────
 // Token: "standardchartered"
 async function fetchStandardChartered(token: string): Promise<Job[]> {
@@ -3696,6 +3754,7 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     easyjet: fetchEasyJet,
     btgroup: fetchBTGroup,
     siemens: fetchSiemens,
+    vorboss: fetchVorboss,
     standardchartered: fetchStandardChartered,
     microsoft: fetchMicrosoft,
     arup: fetchArup,
