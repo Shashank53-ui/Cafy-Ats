@@ -37,7 +37,7 @@ const IRELAND_CITIES = [
     'celbridge', 'maynooth', 'clonshaugh', 'finglas', 'cabra', 'phibsborough', 'rathmines',
     'ranelagh', 'ballsbridge', 'docklands', 'ifsc', 'silicon docks', 'duleek', 'belview',
     'dunboyne', 'skerries', 'ringaskiddy', 'mahon', 'cloughvalley', 'townparks',
-    'carrick on shannon', 'carrick-on-shannon',
+    'carrick on shannon', 'carrick-on-shannon', 'carrigtwohill',
 ];
 
 /** RoI provinces — avoid bare "ulster" (includes NI). */
