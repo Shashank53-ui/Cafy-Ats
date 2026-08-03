@@ -416,6 +416,7 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /jobs\.nhs\.uk|nhs/i, fetcher: 'nhs' },
     { pattern: /publicisgroupe\.com/i, fetcher: 'publicis' },
     { pattern: /linkedin\.com/i, fetcher: 'linkedin' },
+    { pattern: /jobs\.arup\.com|arup\.com/i, fetcher: 'arup' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
@@ -3083,59 +3084,102 @@ async function fetchMicrosoft(_token: string): Promise<Job[]> {
     return allJobs;
 }
 
-// ─── Arup (jobs.arup.com UKIMEA region — scroll-paginated SPA) ───────────────
-// Arup has a regional browse page for UK+Ireland+Middle East+Africa.
-// We load that, scroll to reveal all jobs, then let the UK filter remove
-// non-UK results (Ireland, UAE, SA etc.).
+// ─── Arup (jobs.arup.com — SSR HTML; Playwright gets 403) ───────────────────
+// Parse UKIMEA / discipline landing pages for .job_list_row cards with locations.
 async function fetchArup(_token: string): Promise<Job[]> {
-    const allJobs: Job[] = [];
-    let browser;
-    try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1280, height: 900 },
+    const UA =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    const seedUrls = [
+        'https://jobs.arup.com/page/ukimea-region-6',
+        'https://jobs.arup.com/landing-pages/6/jobs-matching-custom-search',
+        'https://jobs.arup.com/landingpages/architecture-opportunities-at-arup-26',
+        'https://jobs.arup.com/landingpages/civil-engineering-opportunities-at-arup-27',
+        'https://jobs.arup.com/landingpages/structural-engineering-opportunities-at-arup-66',
+        'https://jobs.arup.com/landingpages/electrical-engineering-opportunities-at-arup-105',
+        'https://jobs.arup.com/landingpages/mechanical-engineering-opportunities-at-arup-101',
+        'https://jobs.arup.com/landingpages/bridge-civil-structures-opportunities-at-arup-52',
+        'https://jobs.arup.com/landingpages/building-services-electrical-opportunities-at-arup-43',
+        'https://jobs.arup.com/landingpages/building-services-mechanical-opportunities-at-arup-18',
+    ];
+
+    const isUkLocation = (loc: string): boolean => {
+        const l = (loc || '').toLowerCase();
+        if (!l) return false;
+        if (/\bnew south wales\b/.test(l)) return false;
+        if (/\bunited kingdom\b/.test(l)) return true;
+        if (/\b(england|scotland|northern ireland)\b/.test(l)) return true;
+        if (/\bwales\b/.test(l) && !/\bsouth wales\b/.test(l)) return true;
+        return /\b(london|manchester|birmingham|edinburgh|glasgow|bristol|leeds|cardiff|belfast|cambridge|oxford|nottingham|sheffield|liverpool|newcastle|reading|coventry|southampton|brighton|aberdeen|york|bath|leicester)\b/.test(l);
+    };
+
+    const parseJobsFromHtml = (html: string): Job[] => {
+        const $ = cheerio.load(html);
+        const jobs: Job[] = [];
+        const seen = new Set<string>();
+
+        $('.job_list_row').each((_, row) => {
+            const el = $(row);
+            const link = el.find('a.job_link').first();
+            const href = String(link.attr('href') || '').trim();
+            const title = link.text().replace(/\s+/g, ' ').trim();
+            if (!href || !title || /learn more/i.test(title)) return;
+            if (!/\/jobs\/[^/\s]+-\d+/i.test(href) && !/\/jobs\/\d+$/i.test(href)) return;
+
+            const locAnchor = el.find('a.location, .jlr_location a').first();
+            const location = (
+                locAnchor.text() ||
+                String(locAnchor.attr('data-title') || '') ||
+                el.find('.jlr_location').text() ||
+                ''
+            )
+                .replace(/See .+ jobs in /i, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            const url = href.startsWith('http') ? href : `https://jobs.arup.com${href}`;
+            if (seen.has(url)) return;
+            seen.add(url);
+            jobs.push({ title, location, url, department: '', salary: undefined });
         });
-        const page = await context.newPage();
 
-        // Load the search page; scroll aggressively to trigger infinite-load
-        await page.goto('https://jobs.arup.com/jobs?keywords=&location=United+Kingdom', { waitUntil: 'networkidle', timeout: 60000 });
-        await page.waitForTimeout(4000);
+        return jobs;
+    };
 
-        let prevCount = 0;
-        for (let i = 0; i < 60; i++) {
-            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            await page.waitForTimeout(1500);
-            const count: number = await page.$$eval('a[href*="/jobs/"]', els => els.length);
-            if (count === prevCount) break;
-            prevCount = count;
-        }
+    const allJobs: Job[] = [];
+    const seenUrls = new Set<string>();
+    const relatedSeeds: string[] = [];
 
-        const jobs = await page.$$eval('a[href*="/jobs/"]', (els: Element[]) =>
-            els.map(el => {
-                const href = (el as HTMLAnchorElement).href || '';
-                if (!href.match(/\/jobs\/[^/]+-\d+$/)) return null;
-                const card = el.closest('li, article, div, section') as HTMLElement | null;
-                const rawText = card?.innerText || '';
-                // Location is in "City, -, Country" format in Arup's card
-                const locMatch = rawText.match(/([A-Za-z][A-Za-z\s]+,\s*[-A-Za-z\s]*,\s*[A-Za-z][A-Za-z\s]+)/);
-                return {
-                    title: ((el.querySelector('h2, h3, [class*="title"]') as HTMLElement)?.innerText
-                        || (el as HTMLElement).innerText || '').trim(),
-                    url: href,
-                    location: locMatch ? locMatch[1].trim() : '',
-                    department: '',
-                };
-            }).filter((j): j is NonNullable<typeof j> => !!j?.title && !!j?.url)
-        );
-
-        allJobs.push(...jobs as Job[]);
-        await browser.close();
-    } catch (e: any) {
-        console.error('[Arup] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => {});
+    for (const seed of seedUrls) {
+        try {
+            const res = await fetchWithTimeout(seed, { headers: { 'User-Agent': UA, Accept: 'text/html' } }, 20000);
+            if (!res.ok) continue;
+            for (const j of parseJobsFromHtml(await res.text())) {
+                if (seenUrls.has(j.url)) continue;
+                seenUrls.add(j.url);
+                allJobs.push(j);
+                if (isUkLocation(j.location)) {
+                    const idMatch = j.url.match(/-(\d+)$/);
+                    if (idMatch) relatedSeeds.push(`https://jobs.arup.com/jobs/${idMatch[1]}/other-jobs-matching/location-only`);
+                }
+            }
+        } catch { /* ignore seed failures */ }
     }
-    return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
+
+    for (const related of [...new Set(relatedSeeds)].slice(0, 8)) {
+        try {
+            const res = await fetchWithTimeout(related, { headers: { 'User-Agent': UA, Accept: 'text/html' } }, 15000);
+            if (!res.ok) continue;
+            for (const j of parseJobsFromHtml(await res.text())) {
+                if (seenUrls.has(j.url)) continue;
+                seenUrls.add(j.url);
+                allJobs.push(j);
+            }
+        } catch { /* ignore */ }
+    }
+
+    const ukJobs = allJobs.filter((j) => isUkLocation(j.location));
+    console.log(`[Arup] scraped ${allJobs.length} jobs, UK-located ${ukJobs.length}`);
+    return Array.from(new Map(ukJobs.map((j) => [j.url, j])).values());
 }
 
 // ─── Jacobs (careers.jacobs.com — Playwright with stealth) ───────────────────
@@ -3551,6 +3595,9 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     icims: fetchICIMS,
     rippling: fetchRippling,
     generic_careers: fetchGenericCareersPage,
+    // UKG / UltiPro boards are HTML job boards — scrape via generic careers fetcher
+    ultipro_html: fetchGenericCareersPage,
+    ultipro: fetchGenericCareersPage,
     jazzhr: fetchJazzHR,
     oracle: fetchOracleTaleo,
 
@@ -3673,16 +3720,22 @@ export async function normalizeLocationsViaPython(
 /**
  * Given a NormalizedLocation result, produce a clean display string for storage.
  * e.g. { city: "London", country: "United Kingdom" } → "London"
+ *      { city: "Dublin", country: "Ireland" } → "Dublin"
  *      { city: "New York", country: "United States", state_province: "NY" } → "New York, NY"
  *      { country: "Ireland" } → "Ireland"
  */
 export function formatNormalizedLocation(n: NormalizedLocation): string | null {
     if (n.is_multi_location) return 'Multiple Locations';
 
+    const dropCountry = n.country === 'United Kingdom' || n.country === 'Ireland';
+
     const parts: string[] = [];
     if (n.city) parts.push(n.city);
-    if (n.state_province && n.country !== 'United Kingdom') parts.push(n.state_province);
-    if (n.country && n.country !== 'United Kingdom') parts.push(n.country);
+    if (n.state_province && !dropCountry) parts.push(n.state_province);
+    // UK postcodes are stored in state_province — keep them off the display string.
+    // Ireland counties can stay when there is no city.
+    if (n.state_province && n.country === 'Ireland' && !n.city) parts.push(n.state_province);
+    if (n.country && !dropCountry) parts.push(n.country);
 
     if (parts.length === 0) {
         // A multi-office posting can be UK/Ireland-eligible with no single
@@ -3691,8 +3744,25 @@ export function formatNormalizedLocation(n: NormalizedLocation): string | null {
         // show the country name rather than falling through to a
         // different office's raw text.
         if (n.country === 'United Kingdom') return 'United Kingdom';
+        if (n.country === 'Ireland') return n.is_remote ? 'Ireland (Remote)' : 'Ireland';
         if (n.is_remote) return 'Remote';
         return null;
+    }
+
+    if (n.is_remote && n.country === 'Ireland' && !n.city) return 'Ireland (Remote)';
+
+    // Obscure UK towns aren't all in isUKJob's city list. Keep the country
+    // suffix so later cleanup/re-validation still accepts them.
+    if (n.city && n.country === 'United Kingdom') {
+        const bare = n.city;
+        if (isUKJob({ locations: [bare], isRemote: !!n.is_remote, isTrustedSource: false })) {
+            return bare;
+        }
+        return `${bare}, United Kingdom`;
+    }
+
+    if (n.city && n.country === 'Ireland') {
+        return n.city;
     }
 
     return parts.join(', ');
