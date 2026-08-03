@@ -21,6 +21,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # Location normalize in syncAll spawns normalizeLocations.py
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: npm ci
         

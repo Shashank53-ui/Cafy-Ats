@@ -27,6 +27,23 @@ const IRELAND_COUNTRY_TERMS = ['ireland', 'republic of ireland', 'eire', 'éire'
 
 const IRELAND_LOCATION_PHRASES = [...IRELAND_COUNTRY_TERMS, ...IRELAND_CITIES];
 
+/** Foreign cities only — used to reject typos like "Bordeaux, Ireland". */
+const FOREIGN_CITIES = [
+    'london', 'manchester', 'birmingham', 'leeds', 'edinburgh', 'glasgow', 'bristol', 'cardiff',
+    'belfast', 'liverpool', 'sheffield', 'newcastle', 'oxford', 'norfolk',
+    'san francisco', 'los angeles', 'chicago', 'boston', 'seattle', 'austin',
+    'dallas', 'houston', 'atlanta', 'miami', 'denver', 'portland', 'phoenix', 'las vegas',
+    'minneapolis', 'bay area', 'silicon valley',
+    'amsterdam', 'berlin', 'munich', 'paris', 'madrid', 'barcelona', 'bordeaux', 'rome', 'milan',
+    'brussels', 'vienna', 'zurich', 'geneva', 'stockholm', 'oslo', 'copenhagen', 'helsinki',
+    'warsaw', 'prague', 'budapest', 'bucharest', 'lisbon', 'luxembourg', 'frankfurt',
+    'tokyo', 'beijing', 'shanghai', 'seoul', 'taipei', 'bangkok', 'zagreb', 'jakarta', 'manila',
+    'kuala lumpur', 'ho chi minh',
+    'mumbai', 'delhi', 'bangalore', 'bengaluru', 'pune', 'chennai', 'hyderabad', 'kolkata',
+    'toronto', 'vancouver', 'montreal', 'sydney', 'melbourne', 'brisbane', 'auckland',
+    'johannesburg', 'cape town', 'abu dhabi', 'riyadh', 'doha', 'tel aviv',
+];
+
 // Non-Ireland countries, US states, and major world cities that share a name with
 // (or commonly appear alongside) an Irish town. If any of these appear in the
 // combined location string, a bare city match is not trusted on its own — an
@@ -58,19 +75,7 @@ const HARD_BLOCKS = [
     'pennsylvania', 'rhode island', 'south carolina', 'south dakota', 'tennessee', 'texas',
     'utah', 'vermont', 'virginia', 'washington', 'west virginia', 'wisconsin', 'wyoming',
     // Major non-Ireland cities
-    'london', 'manchester', 'birmingham', 'leeds', 'edinburgh', 'glasgow', 'bristol', 'cardiff',
-    'belfast', 'liverpool', 'sheffield', 'newcastle',
-    'san francisco', 'los angeles', 'chicago', 'boston', 'seattle', 'austin',
-    'dallas', 'houston', 'atlanta', 'miami', 'denver', 'portland', 'phoenix', 'las vegas',
-    'minneapolis', 'bay area', 'silicon valley',
-    'amsterdam', 'berlin', 'munich', 'paris', 'madrid', 'barcelona', 'bordeaux', 'rome', 'milan',
-    'brussels', 'vienna', 'zurich', 'geneva', 'stockholm', 'oslo', 'copenhagen', 'helsinki',
-    'warsaw', 'prague', 'budapest', 'bucharest', 'lisbon', 'luxembourg',
-    'tokyo', 'beijing', 'shanghai', 'seoul', 'taipei', 'bangkok', 'zagreb', 'jakarta', 'manila',
-    'kuala lumpur', 'ho chi minh',
-    'mumbai', 'delhi', 'bangalore', 'bengaluru', 'pune', 'chennai', 'hyderabad', 'kolkata',
-    'toronto', 'vancouver', 'montreal', 'sydney', 'melbourne', 'brisbane', 'auckland',
-    'johannesburg', 'cape town', 'abu dhabi', 'riyadh', 'doha', 'tel aviv',
+    ...FOREIGN_CITIES,
 ];
 
 function normalizeLocation(value: string): string {
@@ -95,6 +100,14 @@ function hasDefinitiveIrelandSignal(combined: string): boolean {
     return IRELAND_COUNTRY_TERMS.some(term => containsLocationPhrase(combined, term));
 }
 
+function hasIrishCitySignal(combined: string): boolean {
+    return IRELAND_CITIES.some(city => containsLocationPhrase(combined, city));
+}
+
+function hasForeignCity(combined: string): boolean {
+    return FOREIGN_CITIES.some(city => containsLocationPhrase(combined, city));
+}
+
 function isHardBlocked(combined: string): boolean {
     // Bare US abbreviations — "U.S. Travelling" normalizes to "u.s. travelling"
     // and does not match HARD_BLOCKS word-boundary checks on "usa".
@@ -116,6 +129,12 @@ export function isIrelandJob(location: string | null | undefined, locations: str
     if (containsLocationPhrase(combined, 'northern ireland')) return false;
 
     if (isHardBlocked(combined)) {
+        // Foreign city + bare "Ireland" (e.g. "Bordeaux, Ireland") is not enough —
+        // require a real Irish city or Eircode. Country/state hard-blocks still use
+        // the definitive Ireland country/Eircode signal (covers "Dublin, Ohio, US").
+        if (hasForeignCity(combined)) {
+            return hasIrishCitySignal(combined) || EIRCODE_RE.test(combined);
+        }
         return hasDefinitiveIrelandSignal(combined);
     }
 

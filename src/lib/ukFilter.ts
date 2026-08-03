@@ -56,18 +56,35 @@ const UK_CITIES = [
     "wimbledon", "stratford", "shoreditch", "islington", "hackney",
     "hammersmith", "fulham", "chelsea", "kensington", "whitechapel",
     "greenwich", "lewisham", "bromley", "sutton", "kingston",
+    "harrow", "barnet", "enfield", "southall", "barking", "wembley",
+    "tooting", "golders green", "stanmore", "surbiton", "camden",
+    "uxbridge", "ealing", "brentford", "heathrow", "hillingdon",
     // Finance hubs / postcodes commonly seen in job data
     "london ec", "london wc", "london e1", "london e14", "london se1",
     "london n1", "london w1",
-    // Regions
+    // Regions / counties
     "midlands", "west midlands", "east midlands", "yorkshire", "lancashire",
     "cornwall", "devon", "somerset", "dorset", "east anglia", "suffolk", "norfolk",
     "home counties", "south east", "south west", "north east", "north west",
     "cotswolds", "chilterns", "pennines", "highlands", "lowlands", "borders",
-    "east of england",
+    "east of england", "merseyside", "surrey", "essex", "kent", "sussex",
+    "hampshire", "berkshire", "buckinghamshire", "hertfordshire", "oxfordshire",
+    "cambridgeshire", "warwickshire", "staffordshire", "cheshire", "cumbria",
     // Other specific locations that appear in Workday / ATS data
     "radbroke", "canary wharf", "paddington", "victoria", "waterloo",
     "euston", "king's cross", "kings cross", "london bridge",
+    // Second-tier towns frequently present after location normalize
+    "scarborough", "harrogate", "bridgend", "bury", "carmarthen", "llantrisant",
+    "bedford", "chippenham", "cosham", "darlington", "newark", "redditch",
+    "solihull", "camberley", "cwmbran", "farnham", "thatcham", "king's lynn",
+    "kings lynn", "abergavenny", "aberystwyth", "abingdon", "burton-on-trent",
+    "burton upon trent", "epsom", "melksham", "prestwich", "west bromwich",
+    "weston-super-mare", "weston super mare", "bicester", "blackburn", "blackpool",
+    "chorleywood", "dewsbury", "falkirk", "gravesend", "keighley",
+    "melton mowbray", "redhill", "reigate", "ringwood", "wimborne", "ashford",
+    "beaconsfield", "billingham", "brentwood", "cheltenham", "corby",
+    "daventry", "dumfries", "dunstable", "eastleigh", "gosport", "grantham",
+    "newmarket", "hextable", "charlwood", "bodelwyddan", "llanwrst",
 ];
 
 // ─── Hard Blocks (definitely not UK) ─────────────────────────────────────────
@@ -89,6 +106,7 @@ const HARD_BLOCKS = [
     "philippines", "vietnam", "indonesia", "pakistan", "bangladesh",
     "sri lanka", "nepal", "egypt", "nigeria", "kenya", "ghana", "morocco",
     "chile", "peru", "ecuador", "venezuela", "colombia", "costa rica", "panama",
+    "taiwan", "guatemala", "quebec", "abidjan", "americas", "amer/latam", "latam", "amer",
     // Ireland (must NOT block "Northern Ireland")
     "dublin", "ireland",
     // US States (full names)
@@ -132,6 +150,13 @@ const HARD_BLOCKS = [
     "emea", "apac", "worldwide", "global", "int'l", "international",
     "asia", "europe", "east coast", "namer",
 ];
+
+/** ATS UI junk / placeholders with no geographic signal — never admit alone. */
+const PLACEHOLDER_LOCATION_RE =
+    /^(\d+\s+locations?|\+\d+\s*more.*|all roles|#li)$/i;
+
+/** Canonical multi-office label written by our normalizer after a job already passed geo checks. */
+const MULTIPLE_LOCATIONS_RE = /^multiple\s+locations?$/i;
 
 // Kept separate from HARD_BLOCKS: a bare "Remote" text signal remains an
 // ambiguous pass (unlike EMEA/Global/etc, which are now hard-blocked above).
@@ -262,14 +287,21 @@ export function isUKJob(input: JobLocationInput): boolean {
         // Has non-UK signal — fall through to geography checks below
     }
 
-    const locs = locations.map(normalize).filter(Boolean);
+    // Drop ATS placeholders ("3 Locations", "+2 More…", "All Roles") — no geographic signal.
+    // Keep "Multiple Locations" (our normalizer's label for real multi-office posts).
+    const locs = locations
+        .map(normalize)
+        .filter(Boolean)
+        .filter(loc => !PLACEHOLDER_LOCATION_RE.test(loc));
 
-    // 3. Ambiguous multi-location text ("3 locations", "multiple locations") — allow
+    if (!locs.length && !isRemote) return false;
+
+    // Canonical multi-office label from normalizeLocations — same stance as bare "Remote".
     for (const loc of locs) {
-        if (/\d+\s+locations?/i.test(loc) || /multiple\s+locations?/i.test(loc)) return true;
+        if (MULTIPLE_LOCATIONS_RE.test(loc)) return true;
     }
 
-    // 4-5. Hard block vs UK geography
+    // 3-4. Hard block vs UK geography
     // Check the FULL combined string for hard blocks first. If any hard block is present,
     // city names alone are not sufficient — "London, Ontario, Canada" and "Jersey City, New Jersey"
     // both contain UK city terms but are clearly not UK. Require a definitive nation/country signal.
@@ -286,7 +318,7 @@ export function isUKJob(input: JobLocationInput): boolean {
         if (isUKTerm(loc)) return true;
     }
 
-    // 6. Bare "remote" text is still ambiguous — don't reject outright.
+    // 5. Bare "remote" text is still ambiguous — don't reject outright.
     // (EMEA/Global/Worldwide/etc are handled above via HARD_BLOCKS + hasUkCitySignal.)
     for (const loc of locs) {
         if (AMBIGUOUS_REMOTE_SIGNALS.some(s => loc.includes(s))) return true;

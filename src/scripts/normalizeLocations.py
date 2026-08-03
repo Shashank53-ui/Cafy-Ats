@@ -104,7 +104,9 @@ COUNTRY_ALIASES: dict[str, str] = {
     # Australia
     "australia": "Australia",
     # Ireland
-    "ireland": "Ireland", "eire": "Ireland", "republic of ireland": "Ireland",
+    "ireland": "Ireland", "eire": "Ireland", "éire": "Ireland",
+    "republic of ireland": "Ireland",
+    "ie": "Ireland", "irl": "Ireland",
     # Germany
     "germany": "Germany", "deutschland": "Germany",
     # France
@@ -406,6 +408,37 @@ def _find_geo(segment: str) -> dict:
     if not cl:
         return result
 
+    # UK address false positives that contain foreign country/city tokens
+    if re.search(r'\bdenmark\s+hill\b', cl):
+        result["city"] = "Denmark Hill"
+        result["country"] = _UK
+        pc = _extract_postcode(s)
+        if pc:
+            result["state_province"] = pc
+        return result
+    if re.search(r'\bwashington\b', cl) and not re.search(
+        r'\b(washington\s+(d\.?c\.?|state|dc)|wa,?\s*united states|united states)\b',
+        cl,
+    ):
+        # UK town (Tyne and Wear) unless clearly US
+        result["city"] = "Washington"
+        result["country"] = _UK
+        return result
+
+    # 0. "City - GB" / "City - UK" / "Uxbridge - GB" ATS shorthand
+    m_city_cc = re.match(
+        r'^(.+?)\s*[-–]\s*(gb|uk|gbr|ie|irl|ireland)\s*$',
+        cl,
+        re.IGNORECASE,
+    )
+    if m_city_cc:
+        city_raw = m_city_cc.group(1).strip(' ,-/')
+        cc = m_city_cc.group(2).lower()
+        if city_raw and len(city_raw) < 60:
+            result["city"] = city_raw.title()
+            result["country"] = _IE if cc in ('ie', 'irl', 'ireland') else _UK
+            return result
+
     # 1. NHS / healthcare format: "Trust, , , City PC"
     nhs_city, nhs_pc = _extract_nhs_city(s)
     if nhs_city:
@@ -421,21 +454,18 @@ def _find_geo(segment: str) -> dict:
 
     # 3. Longest-match city lookup
     for city_key in _CITY_KEYS_SORTED:
-        if city_key in cl:
-            # Word boundary guard for short tokens
-            if len(city_key) <= 4:
-                pat = r'\b' + re.escape(city_key) + r'\b'
-                if not re.search(pat, cl):
-                    continue
-            country, state = CITY_COUNTRY_MAP[city_key]
-            result["city"] = city_key.title()
-            result["country"] = country
-            result["state_province"] = state
-            # Prefer UK postcode as state for UK jobs
-            pc = _extract_postcode(s)
-            if pc and country == _UK:
-                result["state_province"] = pc
-            return result
+        pat = r'\b' + re.escape(city_key) + r'\b'
+        if not re.search(pat, cl):
+            continue
+        country, state = CITY_COUNTRY_MAP[city_key]
+        result["city"] = city_key.title()
+        result["country"] = country
+        result["state_province"] = state
+        # Prefer UK postcode as state for UK jobs
+        pc = _extract_postcode(s)
+        if pc and country == _UK:
+            result["state_province"] = pc
+        return result
 
     # 4. UK country terms
     for term in UK_COUNTRY_TERMS:
@@ -460,6 +490,16 @@ def _find_geo(segment: str) -> dict:
     for alias in sorted(COUNTRY_ALIASES.keys(), key=len, reverse=True):
         if re.search(r'\b' + re.escape(alias) + r'\b', cl):
             result["country"] = COUNTRY_ALIASES[alias]
+            # "Navan, Ie" / "Dublin, Ireland" — keep leading city when alias is trailing
+            if not result["city"]:
+                m_trail = re.match(
+                    r'^(.+?)[,\s]+' + re.escape(alias) + r'\s*$',
+                    cl,
+                )
+                if m_trail:
+                    city_part = m_trail.group(1).strip(' ,-/')
+                    if city_part and len(city_part) < 50 and city_part not in COUNTRY_ALIASES:
+                        result["city"] = city_part.title()
             return result
 
     # 8. "City, ST" US pattern

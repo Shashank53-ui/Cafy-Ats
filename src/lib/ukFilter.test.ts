@@ -279,3 +279,38 @@ test('UK Filter: Newcastle NSW Australia blocked', () => {
     const input: JobLocationInput = { isTrustedSource: false, locations: ["Newcastle-New South Wales-Australia"], isRemote: false };
     assert.strictEqual(isUKJob(input), false, 'AU Newcastle must not match UK Newcastle');
 });
+
+test('UK Filter: N Locations placeholder alone rejected', () => {
+    for (const loc of ['2 Locations', '3 Locations', '10 Locations']) {
+        const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };
+        assert.strictEqual(isUKJob(input), false, `"${loc}" alone must be rejected`);
+    }
+});
+
+test('UK Filter: Multiple Locations canonical label allowed', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ['Multiple Locations'], isRemote: false };
+    assert.strictEqual(isUKJob(input), true, 'Normalizer "Multiple Locations" must pass');
+});
+
+test('UK Filter: UI junk placeholders rejected', () => {
+    for (const loc of ['+2 More…', '+1 More...', 'All Roles', '#Li']) {
+        const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };
+        assert.strictEqual(isUKJob(input), false, `"${loc}" must be rejected`);
+    }
+});
+
+test('UK Filter: Americas / Guatemala / Quebec / Abidjan blocked', () => {
+    for (const loc of ['Americas', 'Amer/Latam', 'Amer', '(Guatemala)', '(Quebec)', 'Abidjan']) {
+        const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };
+        assert.strictEqual(isUKJob(input), false, `"${loc}" must be blocked`);
+    }
+});
+
+test('UK Filter: placeholder stripped but London kept', () => {
+    const input: JobLocationInput = {
+        isTrustedSource: false,
+        locations: ['3 Locations', 'London'],
+        isRemote: false,
+    };
+    assert.strictEqual(isUKJob(input), true, 'London alongside placeholder must pass');
+});
