@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 type AtsStatus =
     | 'ok'
@@ -186,7 +187,7 @@ const PROBES: Record<string, (token: string) => string> = {
     greenhouse: (t) => `https://boards-api.greenhouse.io/v1/boards/${t}/departments`,
     lever: (t) => `https://api.lever.co/v0/postings/${t}?limit=1&mode=json`,
     ashby: (t) => `https://api.ashbyhq.com/posting-api/job-board/${t}`,
-    workable: (t) => `https://apply.workable.com/${t}/`,
+    workable: (t) => `https://apply.workable.com/api/v1/widget/accounts/${t}`,
     smartrecruiters: (t) => `https://api.smartrecruiters.com/v1/companies/${t}/postings?limit=1`,
     recruitee: (t) => `https://${t}.recruitee.com/api/offers`,
     pinpoint: (t) => `https://${t}.pinpointhq.com/postings.json`,
@@ -662,7 +663,18 @@ async function probeUrl(url: string): Promise<{ code: number | ''; status: AtsSt
         });
 
         if (res.status === 200) {
-            // 200 always wins.
+            // Workable widget API returns 200 for empty/placeholder accounts — require jobs.
+            if (url.includes('apply.workable.com/api/v1/widget/accounts/')) {
+                try {
+                    const body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+                    const jobs = Array.isArray(body?.jobs) ? body.jobs : [];
+                    if (jobs.length === 0) {
+                        return { status: 'bad_token', code: 200 };
+                    }
+                } catch {
+                    return { status: 'bad_token', code: 200 };
+                }
+            }
             return { status: 'ok', code: 200 };
         }
         if (res.status === 404) {

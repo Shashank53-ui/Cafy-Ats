@@ -417,6 +417,8 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /publicisgroupe\.com/i, fetcher: 'publicis' },
     { pattern: /linkedin\.com/i, fetcher: 'linkedin' },
     { pattern: /jobs\.arup\.com|arup\.com/i, fetcher: 'arup' },
+    { pattern: /jobs\.bt\.com|careers\.bt\.com/i, fetcher: 'btgroup' },
+    { pattern: /jobs\.siemens\.com|siemens\.avature/i, fetcher: 'siemens' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
@@ -2105,11 +2107,14 @@ async function fetchEightfold(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     let start = 0;
     const PAGE_SIZE = 10;
+    // Some boards (Vodafone) honour filter_country; others (Ericsson) need location=
+    const countryQs = country
+        ? `&filter_country=${encodeURIComponent(country)}&location=${encodeURIComponent(country)}`
+        : '';
 
     while (true) {
         try {
-            const countryFilter = country ? `&filter_country=${encodeURIComponent(country)}` : '';
-            const url = `https://jobs.${domain}/api/pcsx/search?domain=${domain}&query=&location=&start=${start}&sort_by=timestamp${countryFilter}`;
+            const url = `https://jobs.${domain}/api/pcsx/search?domain=${domain}&query=&start=${start}&sort_by=timestamp${countryQs}`;
 
             const res = await fetchWithTimeout(url, {
                 headers: {
@@ -2924,61 +2929,137 @@ async function fetchEasyJet(token: string): Promise<Job[]> {
     return allJobs;
 }
 
-// ─── BT Group (Playwright / careers.bt.com) ──────────────────────────────────
-// Token: "bt"
+// ─── BT Group (jobs.bt.com SuccessFactors Google Base feed) ─────────────────
+// careers.bt.com SPA is unreliable; sitemal.xml is a full RSS job feed (~200 items).
+// Titles/locations use ISO country codes, e.g. "London, GB, E1 8EP".
 async function fetchBTGroup(_token: string): Promise<Job[]> {
-    const allJobs: Job[] = [];
-    let browser;
+    const UA =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1280, height: 900 },
+        const res = await fetchWithTimeout('https://jobs.bt.com/sitemal.xml', {
+            headers: { 'User-Agent': UA, Accept: 'application/xml,text/xml,*/*' },
         });
-        const page = await context.newPage();
-
-        const apiJobs: Job[] = [];
-        page.on('response', async (response) => {
-            const url = response.url();
-            if ((url.includes('/jobs') || url.includes('/search') || url.includes('positions')) &&
-                response.headers()['content-type']?.includes('json')) {
-                try {
-                    const d = await response.json();
-                    const items = d?.jobs || d?.results || d?.postings || d?.positions || [];
-                    if (Array.isArray(items)) {
-                        for (const j of items) {
-                            const title = j.title || j.jobTitle || j.name || '';
-                            const loc = j.location || j.city || j.locationName || '';
-                            const href = j.url || j.canonicalPositionUrl || j.applyUrl || j.jobDetailUrl || '';
-                            if (title && href) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || ''), url: href, department: j.department || '', salary: undefined });
-                        }
-                    }
-                } catch { /* ignore */ }
-            }
-        });
-
-        await page.goto('https://careers.bt.com/global/en/search-results', { waitUntil: 'networkidle', timeout: 60000 });
-        await page.waitForTimeout(5000);
-
-        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
-        else {
-            const jobs = await page.$$eval(
-                'a[href*="/job/"], [class*="job-card"] a, [class*="position"] a, li[class*="result"] a',
-                els => els.map(el => ({
-                    title: el.textContent?.trim() || '',
-                    url:   (el as HTMLAnchorElement).href,
-                    location: el.closest('li,article,div')?.querySelector('[class*="location"]')?.textContent?.trim() || 'United Kingdom',
-                    department: '', salary: undefined as any,
-                })).filter(j => j.title && j.url && j.url.includes('bt.com'))
-            );
-            allJobs.push(...jobs);
+        if (!res.ok) {
+            console.error(`[BT Group] sitemal.xml HTTP ${res.status}`);
+            return [];
         }
+        const xml = await res.text();
+        const $ = cheerio.load(xml, { xmlMode: true });
+        const jobs: Job[] = [];
+        const seen = new Set<string>();
 
-        await browser.close();
+        $('item').each((_, el) => {
+            const item = $(el);
+            const title = item.find('title').first().text().replace(/\s+/g, ' ').trim();
+            const link = item.find('link').first().text().trim();
+            const location =
+                item.find('g\\:location').first().text().trim() ||
+                item.find('location').first().text().trim() ||
+                '';
+            if (!title || !link) return;
+
+            // Prefer explicit GB / United Kingdom in location or title suffix "(City, GB, …)"
+            const blob = `${location} ${title}`.toLowerCase();
+            const isGb =
+                /(^|[^a-z])gb([^a-z]|$)/i.test(location) ||
+                /,\s*gb\b/i.test(title) ||
+                /\bunited kingdom\b/i.test(blob);
+            if (!isGb) return;
+
+            // Drop non-UK titles that mention GB falsely (rare); keep IE/IN/HU out via GB check above
+            const url = link.startsWith('http') ? link : `https://jobs.bt.com${link}`;
+            if (seen.has(url)) return;
+            seen.add(url);
+
+            const cleanTitle = title.replace(/\s*\([^)]*\)\s*$/, '').trim() || title;
+            jobs.push({
+                title: cleanTitle,
+                location: location || 'United Kingdom',
+                url,
+                department: '',
+                salary: undefined,
+            });
+        });
+
+        console.log(`[BT Group] sitemal: ${jobs.length} GB jobs`);
+        return jobs;
     } catch (e: any) {
-        console.error('[BT Group] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => {});
+        console.error('[BT Group] sitemal error:', e.message);
+        return [];
     }
+}
+
+// ─── Siemens (jobs.siemens.com Avature marketplace) ──────────────────────────
+// Country facet United Kingdom = field 42386 value 812127 (from SearchJobs UI).
+// Paginate SSR <article> cards via folderOffset (6 per page).
+async function fetchSiemens(_token: string): Promise<Job[]> {
+    const UA =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    const PAGE = 6;
+    const allJobs: Job[] = [];
+    const seen = new Set<string>();
+
+    for (let offset = 0; offset < 200; offset += PAGE) {
+        const url =
+            `https://jobs.siemens.com/en_US/externaljobs/SearchJobs/` +
+            `?42386=%5B812127%5D&42386_format=17546&listFilterMode=1` +
+            `&folderRecordsPerPage=${PAGE}&folderOffset=${offset}`;
+        try {
+            const res = await fetchWithTimeout(url, {
+                headers: { 'User-Agent': UA, Accept: 'text/html' },
+            });
+            if (!res.ok) break;
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            const articles = $('article');
+            if (articles.length === 0) break;
+
+            let added = 0;
+            articles.each((_, el) => {
+                const card = $(el);
+                const detail = card.find('a[href*="/JobDetail/"]').first();
+                const href = String(detail.attr('href') || '').split('?')[0].trim();
+                if (!href || seen.has(href)) return;
+
+                const title =
+                    String(card.find('a[data-jobname]').first().attr('data-jobname') || '')
+                        .replace(/\s+/g, ' ')
+                        .trim() ||
+                    detail.text().replace(/\s+/g, ' ').trim();
+                if (!title || /learn more/i.test(title)) return;
+
+                const city = card.find('.list-item-jobCity').first().text().replace(/\s+/g, ' ').trim();
+                const state = card.find('.list-item-jobState').first().text().replace(/\s+/g, ' ').trim();
+                const country = card
+                    .find('.list-item-jobCountry')
+                    .first()
+                    .text()
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                const parts = [city, state, country].filter(Boolean);
+                // Country-filtered board — treat as UK even when city spans are empty
+                const location = parts.length > 0 ? parts.join(', ') : 'United Kingdom';
+
+                seen.add(href);
+                allJobs.push({
+                    title,
+                    location,
+                    url: href.startsWith('http') ? href : `https://jobs.siemens.com${href}`,
+                    department: '',
+                    salary: undefined,
+                });
+                added++;
+            });
+
+            if (added === 0) break;
+            await sleep(300);
+        } catch (e: any) {
+            console.error(`[Siemens] page offset=${offset}:`, e.message);
+            break;
+        }
+    }
+
+    console.log(`[Siemens] UK board: ${allJobs.length} jobs`);
     return allJobs;
 }
 
@@ -3614,6 +3695,7 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     astrazeneca: fetchAstraZeneca,
     easyjet: fetchEasyJet,
     btgroup: fetchBTGroup,
+    siemens: fetchSiemens,
     standardchartered: fetchStandardChartered,
     microsoft: fetchMicrosoft,
     arup: fetchArup,
