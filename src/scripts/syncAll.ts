@@ -421,6 +421,7 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /jobs\.siemens\.com|siemens\.avature/i, fetcher: 'siemens' },
     { pattern: /vorboss\.com/i, fetcher: 'vorboss' },
     { pattern: /jobs\.gxo\.com|gxo\.com/i, fetcher: 'gxo' },
+    { pattern: /royalmailgroup\.com|royal.?mail/i, fetcher: 'royalmail' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
@@ -3178,6 +3179,127 @@ async function fetchGXO(_token: string): Promise<Job[]> {
     }
 }
 
+// ─── Royal Mail (Phenom sitemap → job page JSON-LD) ──────────────────────────
+// Phenom /widgets returns totalHits but an empty jobs array for this tenant.
+// Sitemap lists every posting; each job page exposes JobPosting JSON-LD.
+async function fetchRoyalMail(_token: string): Promise<Job[]> {
+    const UA =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    const base = 'https://careers.royalmailgroup.com';
+
+    try {
+        const idxRes = await fetchWithTimeout(`${base}/gb/en/sitemap_index.xml`, {
+            headers: { 'User-Agent': UA, Accept: 'application/xml,text/xml,*/*' },
+        });
+        if (!idxRes.ok) {
+            console.error(`[Royal Mail] sitemap_index HTTP ${idxRes.status}`);
+            return [];
+        }
+        const idxXml = await idxRes.text();
+        const sitemapUrls = [...idxXml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1]);
+
+        const jobUrls: string[] = [];
+        const seenUrl = new Set<string>();
+        for (const sm of sitemapUrls) {
+            try {
+                const smRes = await fetchWithTimeout(sm, {
+                    headers: { 'User-Agent': UA, Accept: 'application/xml,text/xml,*/*' },
+                });
+                if (!smRes.ok) continue;
+                const smXml = await smRes.text();
+                for (const m of smXml.matchAll(/<loc>([^<]+)<\/loc>/gi)) {
+                    const loc = m[1];
+                    if (!/\/job\//i.test(loc) || seenUrl.has(loc)) continue;
+                    seenUrl.add(loc);
+                    jobUrls.push(loc);
+                }
+            } catch {
+                /* ignore one sitemap failure */
+            }
+        }
+
+        if (!jobUrls.length) {
+            console.error('[Royal Mail] no job URLs in sitemap');
+            return [];
+        }
+
+        const parseJobPage = async (url: string): Promise<Job | null> => {
+            try {
+                const res = await fetchWithTimeout(url, {
+                    headers: { 'User-Agent': UA, Accept: 'text/html' },
+                });
+                if (!res.ok) return null;
+                const html = await res.text();
+                const $ = cheerio.load(html);
+                let title = '';
+                let location = '';
+
+                $('script[type="application/ld+json"]').each((_, el) => {
+                    if (title && location) return;
+                    try {
+                        const raw = $(el).html() || '';
+                        const parsed = JSON.parse(raw);
+                        const nodes = Array.isArray(parsed) ? parsed : [parsed];
+                        for (const n of nodes) {
+                            if (n?.['@type'] === 'JobPosting') {
+                                title = String(n.title || '').trim() || title;
+                                const addr = n.jobLocation?.address;
+                                location =
+                                    [addr?.addressLocality, addr?.addressRegion, addr?.addressCountry]
+                                        .filter(Boolean)
+                                        .join(', ') ||
+                                    String(n.jobLocation?.name || '').trim() ||
+                                    location;
+                            }
+                        }
+                    } catch {
+                        /* ignore bad JSON-LD */
+                    }
+                });
+
+                if (!title) {
+                    const og = $('meta[property="og:title"]').attr('content') || $('h1').first().text() || '';
+                    // "Role in City, United Kingdom | Category at Royal Mail"
+                    const m = og.match(/^(.*?)\s+in\s+(.+?)\s*\|\s*/i);
+                    if (m) {
+                        title = m[1].trim();
+                        location = location || m[2].trim();
+                    } else {
+                        title = og.split('|')[0].trim();
+                    }
+                }
+
+                if (!title) return null;
+                return {
+                    title,
+                    location: location || 'United Kingdom',
+                    url,
+                    department: '',
+                    salary: undefined,
+                    atsProvider: 'royalmail',
+                };
+            } catch {
+                return null;
+            }
+        };
+
+        const jobs: Job[] = [];
+        const concurrency = 12;
+        for (let i = 0; i < jobUrls.length; i += concurrency) {
+            const chunk = jobUrls.slice(i, i + concurrency);
+            const part = await Promise.all(chunk.map((u) => parseJobPage(u)));
+            for (const j of part) if (j) jobs.push(j);
+            if (i + concurrency < jobUrls.length) await sleep(200);
+        }
+
+        console.log(`[Royal Mail] sitemap: ${jobUrls.length} urls → ${jobs.length} jobs`);
+        return jobs;
+    } catch (e: any) {
+        console.error('[Royal Mail] sitemap error:', e.message);
+        return [];
+    }
+}
+
 // ─── Standard Chartered (Playwright + Workday fallback) ──────────────────────
 // Token: "standardchartered"
 async function fetchStandardChartered(token: string): Promise<Job[]> {
@@ -3813,6 +3935,7 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     siemens: fetchSiemens,
     vorboss: fetchVorboss,
     gxo: fetchGXO,
+    royalmail: fetchRoyalMail,
     standardchartered: fetchStandardChartered,
     microsoft: fetchMicrosoft,
     arup: fetchArup,
