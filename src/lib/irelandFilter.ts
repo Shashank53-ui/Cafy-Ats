@@ -11,6 +11,14 @@
  * an explicit Ireland signal (Ireland/Éire/an Eircode) to be accepted.
  */
 
+/** 26 counties of the Republic of Ireland (not NI). */
+const IRELAND_COUNTIES = [
+    'carlow', 'cavan', 'clare', 'cork', 'donegal', 'dublin', 'galway', 'kerry',
+    'kildare', 'kilkenny', 'laois', 'leitrim', 'limerick', 'longford', 'louth',
+    'mayo', 'meath', 'monaghan', 'offaly', 'roscommon', 'sligo', 'tipperary',
+    'waterford', 'westmeath', 'wexford', 'wicklow',
+];
+
 const IRELAND_CITIES = [
     'dublin', 'cork', 'limerick', 'galway', 'waterford', 'drogheda', 'kilkenny', 'wexford', 'sligo', 'clonmel',
     'dundalk', 'bray', 'navan', 'ennis', 'tralee', 'carlow', 'naas', 'athlone', 'letterkenny', 'tullamore',
@@ -21,16 +29,34 @@ const IRELAND_CITIES = [
     'portlaoise', 'mullingar', 'balbriggan', 'greystones', 'leixlip', 'tramore', 'shannon', 'gorey', 'tuam', 'edenderry',
     'bandon', 'passage west', 'loughrea', 'ardee', 'mountmellick', 'bantry', 'muine bheag', 'boyle', 'ballyshannon', 'cootehill',
     'ballybay', 'belturbet', 'lismore', 'kilkee', 'granard',
+    // Suburbs / towns commonly seen in ATS location strings
+    'ashbourne', 'athenry', 'blanchardstown', 'tallaght', 'dundrum', 'sandyford', 'swords', 'lucan',
+    'kilcullen', 'portarlington', 'carrigaline', 'oldcastle', 'stradbally', 'roundwood',
+    'park west', 'parkwest', 'santry', 'clongriffin', 'citywest', 'cherrywood', 'rathfarnham', 'stillorgan',
+    'blackrock', 'dun laoghaire', 'dún laoghaire', 'howth', 'malahide', 'portmarnock', 'balgriffin',
+    'celbridge', 'maynooth', 'clonshaugh', 'finglas', 'cabra', 'phibsborough', 'rathmines',
+    'ranelagh', 'ballsbridge', 'docklands', 'ifsc', 'silicon docks', 'duleek', 'belview',
+    'dunboyne', 'skerries', 'ringaskiddy', 'mahon', 'cloughvalley', 'townparks',
+    'carrick on shannon', 'carrick-on-shannon',
 ];
+
+/** RoI provinces — avoid bare "ulster" (includes NI). */
+const IRELAND_PROVINCES = ['leinster', 'munster', 'connacht', 'connaught'];
 
 const IRELAND_COUNTRY_TERMS = ['ireland', 'republic of ireland', 'eire', 'éire'];
 
-const IRELAND_LOCATION_PHRASES = [...IRELAND_COUNTRY_TERMS, ...IRELAND_CITIES];
+const IRELAND_LOCATION_PHRASES = [
+    ...IRELAND_COUNTRY_TERMS,
+    ...IRELAND_PROVINCES,
+    ...IRELAND_COUNTIES,
+    ...IRELAND_CITIES,
+];
 
 /** Foreign cities only — used to reject typos like "Bordeaux, Ireland". */
 const FOREIGN_CITIES = [
     'london', 'manchester', 'birmingham', 'leeds', 'edinburgh', 'glasgow', 'bristol', 'cardiff',
-    'belfast', 'liverpool', 'sheffield', 'newcastle', 'oxford', 'norfolk',
+    'belfast', 'liverpool', 'sheffield', 'newcastle', 'oxford', 'norfolk', 'omagh', 'derry', 'londonderry',
+    'lisburn', 'newry', 'armagh', 'craigavon', 'coleraine', 'bangor',
     'san francisco', 'los angeles', 'chicago', 'boston', 'seattle', 'austin',
     'dallas', 'houston', 'atlanta', 'miami', 'denver', 'portland', 'phoenix', 'las vegas',
     'minneapolis', 'bay area', 'silicon valley',
@@ -52,13 +78,14 @@ const FOREIGN_CITIES = [
 const HARD_BLOCKS = [
     // Countries / UK
     'united kingdom', 'england', 'scotland', 'wales', 'great britain', 'uk', 'u.k.', 'gbr',
+    'northern ireland', 'tyrone', 'antrim', 'fermanagh',
     'india', 'canada', 'australia', 'singapore', 'germany', 'france', 'netherlands', 'spain',
     'poland', 'uae', 'dubai', 'israel', 'sweden', 'norway', 'denmark', 'finland', 'switzerland',
     'austria', 'belgium', 'italy', 'portugal', 'czech republic', 'hungary', 'romania', 'croatia',
     'south korea', 'japan', 'china', 'hong kong', 'malaysia', 'thailand', 'new zealand',
     'south africa', 'brazil', 'argentina', 'mexico', 'ukraine', 'russia',
     'united states', 'usa', 'u.s.a.', 'u.s.a', 'u.s.', 'u.s', 'us',
-    'porto', 'lisboa', 'holland',
+    'porto', 'lisboa', 'holland', 'europe', 'emea', 'apac', 'latam',
     'armenia', 'azerbaijan', 'cyprus', 'serbia', 'bulgaria', 'slovakia',
     'slovenia', 'lithuania', 'latvia', 'estonia', 'greece', 'iceland',
     'malta', 'bosnia', 'montenegro', 'north macedonia', 'albania',
@@ -82,7 +109,8 @@ function normalizeLocation(value: string): string {
     return String(value || '')
         .toLowerCase()
         .replace(/[()\[\]]/g, '')
-        .replace(/[\/\-_|,;]/g, ' ')
+        .replace(/\./g, ' ')
+        .replace(/[\/\-_|,;:+]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -90,6 +118,44 @@ function normalizeLocation(value: string): string {
 function containsLocationPhrase(value: string, phrase: string): boolean {
     const normalizedPhrase = normalizeLocation(phrase);
     return new RegExp(`(?:^|\\s)${normalizedPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|\\s)`).test(value);
+}
+
+/** Common ATS county abbreviations (e.g. "Dunboyne, Mh" = Meath). */
+const COUNTY_ABBREVS: Record<string, string> = {
+    mh: 'meath',
+    mn: 'monaghan',
+    ke: 'kildare',
+    kk: 'kilkenny',
+    ls: 'laois',
+    lm: 'leitrim',
+    lk: 'limerick',
+    ld: 'longford',
+    lh: 'louth',
+    mo: 'mayo',
+    oy: 'offaly',
+    rn: 'roscommon',
+    so: 'sligo',
+    ta: 'tipperary',
+    wd: 'waterford',
+    wh: 'westmeath',
+    wx: 'wexford',
+    ww: 'wicklow',
+    cn: 'cavan',
+    cw: 'carlow',
+    ce: 'clare',
+    ck: 'cork',
+    dl: 'donegal',
+    ky: 'kerry',
+};
+
+/** "County Meath", "Co. Clare", "Co Kildare", "Co.Kildare", "Mh" */
+function hasIrishCountySignal(combined: string): boolean {
+    if (IRELAND_COUNTIES.some(c =>
+        containsLocationPhrase(combined, c) ||
+        containsLocationPhrase(combined, `county ${c}`) ||
+        containsLocationPhrase(combined, `co ${c}`)
+    )) return true;
+    return Object.keys(COUNTY_ABBREVS).some(abbr => containsLocationPhrase(combined, abbr));
 }
 
 // Eircode routing key + unique identifier, e.g. "D02 XY01", "A65F4E2"
@@ -114,6 +180,11 @@ function isHardBlocked(combined: string): boolean {
     if (/(^|[^a-z])u\.?s\.?a?(?:[^a-z]|$)/i.test(combined) && !/\bireland\b|\béire\b|\beire\b/.test(combined)) {
         return true;
     }
+    // NI counties (avoid bare "down" / "armagh" false positives via separate phrases)
+    if (/\b(county\s+)?(tyrone|antrim|fermanagh)\b/.test(combined)) return true;
+    if (/\bcounty\s+(armagh|down)\b/.test(combined)) return true;
+    if (/\b(armagh|omagh)\b/.test(combined) && !hasDefinitiveIrelandSignal(combined)) return true;
+
     return HARD_BLOCKS.some(term => containsLocationPhrase(combined, term));
 }
 
@@ -130,13 +201,16 @@ export function isIrelandJob(location: string | null | undefined, locations: str
 
     if (isHardBlocked(combined)) {
         // Foreign city + bare "Ireland" (e.g. "Bordeaux, Ireland") is not enough —
-        // require a real Irish city or Eircode. Country/state hard-blocks still use
+        // require a real Irish city, county, or Eircode. Country/state hard-blocks still use
         // the definitive Ireland country/Eircode signal (covers "Dublin, Ohio, US").
         if (hasForeignCity(combined)) {
-            return hasIrishCitySignal(combined) || EIRCODE_RE.test(combined);
+            return hasIrishCitySignal(combined) || EIRCODE_RE.test(combined) || hasIrishCountySignal(combined);
         }
         return hasDefinitiveIrelandSignal(combined);
     }
 
-    return candidates.some(candidate => IRELAND_LOCATION_PHRASES.some(phrase => containsLocationPhrase(candidate, phrase)));
+    return candidates.some(candidate =>
+        IRELAND_LOCATION_PHRASES.some(phrase => containsLocationPhrase(candidate, phrase)) ||
+        hasIrishCountySignal(candidate)
+    );
 }

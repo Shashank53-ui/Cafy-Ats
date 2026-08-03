@@ -45,3 +45,41 @@ test('Ireland Filter: accepts multi-loc with foreign city plus Irish city', () =
 test('Ireland Filter: still rejects Dublin Ohio USA', () => {
     assert.strictEqual(isIrelandJob('Dublin, Ohio, United States of America'), false);
 });
+
+test('Ireland Filter: accepts RoI counties, Co. forms, and common towns', () => {
+    for (const location of [
+        'Ashbourne, County Meath',
+        'Co. Clare',
+        'Co. Offaly, Leinster',
+        'Carrickmacross, County Monaghan',
+        'Blanchardstown',
+        'Park West',
+        'Ireland (Remote)',
+        'Athlone, Westmeath',
+        'Portlaoise, Co. Laois',
+        'Cavan, Ulster',
+        'Belview Port, County Kilkenny',
+    ]) {
+        assert.strictEqual(isIrelandJob(location), true, `${location} should be accepted`);
+    }
+});
+
+test('Ireland Filter: rejects foreign / UK / NI leaks', () => {
+    for (const location of [
+        'Amsterdam, Netherlands',
+        'Barcelona, Spain',
+        'Bulgaria',
+        'Europe',
+        'London',
+        'Montenegro',
+        'New York, NY, United States',
+        'Portugal',
+        'San Francisco, CA, United States',
+        'Belfast',
+        'Omagh',
+        'United Kingdom',
+        '',
+    ]) {
+        assert.strictEqual(isIrelandJob(location), false, `${location || '(empty)'} should be rejected`);
+    }
+});
