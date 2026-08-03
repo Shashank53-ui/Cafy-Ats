@@ -73,6 +73,8 @@ const UK_CITIES = [
     // Other specific locations that appear in Workday / ATS data
     "radbroke", "canary wharf", "paddington", "victoria", "waterloo",
     "euston", "king's cross", "kings cross", "london bridge",
+    // Sky / West London campuses
+    "osterley", "isleworth", "brentford",
     // Second-tier towns frequently present after location normalize
     "scarborough", "harrogate", "bridgend", "bury", "carmarthen", "llantrisant",
     "bedford", "chippenham", "cosham", "darlington", "newark", "redditch",

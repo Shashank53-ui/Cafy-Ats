@@ -1,6 +1,12 @@
+const IT_ARCHITECT_CUES =
+    /\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|it|application|infrastructure|network|aws|azure|saas|salesforce|sap|workday|identity|cyber|ai|ml)\b/;
+
 const RULES: [RegExp, string][] = [
-    // Engineering (Software) — specific before generic engineer catch-all
-    [/\b(software|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|cloud|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|architect|technology|qa|quality assurance)\b/, 'Engineering (Software)'],
+    // Built-environment architecture — BEFORE software "architect" catch-all
+    [/\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\s+architect|riba|architecture practice)\b/, 'Construction & Infrastructure'],
+    // Engineering (Software) — IT architects + developers (not building architects)
+    [/\b(software|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|cloud|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|technology|qa|quality assurance)\b/, 'Engineering (Software)'],
+    [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap)\s+architect\b/, 'Engineering (Software)'],
     // Engineering (Hardware)
     [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded)\b/, 'Engineering (Hardware)'],
     // Data
@@ -15,8 +21,9 @@ const RULES: [RegExp, string][] = [
     [/\b(legal|counsel|lawyer|attorney|solicitor|compliance|paralegal)\b/, 'Legal'],
     // Marketing & PR
     [/\b(marketing|brand|content|social media|communications|seo|growth|public relations|pr|copywriter|copywriting)\b/, 'Marketing & PR'],
-    // Design
-    [/\b(design|ui|ux|product designer|graphic|creative)\b/, 'Design'],
+    // Design — include interior architecture
+    [/\b(interior architect|interior design|ui|ux|product designer|graphic|creative)\b/, 'Design'],
+    [/\b(design)\b/, 'Design'],
     // Product Management — \bproduct\b catches ATS depts named "Product"
     [/\b(product manager|product management|product owner|product lead|head of product|product)\b/, 'Product Management'],
     // Project Management
@@ -27,8 +34,8 @@ const RULES: [RegExp, string][] = [
     [/\b(customer success|customer support|account manager|client success)\b/, 'Customer Success'],
     // HR / People — \bpeople\b catches ATS depts named "People"
     [/\b(hr|human resources|people ops|talent|recruiter|recruiting|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people)\b/, 'HR / People'],
-    // Construction & Infrastructure
-    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contract manager|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician)\b/, 'Construction & Infrastructure'],
+    // Construction & Infrastructure — includes bare "Architect" without IT cues (handled in inferJobSector)
+    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contract manager|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town planning)\b/, 'Construction & Infrastructure'],
     // Retail & Hospitality
     [/\b(beauty|chef|retail|store manager|hospitality|barista|restaurant|hotel|catering|cook|merchandiser|buyer)\b/, 'Retail & Hospitality'],
     // Logistics & Transport — before Operations to claim warehouse/logistics/supply chain
@@ -61,6 +68,22 @@ export function inferJobSector(
 ): string | null {
     const t = (title || '').toLowerCase().trim();
     const d = (department || '').toLowerCase().trim();
+    const combined = `${d} ${t}`.trim();
+
+    // Built-env architect titles (before department/title generic rules)
+    if (
+        /\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\b.*architect|riba)\b/.test(
+            combined
+        )
+    ) {
+        if (/\binterior\b/.test(combined)) return 'Design';
+        return 'Construction & Infrastructure';
+    }
+    // Bare "Architect" / "Senior Architect" without IT cues → built environment
+    if (/\barchitects?\b/.test(combined) && !IT_ARCHITECT_CUES.test(combined)) {
+        if (/\binterior\b/.test(combined)) return 'Design';
+        return 'Construction & Infrastructure';
+    }
 
     // P1: Department matching
     if (d) {
