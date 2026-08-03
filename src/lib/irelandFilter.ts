@@ -63,6 +63,7 @@ const FOREIGN_CITIES = [
     'amsterdam', 'berlin', 'munich', 'paris', 'madrid', 'barcelona', 'bordeaux', 'rome', 'milan',
     'brussels', 'vienna', 'zurich', 'geneva', 'stockholm', 'oslo', 'copenhagen', 'helsinki',
     'warsaw', 'prague', 'budapest', 'bucharest', 'lisbon', 'luxembourg', 'frankfurt',
+    'atlanta', 'memphis', 'nashville', 'charlotte', 'detroit', 'philadelphia', 'san diego',
     'tokyo', 'beijing', 'shanghai', 'seoul', 'taipei', 'bangkok', 'zagreb', 'jakarta', 'manila',
     'kuala lumpur', 'ho chi minh',
     'mumbai', 'delhi', 'bangalore', 'bengaluru', 'pune', 'chennai', 'hyderabad', 'kolkata',
