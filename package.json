@@ -15,6 +15,7 @@
     "check:ireland": "tsx src/scripts/checkJobsIrCount.ts --min 6000",
     "seed:ireland": "tsx src/scripts/seedIrelandCompaniesSafe.ts",
     "migrate:ireland": "tsx src/scripts/applyIrelandMigration.ts",
+    "backfill:company-sectors": "tsx src/scripts/backfillCompanySector.ts",
     "backfill:sectors": "tsx src/scripts/backfillJobSectors.ts",
     "validate:ats": "tsx src/scripts/validateAtsTokens.ts",
     "repair:ats": "tsx src/scripts/repairBadTokens.ts",
