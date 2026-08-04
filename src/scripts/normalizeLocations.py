@@ -643,13 +643,31 @@ def clean_locations(data: list) -> list:
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────
+#
+# Server mode (default): read newline-delimited JSON-array requests from
+# stdin forever, writing one newline-delimited JSON-array response per
+# request, flushed immediately. The caller keeps this process alive across
+# an entire sync run instead of spawning a fresh interpreter per call —
+# spawn overhead was previously paid up to twice per company (UK + Ireland
+# rows), thousands of times per run.
+#
+# Backward compatible: a caller that writes one line then closes stdin
+# (the old spawn-per-call behaviour) still gets exactly one response line
+# before the input loop hits EOF and the process exits naturally.
 
 if __name__ == "__main__":
-    try:
-        payload = json.loads(sys.stdin.read())
-    except json.JSONDecodeError as e:
-        sys.stderr.write(f"normalizeLocations: invalid JSON input: {e}\n")
-        sys.exit(1)
-
-    output = clean_locations(payload)
-    sys.stdout.write(json.dumps(output, ensure_ascii=False))
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+            output = clean_locations(payload)
+            sys.stdout.write(json.dumps(output, ensure_ascii=False) + "\n")
+        except json.JSONDecodeError as e:
+            sys.stderr.write(f"normalizeLocations: invalid JSON input: {e}\n")
+            sys.stdout.write("[]\n")
+        except Exception as e:
+            sys.stderr.write(f"normalizeLocations: error processing request: {e}\n")
+            sys.stdout.write("[]\n")
+        sys.stdout.flush()

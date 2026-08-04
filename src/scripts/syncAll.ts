@@ -21,11 +21,12 @@
 
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import pLimit from 'p-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
 import { fetchCustom } from './customScrapers';
-import { chromium } from 'playwright';
+import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { inferJobLevel } from '../lib/inferJobLevel';
 import { inferJobSector } from '../lib/inferJobSector';
 import * as XLSX from 'xlsx';
@@ -144,6 +145,42 @@ interface AtsOverrideRow {
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── Shared Playwright browser ────────────────────────────────────────────────
+// All Playwright-based fetchers used to call chromium.launch()/browser.close()
+// individually, paying full browser-process startup cost every single call.
+// One browser is now launched lazily for the whole sync run; each fetcher gets
+// its own isolated browser.newContext() (separate cookies/storage) and closes
+// only that context, never the shared browser itself.
+let sharedBrowserPromise: Promise<Browser> | null = null;
+
+function getSharedBrowser(): Promise<Browser> {
+    if (!sharedBrowserPromise) {
+        sharedBrowserPromise = chromium.launch({
+            headless: true,
+            // Safe for every fetcher (not just Jacobs, which originally needed
+            // these): reduces automation fingerprinting broadly, and --no-sandbox
+            // avoids container/CI sandbox failures on AWS.
+            args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+        }).catch((err) => {
+            sharedBrowserPromise = null; // allow a retry on the next call
+            throw err;
+        });
+    }
+    return sharedBrowserPromise;
+}
+
+async function closeSharedBrowser(): Promise<void> {
+    if (!sharedBrowserPromise) return;
+    try {
+        const browser = await sharedBrowserPromise;
+        await browser.close();
+    } catch {
+        // already closed / never started — nothing to do
+    } finally {
+        sharedBrowserPromise = null;
+    }
+}
 
 export async function fetchWithTimeout(url: string, options: any = {}, timeout = 15000) {
     const controller = new AbortController();
@@ -1606,10 +1643,11 @@ async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
     const startUrl = normalizeTeamtailorHtmlToken(token);
     if (!startUrl) return [];
 
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0',
             viewport: { width: 1280, height: 1080 }
         });
@@ -1652,7 +1690,7 @@ async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
             return output;
         });
 
-        await browser.close();
+        await context.close();
 
         return jobs
             .filter((j: any) => j.title && j.url && isValidJobTitle(j.title))
@@ -1664,7 +1702,7 @@ async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
                 salary: undefined
             }));
     } catch {
-        if (browser) await browser.close();
+        if (context) await context.close().catch(() => {});
         return [];
     }
 }
@@ -2349,10 +2387,11 @@ async function fetchJPMorgan(token: string): Promise<Job[]> {
 async function fetchGoldmanSachs(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     let page = 1;
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0' });
+        browser = await getSharedBrowser();
+        context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0' });
         const pageSession = await context.newPage();
 
         while (true) {
@@ -2382,7 +2421,7 @@ async function fetchGoldmanSachs(token: string): Promise<Job[]> {
             page++;
         }
     } catch (e) { console.error("Goldman Sachs Error:", e); } finally {
-        if (browser) await browser.close();
+        if (context) await context.close().catch(() => {});
     }
     return allJobs;
 }
@@ -2390,10 +2429,11 @@ async function fetchGoldmanSachs(token: string): Promise<Job[]> {
 async function fetchGoogle(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     let page = 1;
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0', viewport: { width: 1280, height: 1080 } });
+        browser = await getSharedBrowser();
+        context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0', viewport: { width: 1280, height: 1080 } });
         const pageSession = await context.newPage();
 
         while (true) {
@@ -2427,7 +2467,7 @@ async function fetchGoogle(token: string): Promise<Job[]> {
             page++;
         }
     } catch (e) { console.error("Google Error:", e); } finally {
-        if (browser) await browser.close();
+        if (context) await context.close().catch(() => {});
     }
     const uniqueMap = new Map();
     for (const j of allJobs) { uniqueMap.set(j.url, j); }
@@ -2438,10 +2478,11 @@ async function fetchGoogle(token: string): Promise<Job[]> {
 // Scrapes metacareers.com using Playwright since it is a heavy React SPA
 async function fetchMeta(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0',
             viewport: { width: 1440, height: 900 },
         });
@@ -2486,10 +2527,10 @@ async function fetchMeta(token: string): Promise<Job[]> {
             });
         });
 
-        await browser.close();
+        await context.close();
     } catch (e) {
         console.error('Meta scraper error:', e);
-        if (browser) await browser.close();
+        if (context) await context.close().catch(() => {});
     }
 
     // Deduplicate by URL
@@ -2510,10 +2551,11 @@ async function fetchLinkedin(token: string): Promise<Job[]> {
         }
     }
 
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 1000 }
         });
@@ -2558,10 +2600,10 @@ async function fetchLinkedin(token: string): Promise<Job[]> {
         });
 
         allJobs.push(...jobs);
-        await browser.close();
+        await context.close();
     } catch (e) {
         console.error('LinkedIn scraper error:', e);
-        if (browser) await browser.close();
+        if (context) await context.close().catch(() => {});
     }
 
     return allJobs;
@@ -2572,10 +2614,11 @@ async function fetchLinkedin(token: string): Promise<Job[]> {
 async function fetchPublicis(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     const targetUrl = token.startsWith('http') ? token : 'https://careers.publicisgroupe.com/jobs';
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0',
         });
         const page = await context.newPage();
@@ -2612,10 +2655,10 @@ async function fetchPublicis(token: string): Promise<Job[]> {
             }
         }
 
-        await browser.close();
+        await context.close();
     } catch (e) {
         console.error('Publicis scraper error:', e);
-        if (browser) await browser.close();
+        if (context) await context.close().catch(() => {});
     }
     return allJobs;
 }
@@ -2623,10 +2666,11 @@ async function fetchPublicis(token: string): Promise<Job[]> {
 async function fetchNHS(token: string): Promise<Job[]> {
     const startUrl = token.startsWith('http') ? token : `https://www.jobs.nhs.uk/candidate/search/results?keyword=${encodeURIComponent(token)}`;
     const allJobs: Job[] = [];
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0',
             viewport: { width: 1280, height: 800 },
             extraHTTPHeaders: {
@@ -2714,9 +2758,9 @@ async function fetchNHS(token: string): Promise<Job[]> {
             if (pageNum > 500) break;
         }
 
-        await browser.close();
+        await context.close();
     } catch (e: any) {
-        if (browser) await browser.close();
+        if (context) await context.close().catch(() => {});
     }
     return allJobs;
 }
@@ -2837,10 +2881,11 @@ async function fetchEploy(token: string): Promise<Job[]> {
 // Token: "astrazeneca" — JS-rendered careers.astrazeneca.com
 async function fetchAstraZeneca(_token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 900 },
         });
@@ -2884,10 +2929,10 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
             allJobs.push(...jobs);
         }
 
-        await browser.close();
+        await context.close();
     } catch (e: any) {
         console.error('[AstraZeneca] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => {});
+        if (context) await context.close().catch(() => {});
     }
     return allJobs;
 }
@@ -2899,10 +2944,11 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
 async function fetchEasyJet(token: string): Promise<Job[]> {
     const tenant = token || 'easyjet';
     const allJobs: Job[] = [];
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 900 },
         });
@@ -2943,10 +2989,10 @@ async function fetchEasyJet(token: string): Promise<Job[]> {
             allJobs.push(...jobs);
         }
 
-        await browser.close();
+        await context.close();
     } catch (e: any) {
         console.error('[EasyJet] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => {});
+        if (context) await context.close().catch(() => {});
     }
     return allJobs;
 }
@@ -3087,13 +3133,15 @@ async function fetchSiemens(_token: string): Promise<Job[]> {
 
 // ─── Vorboss (vorboss.com/careers — Cloudflare blocks plain fetch) ───────────
 async function fetchVorboss(_token: string): Promise<Job[]> {
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const page = await browser.newPage({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent:
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         });
+        const page = await context.newPage();
         await page.goto('https://vorboss.com/careers', {
             waitUntil: 'domcontentloaded',
             timeout: 90000,
@@ -3126,7 +3174,7 @@ async function fetchVorboss(_token: string): Promise<Job[]> {
             return out;
         });
 
-        await browser.close();
+        await context.close();
         console.log(`[Vorboss] scraped ${jobs.length} jobs`);
         return jobs.map((j) => ({
             title: j.title,
@@ -3137,7 +3185,7 @@ async function fetchVorboss(_token: string): Promise<Job[]> {
         }));
     } catch (e: any) {
         console.error('[Vorboss] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => undefined);
+        if (context) await context.close().catch(() => {});
         return [];
     }
 }
@@ -3333,10 +3381,11 @@ async function fetchStandardChartered(token: string): Promise<Job[]> {
     }
 
     // Playwright fallback
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 900 },
         });
@@ -3364,11 +3413,11 @@ async function fetchStandardChartered(token: string): Promise<Job[]> {
 
         await page.goto('https://scb.taleo.net/careersection/2/jobsearch.ftl?lang=en', { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(5000);
-        await browser.close();
+        await context.close();
         if (apiJobs.length > 0) return apiJobs;
     } catch (e: any) {
         console.error('[Standard Chartered] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => {});
+        if (context) await context.close().catch(() => {});
     }
     return [];
 }
@@ -3524,13 +3573,11 @@ async function fetchArup(_token: string): Promise<Job[]> {
 // realistic timing to avoid bot detection.
 async function fetchJacobs(_token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({
-            headless: true,
-            args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
-        });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             viewport: { width: 1440, height: 900 },
             extraHTTPHeaders: { 'Accept-Language': 'en-GB,en;q=0.9' },
@@ -3582,10 +3629,10 @@ async function fetchJacobs(_token: string): Promise<Job[]> {
             allJobs.push(...jobs as Job[]);
         }
 
-        await browser.close();
+        await context.close();
     } catch (e: any) {
         console.error('[Jacobs] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => {});
+        if (context) await context.close().catch(() => {});
     }
     return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
 }
@@ -3594,10 +3641,11 @@ async function fetchJacobs(_token: string): Promise<Job[]> {
 // Debug: page URL is /Vacancies not /Jobs. Uses JS rendering. Playwright + scroll.
 async function fetchWSP(_token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
-    let browser;
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
     try {
-        browser = await chromium.launch({ headless: true });
-        const context = await browser.newContext({
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 900 },
         });
@@ -3656,10 +3704,10 @@ async function fetchWSP(_token: string): Promise<Job[]> {
             allJobs.push(...jobs as Job[]);
         }
 
-        await browser.close();
+        await context.close();
     } catch (e: any) {
         console.error('[WSP] scraper error:', e.message);
-        if (browser) await browser.close().catch(() => {});
+        if (context) await context.close().catch(() => {});
     }
     return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
 }
@@ -4010,52 +4058,120 @@ export interface NormalizedLocation {
 }
 
 /**
- * Batch-normalise raw location strings via the Python normalizer script.
- * Returns results in the same order as the input array.
+ * Persistent worker wrapping normalizeLocations.py. The old implementation
+ * spawned a brand-new Python interpreter for every call (up to twice per
+ * company — UK rows + Ireland rows — so thousands of times per sync run).
+ * This keeps one interpreter alive for the whole run and talks to it over a
+ * newline-delimited JSON request/response protocol, queueing concurrent
+ * callers (the company loop now runs several companies in parallel) so
+ * responses are matched to the request that produced them in order.
+ */
+class PythonLocationWorker {
+    private proc: ReturnType<typeof spawn> | null = null;
+    private pending: Array<{ resolve: (v: NormalizedLocation[]) => void }> = [];
+    private stdoutBuffer = '';
+    private startFailed = false;
+
+    private ensureStarted(): boolean {
+        if (this.proc) return true;
+        if (this.startFailed) return false;
+
+        const scriptPath = path.join(
+            path.dirname(fileURLToPath(import.meta.url)),
+            'normalizeLocations.py',
+        );
+        const cmd = process.platform === 'win32' ? 'python' : 'python3';
+
+        try {
+            const proc = spawn(cmd, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+            this.proc = proc;
+
+            proc.stdout.on('data', (d: Buffer) => this.onStdout(d.toString()));
+            proc.stderr.on('data', (d: Buffer) => {
+                console.warn('[normalizeLocations]', d.toString().slice(0, 300));
+            });
+            proc.on('error', () => this.onWorkerDown());
+            proc.on('close', () => this.onWorkerDown());
+            return true;
+        } catch {
+            this.startFailed = true;
+            return false;
+        }
+    }
+
+    private onStdout(chunk: string) {
+        this.stdoutBuffer += chunk;
+        let idx: number;
+        // eslint-disable-next-line no-cond-assign
+        while ((idx = this.stdoutBuffer.indexOf('\n')) !== -1) {
+            const line = this.stdoutBuffer.slice(0, idx);
+            this.stdoutBuffer = this.stdoutBuffer.slice(idx + 1);
+            const req = this.pending.shift();
+            if (!req) continue; // stray output — nothing was waiting on it
+            try {
+                req.resolve(JSON.parse(line) as NormalizedLocation[]);
+            } catch {
+                req.resolve([]);
+            }
+        }
+    }
+
+    private onWorkerDown() {
+        // Resolve every in-flight request as empty (matches the previous
+        // non-fatal "on Python error, return []" contract) and allow a
+        // fresh process to be spawned on the next call.
+        const stale = this.pending;
+        this.pending = [];
+        this.proc = null;
+        this.stdoutBuffer = '';
+        for (const req of stale) req.resolve([]);
+    }
+
+    async normalize(locations: string[], market: 'uk' | 'ireland'): Promise<NormalizedLocation[]> {
+        if (locations.length === 0) return [];
+        if (!this.ensureStarted() || !this.proc?.stdin) return [];
+
+        const payload = JSON.stringify(locations.map(l => ({ location: l, market })));
+        return new Promise<NormalizedLocation[]>((resolve) => {
+            // Push the resolver before writing so the response (arriving
+            // asynchronously) is matched to the correct request in FIFO order,
+            // even with several companies calling this concurrently.
+            this.pending.push({ resolve });
+            this.proc!.stdin!.write(payload + '\n', (err) => {
+                if (err) this.onWorkerDown();
+            });
+        });
+    }
+
+    async shutdown(): Promise<void> {
+        if (!this.proc) return;
+        const proc = this.proc;
+        this.proc = null;
+        try {
+            proc.stdin?.end();
+            proc.kill();
+        } catch {
+            // already gone
+        }
+    }
+}
+
+const pythonLocationWorker = new PythonLocationWorker();
+
+/**
+ * Batch-normalise raw location strings via the persistent Python normalizer
+ * worker. Returns results in the same order as the input array.
  * Non-fatal: on Python error or missing interpreter, returns [].
  */
 export async function normalizeLocationsViaPython(
     locations: string[],
     market: 'uk' | 'ireland' = 'uk',
 ): Promise<NormalizedLocation[]> {
-    if (locations.length === 0) return [];
+    return pythonLocationWorker.normalize(locations, market);
+}
 
-    const scriptPath = path.join(
-        path.dirname(fileURLToPath(import.meta.url)),
-        'normalizeLocations.py',
-    );
-    const payload = JSON.stringify(locations.map(l => ({ location: l, market })));
-
-    return new Promise(resolve => {
-        // Try python3 first, fall back to python
-        const cmd = process.platform === 'win32' ? 'python' : 'python3';
-        const proc = spawn(cmd, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
-
-        let stdout = '';
-        let stderr = '';
-        proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-        proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-
-        proc.stdin.write(payload);
-        proc.stdin.end();
-
-        proc.on('close', (code: number | null) => {
-            if (code !== 0) {
-                console.warn('[normalizeLocations] Python exited with code', code, stderr.slice(0, 300));
-                resolve([]);
-                return;
-            }
-            try {
-                resolve(JSON.parse(stdout) as NormalizedLocation[]);
-            } catch {
-                console.warn('[normalizeLocations] JSON parse error');
-                resolve([]);
-            }
-        });
-
-        // Python not installed → silent skip
-        proc.on('error', () => resolve([]));
-    });
+async function closePythonWorker(): Promise<void> {
+    await pythonLocationWorker.shutdown();
 }
 
 /**
@@ -4110,6 +4226,12 @@ export function formatNormalizedLocation(n: NormalizedLocation): string | null {
 }
 
 export async function syncAll() {
+  // The whole run is wrapped so the shared Playwright browser and the
+  // persistent Python normalizer worker always get torn down — on success,
+  // on a thrown error, and whether this was invoked from the CLI or from
+  // the /api/cron/sync-jobs route handler. Leaving either process running
+  // would leak resources into the next cron invocation.
+  try {
     const startTime = Date.now();
     const syncRunId = crypto.randomUUID();
     console.log('\n════════════════════════════════════════════════════');
@@ -4243,12 +4365,24 @@ export async function syncAll() {
     const results: SyncResult[] = [];
     let totalSaved = 0;
 
-    for (const company of companies) {
+    // Each company's fetch/filter/persist pipeline is unchanged — only how
+    // many run at once has changed. Companies used to run strictly one at a
+    // time (fetch, then a flat 500ms sleep, then the next); with 2,500+
+    // companies that serial wait was most of the run time. A bounded
+    // concurrency pool now runs COMPANY_CONCURRENCY companies at once, each
+    // still paced by its own 500ms politeness delay between its own
+    // requests — no single ATS host sees more traffic per unit time than
+    // before, there's just several independent companies' worth of it
+    // in flight simultaneously instead of one.
+    const COMPANY_CONCURRENCY = 8;
+    const limit = pLimit(COMPANY_CONCURRENCY);
+
+    async function processCompany(company: CompanyRow): Promise<void> {
         const { id, trading_name, ats_provider } = company;
         let logBuffer = '';
 
         if (String(ats_provider || '').toLowerCase() === 'linkedin' && !includeLinkedin) {
-            continue;
+            return;
         }
 
         const resolved = resolveProviderAndToken(
@@ -4275,7 +4409,7 @@ export async function syncAll() {
             if (!allJobs.length) {
                 console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⚪ Fetch: 0 | UK: 0 | Saved: 0`);
                 results.push(result);
-                continue;
+                return;
             }
 
             const ukJobs: Job[] = [];
@@ -4498,6 +4632,8 @@ export async function syncAll() {
         }
     }
 
+    await Promise.all(companies.map((company) => limit(() => processCompany(company))));
+
     // ─── Summary ─────────────────────────────────────────────────────────────
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     const withJobs = results.filter(r => r.saved > 0);
@@ -4556,6 +4692,10 @@ export async function syncAll() {
             .forEach(r => console.log(`     ${r.company.padEnd(35)} ${r.saved} jobs  [${r.provider}]`));
     }
     console.log('════════════════════════════════════════════════════\n');
+  } finally {
+    await closeSharedBrowser();
+    await closePythonWorker();
+  }
 }
 
 const isDirectExecution = process.argv[1]
