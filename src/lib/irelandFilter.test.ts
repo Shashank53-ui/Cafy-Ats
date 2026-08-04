@@ -113,6 +113,11 @@ test('Ireland Filter: accepts previously missed RoI towns', () => {
         'Aghada, Co',
         'Ballinspittle, Co',
         'Belgooly, Co',
+        'Ratoath, Mh',
+        'Lahinch, Ce',
+        'Abbeyleix, Ls',
+        'Ballygarvan, Co',
+        'Donacarney, Mh',
     ]) {
         assert.strictEqual(isIrelandJob(location), true, `${location} should be accepted`);
     }

@@ -42,6 +42,8 @@ const IRELAND_CITIES = [
     'sallynoggin', 'kenmare', 'crosshaven', 'aghada', 'ballinspittle', 'belgooly',
     'dunmanway', 'loughbeg', 'summerhill', 'skryne', 'kildysart', 'carrickmines',
     'roscrea', 'killeagh', 'gaillimh', 'kenmare old', 'inch',
+    'lahinch', 'donacarney', 'clonmellon', 'lismullen', 'kilmessan', 'screen',
+    'kildalkey', 'ratoath', 'tang', 'abbeyleix', 'mount temple', 'ballygarvan',
 ];
 
 /** RoI provinces — avoid bare "ulster" (includes NI). */
@@ -160,10 +162,22 @@ function hasIrishCountySignal(combined: string): boolean {
         containsLocationPhrase(combined, `county ${c}`) ||
         containsLocationPhrase(combined, `co ${c}`)
     )) return true;
-    // Two-letter ATS abbreviations alone are ambiguous (MO=Missouri, KY=Kentucky,
-    // MN=Minnesota). Only trust them alongside an Irish city/town token.
-    const hasAbbrev = Object.keys(COUNTY_ABBREVS).some(abbr => containsLocationPhrase(combined, abbr));
-    return hasAbbrev && hasIrishCitySignal(combined);
+
+    // Trailing ATS "Town, Co" (= County, county name omitted) — not Colorado.
+    if (/\bco$/.test(combined) && !hasForeignCity(combined) && !/\b(colorado|united states|usa|u\.s)\b/.test(combined)) {
+        return true;
+    }
+
+    // Two-letter ATS abbreviations. MO/KY/MN collide with US states — only trust
+    // those alongside a known Irish city/town. Other RoI abbrevs (Mh, Ce, Wh…)
+    // are safe with any non-foreign place token.
+    const colliding = new Set(['mo', 'ky', 'mn']);
+    const matched = Object.keys(COUNTY_ABBREVS).filter(abbr => containsLocationPhrase(combined, abbr));
+    if (!matched.length) return false;
+    if (matched.some(abbr => colliding.has(abbr))) {
+        return hasIrishCitySignal(combined);
+    }
+    return !hasForeignCity(combined);
 }
 
 // Eircode routing key + unique identifier, e.g. "D02 XY01", "A65F4E2"

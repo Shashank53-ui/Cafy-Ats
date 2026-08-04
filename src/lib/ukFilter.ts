@@ -120,6 +120,7 @@ const HARD_BLOCKS = [
     "espoo", "kyiv", "kiev", "minsk", "kaunas", "vilnius", "sofia",
     "cairo", "dakar", "ulaanbaatar", "ontario", "united-states",
     "location negotiable", "homebased", "home office",
+    "norwalk", "coral gables", "concord office", "norwalk office", "kaunas office",
     // Ireland (must NOT block "Northern Ireland")
     "dublin", "ireland",
     // US States (full names)
