@@ -264,12 +264,30 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
         if (n) normalizedMap.set(uniqueJobs[i].url, n);
     }
 
-    return uniqueJobs.map(j => {
+    // Re-validate the *stored* location string. Dual-office posts can pass the
+    // pre-filter (e.g. "London | Amsterdam") then normalize down to a foreign
+    // city — that is exactly how Amsterdam/US rows reappeared after cleanup.
+    const rows: JobRow[] = [];
+    for (const j of uniqueJobs) {
         const n = normalizedMap.get(j.url);
-        const cleanedLocation = n
-            ? (formatNormalizedLocation(n) ?? safeStr(j.location, 255))
-            : safeStr(j.location, 255);
-        return {
+        const raw = safeStr(j.location, 255);
+        let cleanedLocation = n
+            ? (formatNormalizedLocation(n) ?? raw)
+            : raw;
+
+        const locationPasses = (loc: string) =>
+            market === 'uk'
+                ? isUKJob(buildLocationInput({ location: loc, title: j.title } as Job))
+                : isIrelandJob(loc);
+
+        if (!locationPasses(cleanedLocation)) {
+            if (!locationPasses(raw)) continue;
+            // Keep the row, but never persist the foreign normalized office.
+            cleanedLocation = market === 'uk' ? 'Multiple Locations' : raw;
+            if (!locationPasses(cleanedLocation)) continue;
+        }
+
+        rows.push({
             company_id: companyId,
             title: safeStr(j.title, 255),
             location: safeStr(cleanedLocation, 255),
@@ -278,8 +296,9 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             level: inferJobLevel(safeStr(j.title)),
             sector: inferJobSector(safeStr(j.title), j.department, company.company_sector),
             updated_at: new Date().toISOString()
-        };
-    });
+        });
+    }
+    return rows;
 }
 
 function isUKLocation(loc: any): boolean {
@@ -4298,7 +4317,13 @@ export async function syncAll() {
                 }
 
                 const matchesIreland = isIrelandJob(j.location, locationInput.locations);
-                const matchesUK = isTrustedUKCompany || isUKJob(locationInput);
+                // Never let company-level trust bypass an explicit foreign location string.
+                // NHS/Addison Lee still get a trust pass only when location is empty/remote/ambiguous.
+                const locText = String(j.location || '').trim();
+                const trustOk =
+                    isTrustedUKCompany &&
+                    (!locText || locationInput.isRemote || /^(uk|u\.k\.|united kingdom|great britain|england|scotland|wales|northern ireland)$/i.test(locText));
+                const matchesUK = isUKJob(locationInput) || trustOk;
 
                 // Ireland-market companies: only write RoI jobs to jobs_IR (never UK table).
                 if (irelandOnlyMarket) {

@@ -37,7 +37,11 @@ const IRELAND_CITIES = [
     'celbridge', 'maynooth', 'clonshaugh', 'finglas', 'cabra', 'phibsborough', 'rathmines',
     'ranelagh', 'ballsbridge', 'docklands', 'ifsc', 'silicon docks', 'duleek', 'belview',
     'dunboyne', 'skerries', 'ringaskiddy', 'mahon', 'cloughvalley', 'townparks',
-    'carrick on shannon', 'carrick-on-shannon', 'carrigtwohill',
+    'carrick on shannon', 'carrick-on-shannon', 'carrigtwohill', 'carrigtohill',
+    // Towns / suburbs seen in production that the filter previously missed
+    'sallynoggin', 'kenmare', 'crosshaven', 'aghada', 'ballinspittle', 'belgooly',
+    'dunmanway', 'loughbeg', 'summerhill', 'skryne', 'kildysart', 'carrickmines',
+    'roscrea', 'killeagh', 'gaillimh', 'kenmare old', 'inch',
 ];
 
 /** RoI provinces — avoid bare "ulster" (includes NI). */

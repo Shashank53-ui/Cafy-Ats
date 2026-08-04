@@ -87,6 +87,12 @@ const UK_CITIES = [
     "beaconsfield", "billingham", "brentwood", "cheltenham", "corby",
     "daventry", "dumfries", "dunstable", "eastleigh", "gosport", "grantham",
     "newmarket", "hextable", "charlwood", "bodelwyddan", "llanwrst",
+    // Counties / towns seen in ATS data that were wrongly purged as foreign
+    "gloucestershire", "wiltshire", "worcestershire", "leicestershire",
+    "nottinghamshire", "derbyshire", "northumberland", "shropshire",
+    "herefordshire", "bedfordshire", "rutland", "winnersh",
+    // Tyne & Wear town — only accepted when not US Washington (see hard-block carve-out)
+    "washington",
 ];
 
 // ─── Hard Blocks (definitely not UK) ─────────────────────────────────────────
@@ -109,6 +115,11 @@ const HARD_BLOCKS = [
     "sri lanka", "nepal", "egypt", "nigeria", "kenya", "ghana", "morocco",
     "chile", "peru", "ecuador", "venezuela", "colombia", "costa rica", "panama",
     "taiwan", "guatemala", "quebec", "abidjan", "americas", "amer/latam", "latam", "amer",
+    // Extra countries / cities seen leaking into production jobs
+    "united arab emirates", "saudi arabia", "korea", "mongolia", "egypt",
+    "espoo", "kyiv", "kiev", "minsk", "kaunas", "vilnius", "sofia",
+    "cairo", "dakar", "ulaanbaatar", "ontario", "united-states",
+    "location negotiable", "homebased", "home office",
     // Ireland (must NOT block "Northern Ireland")
     "dublin", "ireland",
     // US States (full names)
@@ -189,6 +200,11 @@ function isUKTerm(loc: string): boolean {
         const re = new RegExp(`\\b${term.replace(/\./g, '\\.')}\\b`);
         // Special case: "york" must not match "new york"
         if (term === 'york' && /\bnew\s+york\b/.test(l)) return false;
+        // Bare / US Washington must not pass via UK_CITIES membership
+        if (term === 'washington') {
+            if (/\b(d\.?c\.?|united states|usa|u\.s|washington state)\b/.test(l)) return false;
+            if (!/\b(united kingdom|great britain|\buk\b|\bu\.k\b|england|scotland|wales)\b/.test(l)) return false;
+        }
         // "wales" must not match "New South Wales" (Australia) or US "North Wales, PA"
         if (term === 'wales') {
             if (/\bnew\s+south\s+wales\b/.test(l)) return false;
@@ -211,11 +227,20 @@ function isBlockedTerm(loc: string): boolean {
     if (/(^|[^a-z])u\.?s\.?a?(?:[^a-z]|$)/i.test(l) && !/\buk\b|\bu\.k\b|united kingdom|great britain/.test(l)) {
         return true;
     }
+    // Bare ISO / US-state style 2-letter tokens with no other geography ("Br", "Ny", "Ca").
+    if (/^[a-z]{2}$/.test(l) && l !== 'uk') return true;
+    // "D.C." / "DC" alone (Washington DC) — not UK.
+    if (/^(d\.?c\.?|washington\s*d\.?c\.?)$/.test(l)) return true;
     return HARD_BLOCKS_LOWER.some(block => {
         // Never block "northern ireland" via the "ireland" entry
         if (block === 'ireland' && l.includes('northern ireland')) return false;
         // London address "Denmark Hill" is UK, not Denmark
         if (block === 'denmark' && /\bdenmark\s+hill\b/.test(l)) return false;
+        // Tyne & Wear "Washington, United Kingdom" must not be treated as US Washington state
+        if (block === 'washington' && /\b(united kingdom|great britain|\buk\b|\bu\.k\b|england|scotland|wales)\b/.test(l)
+            && !/\b(d\.?c\.?|united states|usa|u\.s|washington state)\b/.test(l)) {
+            return false;
+        }
         // Multi-word OR dotted abbreviations (u.s. / u.s.a.) — includes() is safer than \b
         if (block.includes(' ') || block.includes('.')) return l.includes(block);
         const re = new RegExp(`\\b${block}\\b`);
@@ -261,9 +286,16 @@ function hasUkCitySignal(combined: string): boolean {
     // (e.g. "Hoofddorp, ENGLAND, Netherlands", "New South Wales").
     if (/\blondon\b/.test(c) && !/\blondon[\s,]+(ontario|canada|ohio)\b/.test(c)) return true;
     if (/\bnorthern ireland\b/.test(c)) return true;
+    // UK Washington (Tyne & Wear) when country is explicit and not US DC
+    if (/\bwashington\b/.test(c)
+        && /\b(united kingdom|great britain|\buk\b|\bu\.k\b|england)\b/.test(c)
+        && !/\b(d\.?c\.?|united states|usa|u\.s|washington state)\b/.test(c)) {
+        return true;
+    }
     return UK_CITIES.some((city) => {
         const term = normalize(city);
         if (term === 'london') return false; // already handled with ontario carve-out
+        if (term === 'washington') return false; // handled above with UK-country guard
         // Crown dependencies are hard-blocked above — never treat as UK city signals.
         if (term === 'jersey' || term === 'guernsey' || term === 'isle of man') return false;
         if (term === 'york' && /\bnew\s+york\b/.test(c)) return false;

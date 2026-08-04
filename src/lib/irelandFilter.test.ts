@@ -98,3 +98,22 @@ test('Ireland Filter: rejects US state abbrev collisions (MO/KY/MN)', () => {
     assert.strictEqual(isIrelandJob('Dunboyne, Mh'), true);
     assert.strictEqual(isIrelandJob('Castlebar, Mo'), true);
 });
+
+test('Ireland Filter: accepts previously missed RoI towns', () => {
+    for (const location of [
+        'Sallynoggin',
+        'Kenmare, Ky',
+        'Kenmare Old, Ky',
+        'Crosshaven, Co',
+        'Carrigtohill, Co',
+        'Summerhill, Mh',
+        'Carrickmines',
+        'Gaillimh',
+        'Roscrea, Ta',
+        'Aghada, Co',
+        'Ballinspittle, Co',
+        'Belgooly, Co',
+    ]) {
+        assert.strictEqual(isIrelandJob(location), true, `${location} should be accepted`);
+    }
+});

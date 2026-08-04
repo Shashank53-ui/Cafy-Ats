@@ -314,3 +314,52 @@ test('UK Filter: placeholder stripped but London kept', () => {
     };
     assert.strictEqual(isUKJob(input), true, 'London alongside placeholder must pass');
 });
+
+test('UK Filter: Washington Tyne & Wear vs US Washington', () => {
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['Washington, United Kingdom'], isRemote: false }),
+        true,
+        'Washington UK must pass',
+    );
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['Washington'], isRemote: false }),
+        false,
+        'Bare Washington must not pass',
+    );
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['Washington, DC'], isRemote: false }),
+        false,
+        'Washington DC must not pass',
+    );
+});
+
+test('UK Filter: UK counties and Winnersh', () => {
+    for (const loc of ['Gloucestershire', 'Winnersh', 'Wiltshire']) {
+        assert.strictEqual(
+            isUKJob({ isTrustedSource: false, locations: [loc], isRemote: false }),
+            true,
+            `${loc} must pass`,
+        );
+    }
+});
+
+test('UK Filter: production foreign leaks stay blocked', () => {
+    for (const loc of [
+        'Espoo',
+        'Kyiv',
+        'United Arab Emirates',
+        'Location Negotiable',
+        'United-States',
+        'Br',
+        'Ny',
+        'Korea',
+        'Ontario',
+        'Mapbox Minsk',
+    ]) {
+        assert.strictEqual(
+            isUKJob({ isTrustedSource: false, locations: [loc], isRemote: false }),
+            false,
+            `${loc} must stay blocked`,
+        );
+    }
+});
