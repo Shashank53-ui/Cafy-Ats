@@ -324,14 +324,23 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             if (!locationPasses(cleanedLocation)) continue;
         }
 
+        // Every row must end up with both a sector and a department — never null.
+        // Some ATS providers (Workday, Oracle Cloud, several custom scrapers)
+        // structurally don't expose a department field in their feed at all,
+        // so there's no real value to extract there. In that case the job's
+        // own sector is the best available substitute for department, rather
+        // than leaving the column blank.
+        const sector = inferJobSector(safeStr(j.title), j.department, company.company_sector) || 'Other';
+        const rawDept = j.department ? safeStr(j.department, 255) : '';
+
         rows.push({
             company_id: companyId,
             title: safeStr(j.title, 255),
             location: safeStr(cleanedLocation, 255),
             url: j.url,
-            department: j.department ? safeStr(j.department, 255) : null,
+            department: rawDept || sector,
             level: inferJobLevel(safeStr(j.title)),
-            sector: inferJobSector(safeStr(j.title), j.department, company.company_sector),
+            sector,
             updated_at: new Date().toISOString()
         });
     }
