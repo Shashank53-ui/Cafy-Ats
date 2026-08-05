@@ -225,6 +225,37 @@ test('UK Filter: United States blocked', () => {
     assert.strictEqual(isUKJob(input), false, 'United States should be blocked');
 });
 
+test('UK Filter: UK city namesake in US blocked (Bedford MA etc)', () => {
+    for (const loc of [
+        'Bedford, MA, United States',
+        'Bedford, NH, United States',
+        'Bedford, OH, United States',
+        'Bedford, TX, United States',
+        'Bedford, MA',
+        'Birmingham, AL, United States',
+        'Manchester, NH, United States',
+    ]) {
+        const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };
+        assert.strictEqual(isUKJob(input), false, `${loc} must be blocked`);
+    }
+});
+
+test('UK Filter: UK Bedford without US signal still accepted', () => {
+    for (const loc of ['Bedford', 'Bedfordshire, United Kingdom', 'Bedford, United Kingdom']) {
+        const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };
+        assert.strictEqual(isUKJob(input), true, `${loc} must stay UK`);
+    }
+});
+
+test('UK Filter: Dual UK + US still accepted when UK country explicit', () => {
+    const input: JobLocationInput = {
+        isTrustedSource: false,
+        locations: ['London, United Kingdom | New York, NY, United States'],
+        isRemote: false,
+    };
+    assert.strictEqual(isUKJob(input), true, 'Explicit UK + US dual should stay UK');
+});
+
 test('UK Filter: New South Wales Australia blocked (wales false positive)', () => {
     const input: JobLocationInput = { isTrustedSource: false, locations: ["Sydney-New South Wales-Australia"], isRemote: false };
     assert.strictEqual(isUKJob(input), false, 'NSW Australia must not pass via wales');
