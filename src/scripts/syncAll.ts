@@ -487,7 +487,7 @@ function normalizeProviderName(value: string | null | undefined): string | null 
 }
 
 // Resolve which fetcher key + token to use, accounting for aliases and custom routing
-function resolveProviderAndToken(
+export function resolveProviderAndToken(
     ats_provider: string | null,
     ats_board_token: string | null,
     careers_url: string | null
@@ -980,7 +980,7 @@ async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOn
     };
 }
 
-async function loadAtsOverrides(companyIds: number[]): Promise<Map<number, AtsOverrideRow>> {
+export async function loadAtsOverrides(companyIds: number[]): Promise<Map<number, AtsOverrideRow>> {
     const overrides = new Map<number, AtsOverrideRow>();
     const pageSize = 500;
 
@@ -1017,7 +1017,7 @@ async function loadAtsOverrides(companyIds: number[]): Promise<Map<number, AtsOv
     return overrides;
 }
 
-async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRow[]> {
+export async function loadAllCompanies(specificIds: number[] | null): Promise<CompanyRow[]> {
     const EXCEL_PATH_NEW = path.resolve(process.cwd(), 'data/excel/Testing_jobs_data.xlsx');
     const EXCEL_PATH_OLD = path.resolve(process.cwd(), 'Testing_jobs_data.xlsx');
 
@@ -1438,7 +1438,7 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
     return [];
 }
 
-async function fetchBambooHR(token: string): Promise<Job[]> {
+export async function fetchBambooHR(token: string): Promise<Job[]> {
     try {
         // Try the open /careers/list endpoint first
         const r = await fetchWithTimeout(`https://${token}.bamboohr.com/careers/list`);
@@ -1452,7 +1452,11 @@ async function fetchBambooHR(token: string): Promise<Job[]> {
                     j.location?.country
                 ].filter(Boolean).join(', '),
                 url: `https://${token}.bamboohr.com/careers/${j.id}`,
-                department: '',
+                // The /careers/list endpoint returns a flat departmentLabel field
+                // (confirmed live) — this used to be hardcoded to '', which is
+                // why every BambooHR job had a null department despite the data
+                // being right there in the response.
+                department: j.departmentLabel || '',
                 salary: undefined
             }));
         }
@@ -1531,7 +1535,7 @@ async function fetchPinpoint(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-async function fetchBreezy(token: string): Promise<Job[]> {
+export async function fetchBreezy(token: string): Promise<Job[]> {
     try {
         const r = await fetchWithTimeout(`https://${token}.breezy.hr/json`);
         if (!r.ok) return [];
@@ -1540,7 +1544,11 @@ async function fetchBreezy(token: string): Promise<Job[]> {
             title: j.name || '',
             location: j.location?.name || '',
             url: j.url || '',
-            department: j.department?.name || '',
+            // Breezy's /json feed returns department as a flat string for most
+            // tenants (confirmed live, e.g. "Operations", "Technology") — the
+            // `.name` accessor here only matched a nested-object shape that
+            // doesn't actually occur, so every job silently fell through to ''.
+            department: (typeof j.department === 'string' ? j.department : j.department?.name) || '',
             salary: undefined
         }));
     } catch { return []; }
