@@ -639,9 +639,19 @@ function inferAtsFromCareersUrl(url: string | null | undefined): { provider: str
             }
         }
         if (host.includes('myworkdayjobs.com')) {
-            const subdomain = host.split('.')[0] || '';
+            // company.wdN.myworkdayjobs.com/BoardName
+            // or wdN.myworkdayjobs.com/company/BoardName
             const cleanParts = parts.filter(p => !/^[a-z]{2}-[a-z]{2}$/i.test(p));
-            const boardName = cleanParts[0] || '';
+            const hostParts = host.split('.');
+            let subdomain = '';
+            let boardName = '';
+            if (hostParts[0] && !hostParts[0].startsWith('wd')) {
+                subdomain = hostParts[0];
+                boardName = cleanParts[0] || '';
+            } else if (cleanParts.length >= 2) {
+                subdomain = cleanParts[0];
+                boardName = cleanParts[1];
+            }
             if (subdomain && boardName) {
                 return { provider: 'workday', token: `${subdomain}/${boardName}` };
             }
@@ -2283,7 +2293,18 @@ async function fetchSuccessFactors(token: string): Promise<Job[]> {
         if (!initRes.ok) return [];
         
         const initHtml = await initRes.text();
-        const cookies = initRes.headers.get('set-cookie') || '';
+        // Extract cookie name=value pairs only — never forward Set-Cookie attributes
+        const headersAny = initRes.headers as Headers & { getSetCookie?: () => string[] };
+        const setCookieList = typeof headersAny.getSetCookie === 'function'
+            ? headersAny.getSetCookie()
+            : [];
+        const cookies = (setCookieList.length > 0
+            ? setCookieList
+            : [initRes.headers.get('set-cookie') || ''].filter(Boolean)
+        )
+            .map(c => c.split(';')[0].trim())
+            .filter(pair => pair.includes('='))
+            .join('; ');
         
         const csrfMatch = initHtml.match(/"X-CSRF-Token"\s*:\s*"([^"]+)"/i);
         if (!csrfMatch) return [];
@@ -2301,7 +2322,7 @@ async function fetchSuccessFactors(token: string): Promise<Job[]> {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                     'X-CSRF-Token': csrf,
-                    'Cookie': cookies
+                    ...(cookies ? { 'Cookie': cookies } : {}),
                 },
                 body: JSON.stringify({
                     searchFilters: { searchQuery: "" },
@@ -2417,8 +2438,7 @@ async function fetchEightfold(token: string): Promise<Job[]> {
 
     while (true) {
         try {
-            const countryFilter = country ? `&filter_country=${encodeURIComponent(country)}` : '';
-            const url = `https://${host}/api/pcsx/search?domain=${apiDomain}&query=&location=&start=${start}&sort_by=timestamp${countryFilter}`;
+            const url = `https://${host}/api/pcsx/search?domain=${apiDomain}&query=&start=${start}&sort_by=timestamp${countryQs}`;
 
             const res = await fetchWithTimeout(url, {
                 headers: {
