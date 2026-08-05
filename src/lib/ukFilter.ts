@@ -221,11 +221,28 @@ function isUKTerm(loc: string): boolean {
     });
 }
 
+/** US state / territory codes as used in ATS strings ("Bedford, MA", "Austin, TX"). */
+const US_STATE_CODES =
+    'al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy|dc';
+
+/** True when the string looks like US geography (country or ", XX" state code). */
+function hasUsGeoSignal(loc: string): boolean {
+    const l = normalize(loc);
+    if (/\b(united states|usa|u\.s\.a\.?|u\.s\.?)\b/.test(l)) return true;
+    // Comma-qualified state codes — avoids matching "in"/"or"/"me" inside prose.
+    if (new RegExp(`,\\s*(${US_STATE_CODES})\\b`).test(l)) return true;
+    return false;
+}
+
 function isBlockedTerm(loc: string): boolean {
     const l = normalize(loc);
     // Bare US abbreviations — "U.S. Travelling" normalizes to "u.s. travelling"
     // and does not match HARD_BLOCKS word-boundary checks on "usa".
     if (/(^|[^a-z])u\.?s\.?a?(?:[^a-z]|$)/i.test(l) && !/\buk\b|\bu\.k\b|united kingdom|great britain/.test(l)) {
+        return true;
+    }
+    // "Bedford, MA" / "Austin, TX" — US state code after a comma.
+    if (hasUsGeoSignal(l) && !/\b(united kingdom|great britain|\buk\b|\bu\.k\b)\b/.test(l)) {
         return true;
     }
     // Bare ISO / US-state style 2-letter tokens with no other geography ("Br", "Ny", "Ca").
@@ -342,6 +359,11 @@ export function isUKJob(input: JobLocationInput): boolean {
     // both contain UK city terms but are clearly not UK. Require a definitive nation/country signal.
     const allCombined = locs.join(' ');
     if (isBlockedTerm(allCombined)) {
+        // US rows often reuse UK city namesakes (Bedford MA, Birmingham AL, Manchester NH).
+        // Require an explicit UK country/nation term — a shared city name alone is not enough.
+        if (hasUsGeoSignal(allCombined)) {
+            return hasDefinitiveUKSignal(allCombined);
+        }
         // Foreign country / Dublin / NSW present → require a real UK *city* (or Northern Ireland).
         // Bare "United Kingdom" / "England" is not enough (fixes NSW "wales", North Wales PA,
         // "Hoofddorp, ENGLAND, Netherlands", "Dublin, United Kingdom").

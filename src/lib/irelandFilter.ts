@@ -44,6 +44,7 @@ const IRELAND_CITIES = [
     'roscrea', 'killeagh', 'gaillimh', 'kenmare old', 'inch',
     'lahinch', 'donacarney', 'clonmellon', 'lismullen', 'kilmessan', 'screen',
     'kildalkey', 'ratoath', 'tang', 'abbeyleix', 'mount temple', 'ballygarvan',
+    'ballyphehane',
 ];
 
 /** RoI provinces — avoid bare "ulster" (includes NI). */
@@ -75,6 +76,8 @@ const FOREIGN_CITIES = [
     'mumbai', 'delhi', 'bangalore', 'bengaluru', 'pune', 'chennai', 'hyderabad', 'kolkata',
     'toronto', 'vancouver', 'montreal', 'sydney', 'melbourne', 'brisbane', 'auckland',
     'johannesburg', 'cape town', 'abu dhabi', 'riyadh', 'doha', 'tel aviv',
+    // Colorado / US towns that leaked via trailing ", CO" county false positive
+    'boulder', 'breckenridge', 'fort collins', 'colorado springs',
 ];
 
 // Non-Ireland countries, US states, and major world cities that share a name with
@@ -164,8 +167,9 @@ function hasIrishCountySignal(combined: string): boolean {
     )) return true;
 
     // Trailing ATS "Town, Co" (= County, county name omitted) — not Colorado.
+    // Only trust when the town itself is a known Irish place (same stance as Mo/Ky).
     if (/\bco$/.test(combined) && !hasForeignCity(combined) && !/\b(colorado|united states|usa|u\.s)\b/.test(combined)) {
-        return true;
+        return hasIrishCitySignal(combined);
     }
 
     // Two-letter ATS abbreviations. MO/KY/MN collide with US states — only trust

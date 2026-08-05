@@ -59,6 +59,7 @@ test('Ireland Filter: accepts RoI counties, Co. forms, and common towns', () => 
         'Portlaoise, Co. Laois',
         'Cavan, Ulster',
         'Belview Port, County Kilkenny',
+        'Ballyphehane',
     ]) {
         assert.strictEqual(isIrelandJob(location), true, `${location} should be accepted`);
     }
@@ -118,7 +119,22 @@ test('Ireland Filter: accepts previously missed RoI towns', () => {
         'Abbeyleix, Ls',
         'Ballygarvan, Co',
         'Donacarney, Mh',
+        'Carrigaline, Co',
+        'Ballyphehane',
     ]) {
         assert.strictEqual(isIrelandJob(location), true, `${location} should be accepted`);
+    }
+});
+
+test('Ireland Filter: rejects Colorado US towns using trailing CO', () => {
+    for (const location of [
+        'Boulder, CO',
+        'Boulder,  CO',
+        'Breckenridge, CO',
+        'Fort Collins, CO',
+        'Springs, CO',
+        'Collins, CO',
+    ]) {
+        assert.strictEqual(isIrelandJob(location), false, `${location} must be rejected`);
     }
 });
