@@ -290,7 +290,11 @@ export default function JobFeed({ initialJobs, initialTotalPages, initialApplied
                                 </h3>
 
                                 <div className="flex items-center gap-2 text-[12px] sm:text-[13px] text-slate-500 mb-4 font-medium">
-                                    <span className="truncate">{job.department || 'General'}</span>
+                                    {/* Several ATS providers (Workday, Oracle Cloud, Teamtailor, etc.)
+                                        never expose a department field at the source — falling back
+                                        to the job's own sector is a more accurate label than a fixed
+                                        generic word for those postings. */}
+                                    <span className="truncate">{job.department || job.sector || 'General'}</span>
                                     <span>•</span>
                                     <span className="truncate">{job.location || 'UK'}</span>
                                 </div>
@@ -443,7 +447,7 @@ export default function JobFeed({ initialJobs, initialTotalPages, initialApplied
                             <div className="p-6 sm:p-7 overflow-y-auto flex-1">
                                 <div className="pt-8 lg:pt-0">
                                     <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1 leading-tight">{selectedJob.title}</h1>
-                                    <p className="text-slate-500 mb-6 font-medium text-[14px] sm:text-[15px]">{selectedJob.department || 'Engineering'} ({selectedJob.location || 'UK'})</p>
+                                    <p className="text-slate-500 mb-6 font-medium text-[14px] sm:text-[15px]">{selectedJob.department || selectedJob.sector || 'Engineering'} ({selectedJob.location || 'UK'})</p>
 
                                     {/* Checklist Area */}
                                     <div className="bg-[#0066FF]/5 border border-[#0066FF]/10 text-[#0066FF] p-4 sm:p-5 rounded-none space-y-3.5 mb-8">
