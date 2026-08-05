@@ -77,6 +77,17 @@ test('cron IE: Singapore blocked', () => {
   assert.equal(ie('Singapore, Singapore'), false);
 });
 
+test('cron IE: CN - Shenzhen ISO prefix blocked', () => {
+  assert.equal(ie('CN - Shenzhen'), false);
+  assert.equal(ie('Shenzhen, CN'), false);
+});
+
+test('cron IE: US state-code namesakes blocked', () => {
+  assert.equal(ie('Dublin, CA'), false);
+  assert.equal(ie('Westport, CT'), false);
+  assert.equal(ie('Westport, Mo'), true);
+});
+
 test('cron IE: Dublin Ohio USA blocked', () => {
   assert.equal(ie('Dublin-Ohio-United States of America'), false);
 });
