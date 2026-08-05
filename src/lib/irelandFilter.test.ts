@@ -138,3 +138,53 @@ test('Ireland Filter: rejects Colorado US towns using trailing CO', () => {
         assert.strictEqual(isIrelandJob(location), false, `${location} must be rejected`);
     }
 });
+
+test('Ireland Filter: rejects ATS ISO country prefixes (CN/US/…)', () => {
+    for (const location of [
+        'CN - Shenzhen',
+        'CN-Shenzhen',
+        'Shenzhen, CN',
+        'CN',
+        'CN-SC-CHENGDU-001 ~ No 8 Kexin Rd ~ CHENGDU HI TECH ZONE, Chengdu Hi-Tech Zone (West Park)',
+        'US - New York',
+        'IN - Mumbai',
+        'LS - Maseru',
+        'CW - Willemstad',
+    ]) {
+        assert.strictEqual(isIrelandJob(location), false, `${location} should be rejected`);
+    }
+    // Still accept real RoI county-abbrev uses
+    assert.strictEqual(isIrelandJob('Cavan, Cn'), true);
+    assert.strictEqual(isIrelandJob('Bailieborough, Cn'), true);
+    assert.strictEqual(isIrelandJob('IE - Dublin'), true);
+    assert.strictEqual(isIrelandJob('CK - Cork'), true);
+});
+
+test('Ireland Filter: rejects US state-code namesakes', () => {
+    for (const location of [
+        'Dublin, CA',
+        'Dublin, OH',
+        'Waterford, MI',
+        'Cork, GA',
+        'Westport, CT',
+        'New York, Ireland',
+    ]) {
+        assert.strictEqual(isIrelandJob(location), false, `${location} should be rejected`);
+    }
+    // Real RoI county abbrevs that collide with US states still work
+    assert.strictEqual(isIrelandJob('Westport, Mo'), true);
+    assert.strictEqual(isIrelandJob('Kenmare, Ky'), true);
+    assert.strictEqual(isIrelandJob('Carrigaline, Co'), true);
+    // Multi-loc with Irish city still ok
+    assert.strictEqual(isIrelandJob('Detroit, MI; Dublin, Ireland'), true);
+    assert.strictEqual(isIrelandJob('SF, New York, Seattle, Dublin'), true);
+});
+
+test('Ireland Filter: rejects WW/worldwide and NI typos; accepts Eircode', () => {
+    assert.strictEqual(isIrelandJob('WW Remote'), false);
+    assert.strictEqual(isIrelandJob('Worldwide'), false);
+    assert.strictEqual(isIrelandJob('Nothern Ireland, United Kingdom'), false);
+    assert.strictEqual(isIrelandJob('Au-Sa-Cavan 1 Month Ago(2.7. 10:29 Pm)'), false);
+    assert.strictEqual(isIrelandJob('D02 XY01'), true);
+    assert.strictEqual(isIrelandJob('D02XY01'), true);
+});
