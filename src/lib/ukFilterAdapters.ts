@@ -5,6 +5,9 @@ import { JobLocationInput } from './ukFilter';
  * 
  * Each function takes a raw job object from a specific ATS provider and 
  * maps it to the standard JobLocationInput structure.
+ *
+ * Most syncAll fetchers emit a normalized Job `{ title, location, url, ... }`.
+ * Adapters must handle that shape too (not only raw ATS payloads).
  */
 
 // --- Utility ---
@@ -13,9 +16,34 @@ function containsRemote(str: string | null | undefined): boolean {
     return str.toLowerCase().includes('remote');
 }
 
+/** Detect syncAll normalized Job (string location, no raw ATS office arrays). */
+function fromNormalizedJob(job: any): JobLocationInput | null {
+    if (!job || typeof job !== 'object') return null;
+    const hasRawAtsShape =
+        job.offices != null ||
+        job.secondaryLocations != null ||
+        (job.location && typeof job.location === 'object') ||
+        job.locationsText != null ||
+        job.categories != null;
+    if (hasRawAtsShape) return null;
+    if (typeof job.location !== 'string' && job.location != null) return null;
+    if (job.title === undefined && job.url === undefined) return null;
+
+    const raw = String(job.location || '');
+    const parts = raw.split(/\s*[|·•]\s*/).map((s: string) => s.trim()).filter(Boolean);
+    return {
+        locations: parts.length > 0 ? parts : (raw ? [raw] : []),
+        isRemote: /\bremote\b/i.test(raw) || !!job.isRemote,
+        isTrustedSource: false,
+    };
+}
+
 // --- Adapters ---
 
 export function ashbyToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locs = [
         job.location?.name || job.location,
         ...(job.secondaryLocations || []).map((l: any) => l.location || l.name || l)
@@ -29,6 +57,9 @@ export function ashbyToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function greenhouseToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locs = new Set<string>();
     if (job.location?.name) locs.add(job.location.name);
     (job.offices || []).forEach((o: any) => {
@@ -47,6 +78,9 @@ export function greenhouseToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function leverToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const loc = job.categories?.location || job.workplaceType || '';
     const tags = (job.tags || []).filter((t: string) => containsRemote(t) || t.length > 2);
     
@@ -58,6 +92,9 @@ export function leverToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function workableToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locData = job.location || job;
     const locations = [
         locData.city,
@@ -84,6 +121,11 @@ const WORKDAY_VAGUE_LOCATIONS = new Set([
 const WORKDAY_N_LOCATIONS_RE = /^\d+\s+locations?$/i;
 
 export function workdayToJobLocationInput(job: any): JobLocationInput {
+    // Normalized syncAll Job (string location) — still never trusted blindly.
+    if (!job.locationsText && fromNormalizedJob(job)) {
+        return fromNormalizedJob(job)!;
+    }
+
     const rawText = job.locationsText || '';
     const rawLocations = rawText
         .split(',')
@@ -110,9 +152,14 @@ export function workdayToJobLocationInput(job: any): JobLocationInput {
         }
     }
 
+    // If fetcher already flattened to job.location string, use it when facet text empty
+    if (locations.length === 0 && typeof job.location === 'string' && job.location.trim()) {
+        locations.push(job.location.trim());
+    }
+
     return {
         locations,
-        isRemote: rawLocations.some((l: string) => containsRemote(l)),
+        isRemote: rawLocations.some((l: string) => containsRemote(l)) || /\bremote\b/i.test(String(job.location || '')),
         // job.verified reflects a small-sample heuristic used to pick which facet/endpoint
         // to paginate through — it is not reliable enough to skip per-job location
         // validation, so every Workday job still has to pass the real geography check below.
@@ -121,6 +168,9 @@ export function workdayToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function teamtailorToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const humanLoc = job.attributes?.['human-location'] || job.location || '';
     const locations = humanLoc ? [humanLoc] : [];
 
@@ -132,6 +182,9 @@ export function teamtailorToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function smartrecruitersToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locations = [
         job.location?.city,
         job.location?.country
@@ -148,6 +201,9 @@ export function smartrecruitersToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function pinpointToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const loc = job.location || {};
     const locations = [
         loc.name,
@@ -163,6 +219,9 @@ export function pinpointToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function breezyToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locName = job.location?.name || '';
     return {
         locations: locName ? [locName] : [],
@@ -172,6 +231,9 @@ export function breezyToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function recruiteeToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     // Include country field so "York, United States" doesn't pass as UK via city match
     const locations = [job.city, job.country, job.location].filter(Boolean);
     return {
@@ -182,6 +244,9 @@ export function recruiteeToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function bamboohrToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const loc = job.location || {};
     const locations = [
         loc.city || job.city,
@@ -197,6 +262,9 @@ export function bamboohrToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function jobviteToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const loc = job.location || '';
     return {
         locations: loc ? [loc] : [],
@@ -206,6 +274,9 @@ export function jobviteToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function personioToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locations = [job.office, job.location].filter(Boolean);
     return {
         locations,
@@ -215,6 +286,9 @@ export function personioToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function hibobToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locations = [job.site, job.country].filter(Boolean);
     return {
         locations,
@@ -224,6 +298,9 @@ export function hibobToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function icimsToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locations = [job.location, job.JobLocation].filter(Boolean);
     return {
         locations,
@@ -233,6 +310,9 @@ export function icimsToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function ripplingToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) return normalized;
+
     const locs = new Set<string>();
     (job.locations || []).forEach((l: any) => {
         if (l.name) locs.add(l.name);
@@ -248,6 +328,10 @@ export function ripplingToJobLocationInput(job: any): JobLocationInput {
 }
 
 export function nhsToJobLocationInput(job: any): JobLocationInput {
+    const normalized = fromNormalizedJob(job);
+    if (normalized) {
+        return { ...normalized, isTrustedSource: true, isRemote: false };
+    }
     return {
         locations: job.location ? [job.location] : [],
         isRemote: false,

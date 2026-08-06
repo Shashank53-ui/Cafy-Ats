@@ -136,6 +136,69 @@ export interface CompanyRow {
     company_sector?: string | null;
     /** uk = default UK pipeline; ireland = write jobs_IR only; both = dual-write */
     sync_market?: 'uk' | 'ireland' | 'both' | null;
+    /** From validate:ats — dead / needs_manual_review are skipped unless --include-dead-ats */
+    ats_status?: string | null;
+}
+
+interface FilterLogEntry {
+    company_id: string;
+    job_url: string | null;
+    raw_location: string | null;
+    source: string;
+    decision: string;
+    reason: string | null;
+    title: string | null;
+    market: string | null;
+    sync_run_id: string;
+}
+
+const filterLogBuffer: FilterLogEntry[] = [];
+
+function stampAtsProvider(jobs: Job[], provider: string): Job[] {
+    const p = String(provider || '').toLowerCase().trim();
+    if (!p) return jobs;
+    return jobs.map((j) => ({
+        ...j,
+        atsProvider: j.atsProvider || j.source || p,
+    }));
+}
+
+function isAmbiguousRemoteLocation(loc: string | null | undefined): boolean {
+    const l = String(loc || '').trim().toLowerCase();
+    return !l || l === 'remote' || l === '(remote)';
+}
+
+async function flushFilterLogs(): Promise<number> {
+    if (!filterLogBuffer.length) return 0;
+    const rows = filterLogBuffer.splice(0, filterLogBuffer.length);
+    let written = 0;
+    for (const chunk of chunkArray(rows, 500)) {
+        const { error } = await supabase.from('location_filter_log').insert(chunk);
+        if (error) {
+            // Older schema without reason/title/market — fold reason into decision
+            if (/reason|title|market|schema cache|column/i.test(error.message)) {
+                const slimFixed = chunk.map((r) => ({
+                    company_id: r.company_id,
+                    job_url: r.job_url,
+                    raw_location: r.raw_location,
+                    source: r.source,
+                    decision: r.reason ? `${r.decision}:${r.reason}` : r.decision,
+                    sync_run_id: r.sync_run_id,
+                }));
+                const { error: slimErr } = await supabase.from('location_filter_log').insert(slimFixed);
+                if (slimErr) {
+                    console.warn(`location_filter_log insert failed: ${slimErr.message}`);
+                    continue;
+                }
+                written += slimFixed.length;
+                continue;
+            }
+            console.warn(`location_filter_log insert failed: ${error.message}`);
+            continue;
+        }
+        written += chunk.length;
+    }
+    return written;
 }
 
 interface AtsOverrideRow {
@@ -1068,11 +1131,11 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
 
             const withMarket = await supabase
                 .from('companies')
-                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market')
+                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market, ats_status')
                 .in('id', specificIds)
                 .order('trading_name');
 
-            if (withMarket.error && /sync_market/i.test(withMarket.error.message)) {
+            if (withMarket.error && /sync_market|ats_status/i.test(withMarket.error.message)) {
                 const fallback = await supabase
                     .from('companies')
                     .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
@@ -1125,8 +1188,8 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
         while (true) {
             const to = from + pageSize - 1;
             const selectCols = selectWithMarket
-                ? 'id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market'
-                : 'id, trading_name, ats_provider, ats_board_token, url, company_sector';
+                ? 'id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market, ats_status'
+                : 'id, trading_name, ats_provider, ats_board_token, url, company_sector, ats_status';
             const { data, error } = await supabase
                 .from('companies')
                 .select(selectCols)
@@ -1137,6 +1200,24 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
                 if (selectWithMarket && /sync_market/i.test(error.message)) {
                     console.warn('companies.sync_market missing — run supabase/add_ireland_source_and_market.sql');
                     selectWithMarket = false;
+                    continue;
+                }
+                if (/ats_status/i.test(error.message)) {
+                    // Retry without ats_status
+                    const fallbackCols = selectWithMarket
+                        ? 'id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market'
+                        : 'id, trading_name, ats_provider, ats_board_token, url, company_sector';
+                    const retry = await supabase
+                        .from('companies')
+                        .select(fallbackCols)
+                        .order('id', { ascending: true })
+                        .range(from, to);
+                    if (retry.error) throw new Error(`Could not load companies page ${from}-${to}: ${retry.error.message}`);
+                    const rows = (retry.data || []) as unknown as CompanyRow[];
+                    if (rows.length === 0) break;
+                    all.push(...rows);
+                    if (rows.length < pageSize) break;
+                    from += pageSize;
                     continue;
                 }
                 throw new Error(`Could not load companies page ${from}-${to}: ${error.message}`);
@@ -1232,7 +1313,8 @@ async function fetchGreenhouse(token: string): Promise<Job[]> {
                     location: location,
                     url: j.absolute_url || j.url || '',
                     department: j.departments?.[0]?.name || '',
-                    salary: undefined
+                    salary: undefined,
+                    atsProvider: 'greenhouse',
                 };
             });
             if (jobs.length > 0) return jobs;
@@ -1257,7 +1339,8 @@ async function fetchAshby(token: string): Promise<Job[]> {
                 location: `${locRaw} ${secLocs} ${j.isRemote ? 'Remote' : ''}`.trim(),
                 url: j.jobUrl || '',
                 department: j.department || '',
-                salary: undefined
+                salary: undefined,
+                atsProvider: 'ashby',
             };
         });
     } catch { return []; }
@@ -1285,7 +1368,8 @@ async function fetchLever(token: string): Promise<Job[]> {
                                 location: loc,
                                 url: p.hostedUrl || '',
                                 department: team,
-                                salary: undefined
+                                salary: undefined,
+                                atsProvider: 'lever',
                             });
                         });
                     });
@@ -1306,7 +1390,8 @@ async function fetchLever(token: string): Promise<Job[]> {
                             location: loc,
                             url: p.hostedUrl || '',
                             department: team,
-                            salary: undefined
+                            salary: undefined,
+                            atsProvider: 'lever',
                         };
                     });
                 }
@@ -4264,6 +4349,7 @@ export async function syncAll() {
     const syncRunId = crypto.randomUUID();
     // Module-level logs/counters persist across cron warm starts — reset each run.
     globalRejectionLog.length = 0;
+    filterLogBuffer.length = 0;
     serperCallCount = 0;
     serperHitCount = 0;
     console.log('\n════════════════════════════════════════════════════');
@@ -4291,6 +4377,8 @@ export async function syncAll() {
     const fallbackOnlyDryRun = args.includes('--dry-run-custom-fallback');
 
     const includeLinkedin = !args.includes('--exclude-linkedin');
+    const includeDeadAts = args.includes('--include-dead-ats');
+    const skipFilterLog = args.includes('--skip-filter-log');
 
     const marketIndex = args.indexOf('--market');
     const targetMarket = marketIndex !== -1
@@ -4384,6 +4472,22 @@ export async function syncAll() {
         }
     }
 
+    // Skip broken ATS boards on full runs (EC2 nightly). Explicit --ids always included.
+    let skippedDeadAts = 0;
+    if (!includeDeadAts && !(specificIds && specificIds.length > 0)) {
+        const before = companies.length;
+        companies = companies.filter((c) => {
+            const status = String(c.ats_status || '').toLowerCase();
+            return status !== 'dead' && status !== 'needs_manual_review';
+        });
+        skippedDeadAts = before - companies.length;
+        if (skippedDeadAts > 0) {
+            console.log(`Skipping ${skippedDeadAts} companies with ats_status dead/needs_manual_review (use --include-dead-ats to force)`);
+        }
+    } else if (includeDeadAts) {
+        console.log('Including dead/needs_manual_review ATS companies (--include-dead-ats)');
+    }
+
     console.log(`Found ${companies.length} companies with configured ATS\n`);
 
     if (fallbackOnlyDryRun && !specificIds) {
@@ -4440,7 +4544,8 @@ export async function syncAll() {
 
         try {
             const fetchOutcome = await fetchJobsWithFallback(company, { fallbackOnly: fallbackOnlyDryRun });
-            const allJobs = fetchOutcome.jobs;
+            const providerKey = (resolved?.provider || normalizeProviderName(ats_provider) || ats_provider || 'custom').toLowerCase();
+            const allJobs = stampAtsProvider(fetchOutcome.jobs, providerKey);
             result.fetched = allJobs.length;
 
             if (!allJobs.length) {
@@ -4456,8 +4561,28 @@ export async function syncAll() {
             const syncMarket = String(company.sync_market || 'uk').toLowerCase();
             const irelandOnlyMarket = syncMarket === 'ireland';
 
+            const pushFilterLog = (
+                decision: 'accept' | 'reject',
+                reason: string,
+                job: Job,
+                market: string | null
+            ) => {
+                if (skipFilterLog || fallbackOnlyDryRun) return;
+                filterLogBuffer.push({
+                    company_id: String(id),
+                    job_url: job.url || null,
+                    raw_location: job.location || null,
+                    source: displayProvider.toLowerCase(),
+                    decision,
+                    reason,
+                    title: job.title || null,
+                    market,
+                    sync_run_id: syncRunId,
+                });
+            };
+
             for (const j of allJobs) {
-                const atsProvider = j.atsProvider ?? j.source ?? '';
+                const atsProvider = j.atsProvider ?? j.source ?? providerKey;
                 const adapterKey = `${atsProvider.toLowerCase()}ToJobLocationInput` as keyof typeof Adapters;
                 const adapter = Adapters[adapterKey];
 
@@ -4493,6 +4618,7 @@ export async function syncAll() {
                         url: j.url,
                         reason: titleReason,
                     });
+                    pushFilterLog('reject', titleReason, j, irelandOnlyMarket ? 'ireland' : 'uk');
                     continue;
                 }
 
@@ -4509,16 +4635,20 @@ export async function syncAll() {
                 if (irelandOnlyMarket) {
                     if (matchesIreland) {
                         irelandJobs.push(j);
+                        pushFilterLog('accept', 'ireland_geo', j, 'ireland');
                     } else {
                         rejectedCount++;
+                        const reason = j.rejection_reason
+                            || (isAmbiguousRemoteLocation(j.location) ? 'ambiguous_remote' : 'not_ireland_market');
                         globalRejectionLog.push({
                             company: trading_name,
                             provider: displayProvider,
                             title: j.title,
                             location: j.location,
                             url: j.url,
-                            reason: j.rejection_reason || 'not_ireland_market'
+                            reason,
                         });
+                        pushFilterLog('reject', reason, j, 'ireland');
                     }
                     continue;
                 }
@@ -4527,19 +4657,24 @@ export async function syncAll() {
                 if (matchesUK) {
                     ukJobs.push(j);
                     if (j.needs_review) needsReviewCount++;
+                    pushFilterLog('accept', trustOk ? 'trusted_company' : 'uk_geo', j, 'uk');
                 }
                 if (matchesIreland) {
                     irelandJobs.push(j);
+                    pushFilterLog('accept', 'ireland_geo', j, 'ireland');
                 } else if (!matchesUK) {
                     rejectedCount++;
+                    const reason = j.rejection_reason
+                        || (isAmbiguousRemoteLocation(j.location) ? 'ambiguous_remote' : 'not_uk');
                     globalRejectionLog.push({
                         company: trading_name,
                         provider: displayProvider,
                         title: j.title,
                         location: j.location,
                         url: j.url,
-                        reason: j.rejection_reason || 'unknown'
+                        reason,
                     });
+                    pushFilterLog('reject', reason, j, 'uk');
                 }
             }
 
@@ -4751,6 +4886,18 @@ export async function syncAll() {
         errored.forEach(r => console.log(`     - ${r.company}: ${r.error}`));
     }
 
+    // Persist filter decisions for DQ (location_filter_log)
+    let filterLogsWritten = 0;
+    if (!fallbackOnlyDryRun && !skipFilterLog) {
+        filterLogsWritten = await flushFilterLogs();
+        if (filterLogsWritten > 0) {
+            console.log(`  📋 Filter log rows: ${filterLogsWritten}`);
+        }
+    } else if (skipFilterLog) {
+        filterLogBuffer.length = 0;
+        console.log('  📋 Filter log skipped (--skip-filter-log)');
+    }
+
     // Persist sync summary for DQ ownership (table: sync_run_summary)
     if (!fallbackOnlyDryRun) {
         const summaryRow = {
@@ -4769,7 +4916,7 @@ export async function syncAll() {
             serper_hits: serperHitCount,
             dry_run: false,
             market_filter: targetMarket || null,
-            notes: `retention=${STALE_JOB_RETENTION_HOURS}h`,
+            notes: `retention=${STALE_JOB_RETENTION_HOURS}h; skipped_dead_ats=${skippedDeadAts}; filter_logs=${filterLogsWritten}`,
         };
         const { error: summaryErr } = await supabase.from('sync_run_summary').insert(summaryRow);
         if (summaryErr) {

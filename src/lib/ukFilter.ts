@@ -2,7 +2,7 @@
  * ukFilter.ts — Deterministic UK Job Filter
  *
  * Implements a 3-layer pipeline for filtering jobs based on structured location data.
- * Priority: Trusted Source > Remote Flag > UK Geography > Hard Block > Global Signal.
+ * Priority: Trusted Source > Remote (UK signal required) > UK Geography > Hard Block.
  */
 
 export type JobLocationInput = {
@@ -172,8 +172,8 @@ const PLACEHOLDER_LOCATION_RE =
 /** Canonical multi-office label written by our normalizer after a job already passed geo checks. */
 const MULTIPLE_LOCATIONS_RE = /^multiple\s+locations?$/i;
 
-// Kept separate from HARD_BLOCKS: a bare "Remote" text signal remains an
-// ambiguous pass (unlike EMEA/Global/etc, which are now hard-blocked above).
+// Kept separate from HARD_BLOCKS: a bare "Remote" text signal is ambiguous and
+// must NOT pass on its own — require an explicit UK remote/geo signal instead.
 const AMBIGUOUS_REMOTE_SIGNALS = ["remote"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -225,7 +225,34 @@ function isUKTerm(loc: string): boolean {
 const US_STATE_CODES =
     'al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy|dc';
 
-/** True when the string looks like US geography (country or ", XX" state code). */
+/** True when the string looks like Canadian geography (country, province, or CA-XX site codes). */
+function hasCanadaGeoSignal(loc: string): boolean {
+    const l = normalize(loc);
+    if (/\b(canada|canadian)\b/.test(l)) return true;
+    if (/\b(british columbia|\bbc\b|ontario|quebec|québec|alberta|manitoba|saskatchewan|nova scotia|new brunswick|newfoundland|labrador|yukon|nunavut|northwest territories)\b/.test(l)) {
+        return true;
+    }
+    // Workday / ATS: CA-ON-Scarborough, CA-QC-LONGUEUIL
+    if (/\bca[-\s](on|qc|bc|ab|mb|sk|ns|nb|nl|pe|yt|nt|nu)\b/.test(l)) return true;
+    // Common CA cities that collide with UK place names when paired above
+    if (/\b(toronto|vancouver|montreal|ottawa|calgary|edmonton|winnipeg|mississauga|brampton|longueuil|scarborough)\b/.test(l)
+        && /\b(canada|ontario|quebec|québec|british columbia|\bbc\b|alberta)\b/.test(l)) {
+        return true;
+    }
+    return false;
+}
+
+/** True when the string looks like Australian geography (incl. NSW city namesakes). */
+function hasAustraliaGeoSignal(loc: string): boolean {
+    const l = normalize(loc);
+    if (/\b(australia|australian)\b/.test(l)) return true;
+    if (/\b(new south wales|\bnsw\b|queensland|tasmania|south australia|western australia|northern territory)\b/.test(l)) {
+        return true;
+    }
+    // Workday / ATS: AU-NSW-Sydney
+    if (/\bau[-\s](nsw|vic|qld|sa|wa|tas|nt|act)\b/.test(l)) return true;
+    return false;
+}
 function hasUsGeoSignal(loc: string): boolean {
     const l = normalize(loc);
     if (/\b(united states|usa|u\.s\.a\.?|u\.s\.?)\b/.test(l)) return true;
@@ -330,43 +357,68 @@ export function isUKJob(input: JobLocationInput): boolean {
     // 1. Trust the source (e.g. facet-filtered Workday results, NHS)
     if (isTrustedSource) return true;
 
-    // 2. Trust an explicit remote flag — but only if no non-UK country is specified.
-    // "Remote" or "Remote UK" → accept. "Remote (USA)" / "Remote - Germany" → fall through.
-    if (isRemote) {
-        const combined = locations.join(' ').toLowerCase();
-        const hasNonUKCountry = isBlockedTerm(combined);
-        if (!hasNonUKCountry) return true;
-        // Has non-UK signal — fall through to geography checks below
-    }
-
-    // Drop ATS placeholders ("3 Locations", "+2 More…", "All Roles") — no geographic signal.
-    // Keep "Multiple Locations" (our normalizer's label for real multi-office posts).
     const locs = locations
         .map(normalize)
         .filter(Boolean)
         .filter(loc => !PLACEHOLDER_LOCATION_RE.test(loc));
 
-    if (!locs.length && !isRemote) return false;
-
-    // Canonical multi-office label from normalizeLocations — same stance as bare "Remote".
+    // Canonical multi-office label from normalizeLocations — already passed geo once.
     for (const loc of locs) {
         if (MULTIPLE_LOCATIONS_RE.test(loc)) return true;
+    }
+
+    const allCombined = locs.join(' ');
+    const onlyAmbiguousRemote =
+        locs.length > 0 &&
+        locs.every((loc) => AMBIGUOUS_REMOTE_SIGNALS.some((s) => loc === s || loc === `(${s})`));
+
+    // 2. Explicit remote flag — require a UK signal. Bare Remote / empty location → reject.
+    // "Remote UK" / "Remote + London" → accept. "Remote (USA)" → fall through to hard-block.
+    if (isRemote) {
+        if (locs.length === 0 || onlyAmbiguousRemote) return false;
+        if (isBlockedTerm(allCombined)) {
+            // Non-UK country present — use the same hard-block rules as on-site jobs
+        } else if (
+            hasDefinitiveUKSignal(allCombined) ||
+            hasUkCitySignal(allCombined) ||
+            locs.some((loc) => isUKTerm(loc))
+        ) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    if (!locs.length) return false;
+
+    // Country/province signals that collide with UK place names (Surrey BC, CA-ON-Scarborough,
+    // Newcastle NSW). Reject unless an explicit UK country/nation term is also present —
+    // even when the string never contains the word "Canada"/"Australia".
+    if (
+        (hasUsGeoSignal(allCombined) || hasCanadaGeoSignal(allCombined) || hasAustraliaGeoSignal(allCombined))
+        && !hasDefinitiveUKSignal(allCombined)
+    ) {
+        return false;
     }
 
     // 3-4. Hard block vs UK geography
     // Check the FULL combined string for hard blocks first. If any hard block is present,
     // city names alone are not sufficient — "London, Ontario, Canada" and "Jersey City, New Jersey"
     // both contain UK city terms but are clearly not UK. Require a definitive nation/country signal.
-    const allCombined = locs.join(' ');
     if (isBlockedTerm(allCombined)) {
-        // US rows often reuse UK city namesakes (Bedford MA, Birmingham AL, Manchester NH).
-        // Require an explicit UK country/nation term — a shared city name alone is not enough.
-        if (hasUsGeoSignal(allCombined)) {
+        // US / Canada / Australia reuse UK city & county namesakes (Surrey BC, Newmarket ON,
+        // Bedford MA, Newcastle NSW). Require an explicit UK country/nation term — a shared
+        // city name alone is not enough.
+        if (
+            hasUsGeoSignal(allCombined) ||
+            hasCanadaGeoSignal(allCombined) ||
+            hasAustraliaGeoSignal(allCombined)
+        ) {
             return hasDefinitiveUKSignal(allCombined);
         }
-        // Foreign country / Dublin / NSW present → require a real UK *city* (or Northern Ireland).
-        // Bare "United Kingdom" / "England" is not enough (fixes NSW "wales", North Wales PA,
-        // "Hoofddorp, ENGLAND, Netherlands", "Dublin, United Kingdom").
+        // Other foreign country / Dublin present → require a real UK *city* (or Northern Ireland).
+        // Bare "United Kingdom" / "England" is not enough (fixes "Hoofddorp, ENGLAND, Netherlands",
+        // "Dublin, United Kingdom").
         return hasUkCitySignal(allCombined);
     }
 
@@ -375,12 +427,8 @@ export function isUKJob(input: JobLocationInput): boolean {
         if (isUKTerm(loc)) return true;
     }
 
-    // 5. Bare "remote" text is still ambiguous — don't reject outright.
+    // 5. Bare "remote" text alone is NOT UK — require an explicit UK remote/geo signal.
     // (EMEA/Global/Worldwide/etc are handled above via HARD_BLOCKS + hasUkCitySignal.)
-    for (const loc of locs) {
-        if (AMBIGUOUS_REMOTE_SIGNALS.some(s => loc.includes(s))) return true;
-    }
-
     // Default: reject
     return false;
 }

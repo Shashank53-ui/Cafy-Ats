@@ -78,7 +78,9 @@ const FOREIGN_CITIES = [
     'seoul', 'taipei', 'bangkok', 'zagreb', 'jakarta', 'manila',
     'kuala lumpur', 'ho chi minh',
     'mumbai', 'delhi', 'bangalore', 'bengaluru', 'pune', 'chennai', 'hyderabad', 'kolkata',
-    'toronto', 'vancouver', 'montreal', 'sydney', 'melbourne', 'brisbane', 'auckland',
+    'toronto', 'vancouver', 'montreal', 'ottawa', 'calgary', 'edmonton', 'winnipeg',
+    'quebec', 'québec', 'longueuil', 'mississauga', 'brampton', 'hamilton', 'victoria',
+    'sydney', 'melbourne', 'brisbane', 'auckland',
     'johannesburg', 'cape town', 'abu dhabi', 'riyadh', 'doha', 'tel aviv',
     // Colorado / US towns that leaked via trailing ", CO" county false positive
     'boulder', 'breckenridge', 'fort collins', 'colorado springs',
@@ -204,8 +206,11 @@ function hasIrishCountySignal(combined: string): boolean {
     return !hasForeignCity(combined);
 }
 
-// Eircode routing key + unique identifier, e.g. "D02 XY01", "A65F4E2"
-const EIRCODE_RE = /\b[a-z]\d{2}\s?[a-z\d]{4}\b/i;
+// Eircode routing key + unique identifier, e.g. "D02 XY01", "A65 F4E2".
+// Irish routing keys never use B,G,I,J,L,M,O,Q,S,U,Z — rejecting those
+// prevents Workday site noise like "J01 BLDG" (Longueuil, Canada) from
+// being treated as a Republic of Ireland postcode.
+const EIRCODE_RE = /\b[acdefhknprtvwxy]\d{2}\s?[a-z\d]{4}\b/i;
 
 /** US state full names — bare "Ireland" alongside these is not enough.
  *  Excludes "georgia" (collides with the country of Georgia in EMEA multi-loc lists).
@@ -294,11 +299,23 @@ function hasIrishCountyName(combined: string): boolean {
 }
 
 /**
- * Workday-style "CN - Shenzhen" / "US - New York" → normalized "cn shenzhen".
+ * Workday-style "CN - Shenzhen" / "US - New York" / "CA-QC-LONGUEUIL" →
+ * normalized "cn shenzhen" / "ca qc longueuil".
  * Leading non-IE ISO2 without an Irish place is treated as foreign.
  * Site-code noise like "Au-Sa-Cavan 1 Month Ago" still counts as foreign ISO.
  */
 function hasLeadingNonIeIsoPrefix(combined: string): boolean {
+    // Workday campus codes: CA-QC-LONGUEUIL-J01 (country-region-site…)
+    // Do NOT treat Irish "Co. Clare" → "co-clare" as this pattern (needs region + another '-').
+    const siteCode = combined.replace(/\s+/g, '-');
+    const workday = /^([a-z]{2})-([a-z]{2})-/.exec(siteCode);
+    if (workday) {
+        const country = workday[1];
+        if (country !== 'ie' && NON_IE_ISO2.has(country) && !hasDefinitiveIrelandSignal(combined)) {
+            return true;
+        }
+    }
+
     const m = /^([a-z]{2})\s+(.+)$/.exec(combined);
     if (!m) return false;
     const [, code, rest] = m;
@@ -353,8 +370,9 @@ export function isIrelandJob(location: string | null | undefined, locations: str
     // Scraped ATS garbage timestamps are never real locations.
     if (/\b(\d+\s+)?(months?|weeks?|days?)\s+ago\b/.test(combined)) return false;
 
-    // Bare Eircode is a definitive RoI signal.
-    if (EIRCODE_RE.test(combined)) return true;
+    // Bare Eircode is a definitive RoI signal — but never when a non-IE country
+    // prefix / hard-block is present (e.g. Workday "CA-QC-… J01 BLDG").
+    if (EIRCODE_RE.test(combined) && !isHardBlocked(combined, rawJoined)) return true;
 
     // Bare ISO / county codes alone ("CN", "US") are not Ireland locations.
     if (/^[a-z]{2}$/.test(combined) && combined !== 'ie') return false;

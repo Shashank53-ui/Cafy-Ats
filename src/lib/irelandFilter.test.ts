@@ -188,3 +188,11 @@ test('Ireland Filter: rejects WW/worldwide and NI typos; accepts Eircode', () =>
     assert.strictEqual(isIrelandJob('D02 XY01'), true);
     assert.strictEqual(isIrelandJob('D02XY01'), true);
 });
+
+test('Ireland Filter: rejects Canada Workday site codes (false Eircode J01 BLDG)', () => {
+    const longueuil = 'CA-QC-LONGUEUIL-J01 ~ 1000 Blvd Marie-Victorin ~ J01 BLDG';
+    assert.strictEqual(isIrelandJob(longueuil), false, 'Longueuil QC must not pass as Ireland');
+    assert.strictEqual(isIrelandJob('CA-ON-TORONTO-A01 ~ Some Street'), false);
+    assert.strictEqual(isIrelandJob('J01 BLDG'), false, 'Invalid routing key J must not match Eircode');
+    assert.strictEqual(isIrelandJob('Longueuil, Quebec, Canada'), false);
+});
