@@ -600,9 +600,8 @@ export function resolveProviderAndToken(
         if (urlForParsing) {
             try {
                 const parsed = new URL(urlForParsing);
-                const pathParts = parsed.pathname.split('/').filter(Boolean);
-                // URL format: subdomain.wdN.myworkdayjobs.com/BoardName/en-US/...
-                // or wdN.myworkdayjobs.com/subdomain/BoardName/en-US/...
+                const pathParts = parsed.pathname.split('/').filter(Boolean).filter(p => !/^[a-z]{2}-[a-z]{2}$/i.test(p));
+                // URL format: subdomain.wdN.myworkdayjobs.com/BoardName/...
                 let boardName = '';
                 let subdomain = '';
 
@@ -615,7 +614,7 @@ export function resolveProviderAndToken(
                     boardName = pathParts[1];
                 }
 
-                if (subdomain && boardName && boardName !== 'en-US' && boardName !== 'en-GB') {
+                if (subdomain && boardName) {
                     return { provider: 'workday', token: `${subdomain}/${boardName}` };
                 }
             } catch { /* ignore parse errors */ }
@@ -704,10 +703,30 @@ function inferAtsFromCareersUrl(url: string | null | undefined): { provider: str
             const token = host.split('.')[0] || '';
             return token ? { provider: 'icims', token } : null;
         }
+        if (host.includes('eightfold.ai')) {
+            const domainParam = parsed.searchParams.get('domain');
+            if (domainParam) {
+                return { provider: 'eightfold', token: `${host}|${domainParam}` };
+            } else {
+                const tenant = host.split('.')[0];
+                return { provider: 'eightfold', token: `${host}|${tenant}.com` };
+            }
+        }
         if (host.includes('myworkdayjobs.com')) {
-            const subdomain = host.split('.')[0] || '';
-            const boardName = parts[0] || '';
-            if (subdomain && boardName && boardName !== 'en-US' && boardName !== 'en-GB') {
+            // company.wdN.myworkdayjobs.com/BoardName
+            // or wdN.myworkdayjobs.com/company/BoardName
+            const cleanParts = parts.filter(p => !/^[a-z]{2}-[a-z]{2}$/i.test(p));
+            const hostParts = host.split('.');
+            let subdomain = '';
+            let boardName = '';
+            if (hostParts[0] && !hostParts[0].startsWith('wd')) {
+                subdomain = hostParts[0];
+                boardName = cleanParts[0] || '';
+            } else if (cleanParts.length >= 2) {
+                subdomain = cleanParts[0];
+                boardName = cleanParts[1];
+            }
+            if (subdomain && boardName) {
                 return { provider: 'workday', token: `${subdomain}/${boardName}` };
             }
             return { provider: 'workday', token: normalizedUrl };
@@ -1138,7 +1157,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
             if (withMarket.error && /sync_market|ats_status|careers_url/i.test(withMarket.error.message)) {
                 const fallback = await supabase
                     .from('companies')
-                    .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
+                    .select('id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector')
                     .in('id', specificIds)
                     .order('trading_name');
                 data = fallback.data;
@@ -1273,6 +1292,50 @@ function normalizeTeamtailorHtmlToken(token: string): string {
 }
 
 // ─── ATS Fetchers — each accepts (token: string) and returns Job[] ─────────
+
+async function fetchJibe(domain: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    let page = 1;
+    while (true) {
+        try {
+            const res = await fetchWithTimeout(`https://${domain}/api/jobs?page=${page}&limit=100`, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!res.ok) break;
+            const data = await res.json();
+            const jobs = data.jobs || [];
+            if (jobs.length === 0) break;
+            
+            for (const j of jobs) {
+                const title = j.title || j.data?.title || '';
+                const location = j.full_location || j.location || j.city || j.data?.full_location || j.data?.location || j.data?.city || '';
+                const slug = j.slug || j.req_id || j.id || j.data?.slug || j.data?.req_id || j.data?.id;
+                
+                if (title && slug) {
+                    let dept = j.category || j.data?.category || '';
+                    if (Array.isArray(dept)) dept = dept.join(', ');
+                    
+                    allJobs.push({
+                        title,
+                        location,
+                        url: `https://${domain}/jobs/${slug}`,
+                        department: dept,
+                        salary: undefined,
+                        verified: false,
+                        atsProvider: 'jibe'
+                    });
+                }
+            }
+            if (jobs.length < 100) break;
+            page++;
+            await sleep(300);
+        } catch (e: any) {
+            console.error(`[Jibe] ${domain} error: ${e.message}`);
+            break;
+        }
+    }
+    return allJobs;
+}
 
 async function fetchGreenhouse(token: string): Promise<Job[]> {
     // Support tokens like "gympass?office_id=4038159002"
@@ -1878,7 +1941,7 @@ async function fetchPersonio(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-async function fetchWorkday(token: string): Promise<Job[]> {
+async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]> {
     let slug = '';
     let board = '';
     let detectedWd = '';
@@ -1903,9 +1966,12 @@ async function fetchWorkday(token: string): Promise<Job[]> {
             const wdPart = hostParts.find(p => /^wd\d+$/.test(p));
             if (wdPart) detectedWd = wdPart;
 
-            const filteredParts = pathParts.filter(p => !['wday', 'cxs', 'en-us', 'en-gb', 'jobs'].includes(p.toLowerCase()));
+            const filteredParts = pathParts.filter(p => !['wday', 'cxs', 'jobs'].includes(p.toLowerCase()) && !/^[a-z]{2}-[a-z]{2}$/i.test(p));
 
-            if (hostParts[0] && !hostParts[0].startsWith('wd')) {
+            if (pathParts[0]?.toLowerCase() === 'recruiting' && pathParts.length >= 2) {
+                slug = pathParts[1];
+                board = pathParts.slice(2).join('/') || 'External';
+            } else if (hostParts[0] && !hostParts[0].startsWith('wd')) {
                 slug = hostParts[0];
                 board = filteredParts.find(p => p !== slug) || filteredParts[0] || '';
             } else if (pathParts.length >= 2) {
@@ -1914,9 +1980,14 @@ async function fetchWorkday(token: string): Promise<Job[]> {
             }
         } catch { /* ignore */ }
     } else {
-        const parts = token.split('/');
-        slug = parts[0];
-        board = parts.slice(1).join('/');
+        const parts = token.split('/').filter(Boolean);
+        if (parts[0]?.toLowerCase() === 'recruiting' && parts.length >= 2) {
+            slug = parts[1];
+            board = parts.slice(2).join('/') || 'External';
+        } else {
+            slug = parts[0];
+            board = parts.slice(1).join('/');
+        }
     }
 
     if (!slug || !board) return [];
@@ -2062,7 +2133,7 @@ async function fetchWorkday(token: string): Promise<Job[]> {
                 let explicitNonUKCount = 0;
                 let explicitUKCount = 0;
                 for (const p of posts.slice(0, 20)) {
-                    const loc = normalizeLocation(p.locationsText || p.bulletFields?.[1] || '');
+                    const loc = normalizeLocation(p.locationsText || p.bulletFields?.[0] || '');
                     const isUK = isUKLocation(loc);
                     const isAmbiguous = !loc || /\d+\s+locations?/.test(loc)
                         || /^(remote|flexible|hybrid|anywhere|worldwide|global|distributed|not specified|location negotiable|negotiable|tbd|various|see description)$/.test(loc);
@@ -2104,18 +2175,58 @@ async function fetchWorkday(token: string): Promise<Job[]> {
                     if (currentPosts.length === 0) break;
                     allJobs.push(...currentPosts.map((j: any) => ({
                         title: j.title || '',
-                        location: j.locationsText || j.bulletFields?.[1] || '',
+                        location: j.locationsText || j.bulletFields?.[0] || '',
                         url: `${publicBase}${j.externalPath}`,
                         department: '',
                         salary: undefined,
                         verified: facetIsTrusted,
                         atsProvider: 'workday',
-                        locationsText: j.locationsText || j.bulletFields?.[1] || ''
+                        locationsText: j.locationsText || j.bulletFields?.[0] || ''
                     })));
 
                     offset += 20;
                     await sleep(300);
                 }
+
+                // ── Ireland pass: always run for every company ───────────────────────
+                // Workday's UK country facet filters out Ireland jobs server-side.
+                // We do a fast targeted search for "ireland" to recover any Irish-city
+                // postings without paginating the full global board. Deduplicates by URL.
+                try {
+                    const seenUrls = new Set(allJobs.map(j => j.url));
+                    let irOffset = 0;
+                    let irTotal = 20; // start small — update from first response
+                    while (irOffset < irTotal) {
+                        const irRes = await fetchWithTimeout(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
+                            body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: irOffset, searchText: 'ireland' })
+                        });
+                        if (!irRes.ok) break;
+                        const irData = await irRes.json();
+                        const irPosts: any[] = irData.jobPostings || [];
+                        if (!irPosts.length) break;
+                        irTotal = Math.min(irData.total || irTotal, 200); // cap at 200 safety limit
+                        for (const j of irPosts) {
+                            const jobUrl = `${publicBase}${j.externalPath}`;
+                            if (!seenUrls.has(jobUrl)) {
+                                seenUrls.add(jobUrl);
+                                allJobs.push({
+                                    title: j.title || '',
+                                    location: j.locationsText || j.bulletFields?.[0] || '',
+                                    url: jobUrl,
+                                    department: '',
+                                    salary: undefined,
+                                    verified: false,
+                                    atsProvider: 'workday',
+                                });
+                            }
+                        }
+                        irOffset += 20;
+                        if (irOffset < irTotal) await sleep(300);
+                    }
+                } catch { /* Ireland pass is best-effort — never block UK results */ }
+
                 return allJobs;
             } catch (err: any) {
                 // Silently ignore "fetch failed" as it's expected when brute-forcing subdomains
@@ -2249,37 +2360,120 @@ async function fetchWipro(token: string): Promise<Job[]> {
 
 async function fetchSuccessFactors(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
-    let startrow = 0;
-    while (true) {
-        try {
-            const url = `https://careers.${token}/search/?q=&locationsearch=united+kingdom&startrow=${startrow}`;
-            const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            if (!res.ok) break;
-            const html = await res.text();
-            const $ = cheerio.load(html);
-            const rows = $('tr.data-row');
-            if (rows.length === 0) break;
-            rows.each((_, el) => {
-                const row = $(el);
-                const titleLink = row.find('.jobTitle a');
-                const title = titleLink.text().trim();
-                const jobUrl = titleLink.attr('href');
-                const location = row.find('.jobLocation').text().trim();
-                if (title && jobUrl) {
-                    allJobs.push({
-                        title,
-                        location: location.split('\n')[0].trim(),
-                        url: jobUrl.startsWith('http') ? jobUrl : `https://careers.${token}${jobUrl}`
-                        ,
-                        salary: undefined
-                    });
-                }
+    try {
+        let domain = token;
+        
+        // If the token is just a company ID like 'bmwag', construct the default legacy URL to extract the real CSB domain
+        if (!token.includes('.') && !token.includes('http')) {
+            token = `https://career5.successfactors.eu/careers?company=${token}`;
+        }
+        
+        if (token.includes('http')) {
+            const redirectRes = await fetchWithTimeout(token, { headers: { 'User-Agent': 'Mozilla/5.0' }, redirect: 'follow' });
+            const htmlText = await redirectRes.text();
+            
+            const csbMatch = htmlText.match(/https?:\/\/([^\/]+)\/services\/security\/logoutp/i) || 
+                             htmlText.match(/https?:\/\/([^\/]+)\/search\/?\?/i);
+            if (csbMatch) {
+                domain = csbMatch[1];
+            } else {
+                return [];
+            }
+        } else if (token.includes('.')) {
+            // It's already a domain like jobs.company.com
+            domain = token;
+        } else {
+            return [];
+        }
+
+        const csbBaseUrl = `https://${domain}`;
+        const searchUrl = `${csbBaseUrl}/search/?q=`;
+        
+        const initRes = await fetchWithTimeout(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!initRes.ok) return [];
+        
+        const initHtml = await initRes.text();
+        // Extract cookie name=value pairs only — never forward Set-Cookie attributes
+        const headersAny = initRes.headers as Headers & { getSetCookie?: () => string[] };
+        const setCookieList = typeof headersAny.getSetCookie === 'function'
+            ? headersAny.getSetCookie()
+            : [];
+        const cookies = (setCookieList.length > 0
+            ? setCookieList
+            : [initRes.headers.get('set-cookie') || ''].filter(Boolean)
+        )
+            .map(c => c.split(';')[0].trim())
+            .filter(pair => pair.includes('='))
+            .join('; ');
+        
+        const csrfMatch = initHtml.match(/"X-CSRF-Token"\s*:\s*"([^"]+)"/i);
+        if (!csrfMatch) return [];
+        
+        const csrf = csrfMatch[1];
+        
+        let offset = 0;
+        const limit = 100;
+        
+        while (true) {
+            const apiRes = await fetchWithTimeout(`${csbBaseUrl}/services/recruiting/v1/jobs`, {
+                method: 'POST',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': csrf,
+                    ...(cookies ? { 'Cookie': cookies } : {}),
+                },
+                body: JSON.stringify({
+                    searchFilters: { searchQuery: "" },
+                    locale: "en_US",
+                    limit,
+                    offset
+                })
             });
-            if (rows.length < 20) break;
-            startrow += 20;
-            await sleep(500);
-        } catch { break; }
+            
+            if (!apiRes.ok) break;
+            const data = await apiRes.json();
+            const jobReqs = data.jobSearchResult || [];
+            
+            if (jobReqs.length === 0) break;
+            
+            for (const j of jobReqs) {
+                if (j.response) {
+                    const title = j.response.unifiedStandardTitle || j.response.title || j.response.jobTitle || '';
+                    let location = j.response.location || j.response.city || j.response.country || j.response.department || '';
+                    
+                    if (!location && j.response.customField5) {
+                        location = j.response.customField5;
+                    }
+                    
+                    const urlTitle = j.response.urlTitle || j.response.unifiedUrlTitle || '';
+                    const jobId = j.response.id || '';
+                    const jobUrl = `${csbBaseUrl}/job/${urlTitle}/${jobId}-en_US`;
+                    
+                    if (title && jobId) {
+                        allJobs.push({
+                            title,
+                            location,
+                            url: jobUrl,
+                            department: '',
+                            salary: undefined,
+                            verified: false,
+                            atsProvider: 'successfactors'
+                        });
+                    }
+                }
+            }
+            
+            offset += jobReqs.length;
+            if (offset >= (data.totalJobs || 0)) break;
+            
+            await sleep(300);
+        }
+    } catch (e: any) {
+        console.error(`[SuccessFactors] ${token} error: ${e.message}`);
     }
+    
     return allJobs;
 }
 
@@ -2309,9 +2503,30 @@ async function fetchHibob(token: string): Promise<Job[]> {
 }
 
 async function fetchEightfold(token: string): Promise<Job[]> {
-    // token format: "domain.com|filter_country" e.g. "vodafone.com|United Kingdom"
-    const [domain, country] = token.split('|');
-    if (!domain) return [];
+    let host = '';
+    let apiDomain = '';
+    let country = '';
+
+    const parts = token.split('|');
+    if (parts.length === 2 && (parts[1].includes('.com') || parts[1].includes('.ai'))) {
+        host = parts[0];
+        apiDomain = parts[1];
+    } else {
+        const domain = parts[0];
+        if (!domain) return [];
+        country = parts[1] || '';
+        
+        if (!domain.includes('.')) {
+            host = domain + '.eightfold.ai';
+            apiDomain = domain + '.com';
+        } else if (domain === 'ukg.com' || domain === 'app.eightfold.ai') {
+            host = 'app.eightfold.ai';
+            apiDomain = domain === 'app.eightfold.ai' ? 'ukg.com' : domain;
+        } else {
+            host = 'jobs.' + domain;
+            apiDomain = domain;
+        }
+    }
 
     const allJobs: Job[] = [];
     let start = 0;
@@ -2323,7 +2538,7 @@ async function fetchEightfold(token: string): Promise<Job[]> {
 
     while (true) {
         try {
-            const url = `https://jobs.${domain}/api/pcsx/search?domain=${domain}&query=&start=${start}&sort_by=timestamp${countryQs}`;
+            const url = `https://${host}/api/pcsx/search?domain=${apiDomain}&query=&start=${start}&sort_by=timestamp${countryQs}`;
 
             const res = await fetchWithTimeout(url, {
                 headers: {
@@ -2340,7 +2555,7 @@ async function fetchEightfold(token: string): Promise<Job[]> {
             allJobs.push(...positions.map((p: any) => ({
                 title: p.name || '',
                 location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
-                url: `https://jobs.${domain}${p.positionUrl}`,
+                url: `https://${host}${p.positionUrl}${apiDomain !== host.split('.')[0] + '.com' && apiDomain !== host ? '?domain=' + apiDomain : ''}`,
                 department: p.department || '',
                 salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
             })));
@@ -2364,6 +2579,18 @@ async function fetchICIMS(token: string): Promise<Job[]> {
             if (!res.ok) break;
 
             const html = await res.text();
+            
+            // Check for Jibe redirect (e.g., SiriusXM / Adswizz)
+            const jibeMatch = html.match(/window\.top\.location\.href\s*=\s*['"]([^'"]+)['"]/i);
+            if (jibeMatch) {
+                const jibeUrl = jibeMatch[1].replace(/\\\//g, '/'); // Fix escaped slashes
+                const domainMatch = jibeUrl.match(/^https?:\/\/([^\/]+)/i);
+                if (domainMatch) {
+                    console.log(`[iCIMS] Detected Jibe redirect to ${domainMatch[1]}`);
+                    return fetchJibe(domainMatch[1]);
+                }
+            }
+
             const $ = cheerio.load(html);
             const cards = $('.iCIMS_JobsTable .iCIMS_JobCardItem');
             
