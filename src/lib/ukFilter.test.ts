@@ -17,12 +17,13 @@ test('UK Filter: Trusted source', () => {
 });
 
 test('UK Filter: Remote flag', () => {
+    // Bare remote flag with no UK geo is no longer enough
     const input: JobLocationInput = {
         isTrustedSource: false,
         locations: [],
         isRemote: true
     };
-    assert.strictEqual(isUKJob(input), true, 'isRemote true should return true');
+    assert.strictEqual(isUKJob(input), false, 'isRemote true with no location should return false');
 });
 
 test('UK Filter: UK city', () => {
@@ -176,13 +177,12 @@ test('UK Filter: Ambiguous remote', () => {
         locations: ["Remote"],
         isRemote: false
     };
-    // "Remote" in locations string should pass via GLOBAL_SIGNALS
-    assert.strictEqual(isUKJob(input), true, 'Bare "Remote" in locations string should return true');
+    assert.strictEqual(isUKJob(input), false, 'Bare "Remote" in locations string should return false');
 });
 
 test('UK Filter: Remote flag bare (no location)', () => {
     const input: JobLocationInput = { isTrustedSource: false, locations: [], isRemote: true };
-    assert.strictEqual(isUKJob(input), true, 'isRemote with no location should pass');
+    assert.strictEqual(isUKJob(input), false, 'isRemote with no location should reject');
 });
 
 test('UK Filter: Remote - United States blocked', () => {
@@ -372,6 +372,34 @@ test('UK Filter: UK counties and Winnersh', () => {
             `${loc} must pass`,
         );
     }
+});
+
+test('UK Filter: Canada namesakes blocked (Surrey BC, Newmarket ON, Victoria BC)', () => {
+    for (const loc of [
+        'Surrey, British Columbia, Canada',
+        'Surrey, Bc, Canada',
+        'Newmarket, Ontario, Canada',
+        'Victoria, British Columbia, Canada',
+        'Sussex, New Brunswick, Canada',
+        'Ca-On-Scarborough 17 Hours Ago',
+        'CA-QC-LONGUEUIL-J01 ~ 1000 Blvd Marie-Victorin ~ J01 BLDG',
+    ]) {
+        assert.strictEqual(
+            isUKJob({ isTrustedSource: false, locations: [loc], isRemote: false }),
+            false,
+            `${loc} should be rejected`,
+        );
+    }
+    // Dual office with explicit UK country still ok
+    assert.strictEqual(
+        isUKJob({
+            isTrustedSource: false,
+            locations: ['London, United Kingdom | Toronto, Canada'],
+            isRemote: false,
+        }),
+        true,
+        'London UK + Toronto Canada should pass',
+    );
 });
 
 test('UK Filter: production foreign leaks stay blocked', () => {

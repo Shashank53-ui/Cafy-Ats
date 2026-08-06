@@ -1,5 +1,5 @@
--- Persist pass/block decisions from UK/Ireland location filtering for auditability
--- NOTE: companies.id is TEXT in production — company_id must match.
+-- Fix location_filter_log FK: production companies.id is TEXT, not INTEGER.
+-- Run this instead of (or after failing) the INTEGER FK version.
 
 CREATE TABLE IF NOT EXISTS public.location_filter_log (
     id BIGSERIAL PRIMARY KEY,
@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS public.location_filter_log (
     sync_run_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- If you already created the table with INTEGER company_id and it has no rows:
+-- DROP TABLE IF EXISTS public.location_filter_log;
+-- then re-run the CREATE above.
 
 CREATE INDEX IF NOT EXISTS idx_location_filter_log_created_at
     ON public.location_filter_log(created_at DESC);
@@ -32,3 +36,12 @@ CREATE INDEX IF NOT EXISTS idx_location_filter_log_reason
 
 CREATE INDEX IF NOT EXISTS idx_location_filter_log_market
     ON public.location_filter_log(market);
+
+-- Cleanup Canada Workday site-code leaks that matched a false "Eircode" (J01 BLDG)
+DELETE FROM public."jobs_IR"
+WHERE location ILIKE '%LONGUEUIL%'
+   OR location ILIKE '%Marie-Victorin%'
+   OR location ILIKE 'CA-QC-%'
+   OR location ILIKE 'CA-ON-%'
+   OR location ILIKE 'CA-AB-%'
+   OR location ILIKE 'CA-BC-%';
