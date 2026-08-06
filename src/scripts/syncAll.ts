@@ -108,8 +108,12 @@ interface JobRow {
     level: string | null;
     sector: string | null;
     updated_at: string;
+    last_seen_at: string;
     source?: 'ats' | 'linkedin';
 }
+
+/** Soft-delete grace: jobs not refreshed within this window are purged. */
+const STALE_JOB_RETENTION_HOURS = 48;
 
 // Rejection log array to track dropped jobs
 interface RejectionLogEntry {
@@ -332,6 +336,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
         // than leaving the column blank.
         const sector = inferJobSector(safeStr(j.title), j.department, company.company_sector) || 'Other';
         const rawDept = j.department ? safeStr(j.department, 255) : '';
+        const nowIso = new Date().toISOString();
 
         rows.push({
             company_id: companyId,
@@ -341,7 +346,8 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             department: rawDept || sector,
             level: inferJobLevel(safeStr(j.title)),
             sector,
-            updated_at: new Date().toISOString()
+            updated_at: nowIso,
+            last_seen_at: nowIso,
         });
     }
     return rows;
@@ -435,8 +441,9 @@ function safeStr(s: any, maxLen = 500): string {
 
 const LOW_PROFILE_TITLE_PATTERN = /\b(customer (assistant|team member|colleague|care advi[cs]or)|sales assistant|store assistant|shop assistant|checkout (operator|assistant|colleague)|night fill|shelf (stacker|filler|colleague)|replenishment (assistant|colleague|operator)|van driver|delivery driver|picker|packer|warehouse (operative|assistant|colleague)|stock (replenishment|assistant|colleague)|counter assistant|retail (assistant|adviser|advisor|store manager|sales advi[cs]or|advi[cs]or)|store manager|assistant store manager|visual merchandis|till operator|shop floor|consumer sales advi[cs]or|webchat sales advi[cs]or|barista|bar staff|waiter|waitress|food runner|kitchen (porter|assistant|crew)|dishwasher|clean(er|ers|ing)\b|cleaning (operative|supervisor|team leader|manager|coordinator|assistant|technician|controller|inspector)|hgv driver|security (guard|officer|operative|supervisor|team leader|warden|patrol)|(relief|mobile|static|door|night|site) security (officer|guard|operative)|cctv (operator|officer|monitor)|door supervisor|crowd steward|event steward|match day steward|housekeeper|housekeeping|waste (operative|collector|handler|driver|technician)|janitor|caretaker|groundsman|groundswoman|grounds maintenance|groundskeeper|window clean|pest control|laundry (operative|assistant)|room attendant|maintenance operative|car park (attendant|operative|marshal)|parking (attendant|warden|marshal)|domestic (operative|assistant|services team)|porter(?! manage))\b/i;
 
-export function isValidJobTitle(title: string): boolean {
-    if (!title || title.length < 3) return false;
+/** Returns a reject reason code, or null if the title is acceptable. */
+export function getJobTitleRejectReason(title: string): string | null {
+    if (!title || title.length < 3) return 'title_too_short';
     const lower = title.toLowerCase().trim();
     const junk = [
         'see all jobs', 'view all jobs', 'all jobs', 'all openings', 'join our team',
@@ -449,10 +456,14 @@ export function isValidJobTitle(title: string): boolean {
         'jobs and careers', 'careers', 'our vacancies', 'view vacancies', 'vacancies', 'details', 'view details & apply',
         'view role ↗', 'more detail'
     ];
-    if (junk.includes(lower)) return false;
-    if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return false;
-    if (LOW_PROFILE_TITLE_PATTERN.test(title)) return false;
-    return true;
+    if (junk.includes(lower)) return 'title_junk';
+    if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return 'title_junk';
+    if (LOW_PROFILE_TITLE_PATTERN.test(title)) return 'title_low_profile';
+    return null;
+}
+
+export function isValidJobTitle(title: string): boolean {
+    return getJobTitleRejectReason(title) === null;
 }
 
 // ─── Provider Alias Map ──────────────────────────────────────────────────────
@@ -4251,8 +4262,14 @@ export async function syncAll() {
   try {
     const startTime = Date.now();
     const syncRunId = crypto.randomUUID();
+    // Module-level logs/counters persist across cron warm starts — reset each run.
+    globalRejectionLog.length = 0;
+    serperCallCount = 0;
+    serperHitCount = 0;
     console.log('\n════════════════════════════════════════════════════');
     console.log('  DAILY SYNC — ' + new Date().toISOString());
+    console.log(`  sync_run_id=${syncRunId}`);
+    console.log(`  stale_retention=${STALE_JOB_RETENTION_HOURS}h (soft-delete; no wipe-on-empty)`);
     console.log('════════════════════════════════════════════════════\n');
 
     const args = process.argv.slice(2);
@@ -4381,6 +4398,9 @@ export async function syncAll() {
 
     const results: SyncResult[] = [];
     let totalSaved = 0;
+    let totalRejected = 0;
+    let wipePreventedCount = 0;
+    let stalePurgedCount = 0;
 
     // Each company's fetch/filter/persist pipeline is unchanged — only how
     // many run at once has changed. Companies used to run strictly one at a
@@ -4462,8 +4482,17 @@ export async function syncAll() {
                 // "India Remote" are not accepted as bare Remote UK jobs.
                 const locationInput = adapter ? adapter(j) : buildLocationInput(j);
 
-                if (!isValidJobTitle(j.title)) {
+                const titleReason = getJobTitleRejectReason(j.title);
+                if (titleReason) {
                     rejectedCount++;
+                    globalRejectionLog.push({
+                        company: trading_name,
+                        provider: displayProvider,
+                        title: j.title,
+                        location: j.location,
+                        url: j.url,
+                        reason: titleReason,
+                    });
                     continue;
                 }
 
@@ -4518,6 +4547,7 @@ export async function syncAll() {
             result.irelandJobs = irelandJobs.length;
             result.rejected = rejectedCount;
             result.needsReview = needsReviewCount;
+            totalRejected += rejectedCount;
 
             const ukRows = irelandOnlyMarket ? [] : await buildRowsForJobs(company, id, ukJobs, 'uk');
             const irelandRows = (await buildRowsForJobs(company, id, irelandJobs, 'ireland')).map((row) => ({
@@ -4526,89 +4556,128 @@ export async function syncAll() {
             }));
 
             const persistRows = async (tableName: 'jobs' | 'jobs_IR', rows: JobRow[]) => {
-                // Never wipe LinkedIn-sourced Ireland rows during ATS sync.
-                if (!rows.length) {
+                const staleCutoff = new Date(
+                    Date.now() - STALE_JOB_RETENTION_HOURS * 60 * 60 * 1000
+                ).toISOString();
+
+                /** Soft-delete only: expire rows not refreshed within the retention window. Never wipe on empty. */
+                const purgeStaleForCompany = async (): Promise<number> => {
                     if (tableName === 'jobs_IR') {
-                        const { error: delErr } = await supabase.from(tableName).delete().eq('company_id', id).eq('source', 'ats');
-                        if (delErr && /source/i.test(delErr.message)) {
-                            // Schema not migrated yet: delete only non-LinkedIn URLs for this company
-                            const { data: existing } = await supabase.from(tableName).select('url').eq('company_id', id);
-                            const stale = (existing || []).map((r) => r.url).filter((u) => !/linkedin\.com|lnkd\.in/i.test(u));
+                        const bySource = await supabase
+                            .from(tableName)
+                            .delete({ count: 'exact' })
+                            .eq('company_id', id)
+                            .eq('source', 'ats')
+                            .lt('last_seen_at', staleCutoff);
+                        if (bySource.error && /source|last_seen_at/i.test(bySource.error.message)) {
+                            // Schema may lack source and/or last_seen_at — best-effort LinkedIn-safe purge
+                            const { data: existing } = await supabase
+                                .from(tableName)
+                                .select('url, last_seen_at')
+                                .eq('company_id', id);
+                            const stale = (existing || [])
+                                .filter((r: any) => {
+                                    if (/linkedin\.com|lnkd\.in/i.test(r.url)) return false;
+                                    if (!r.last_seen_at) return false;
+                                    return r.last_seen_at < staleCutoff;
+                                })
+                                .map((r: any) => r.url as string);
+                            let purged = 0;
                             for (const chunk of chunkArray(stale, 100)) {
-                                await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
+                                const { error: delErr, count } = await supabase
+                                    .from(tableName)
+                                    .delete({ count: 'exact' })
+                                    .in('url', chunk)
+                                    .eq('company_id', id);
+                                if (!delErr) purged += count || chunk.length;
                             }
+                            return purged;
                         }
-                    } else {
-                        await supabase.from(tableName).delete().eq('company_id', id);
+                        if (bySource.error) {
+                            console.warn(`[${displayProvider}] ${trading_name} ${tableName} stale purge: ${bySource.error.message}`);
+                            return 0;
+                        }
+                        return bySource.count || 0;
+                    }
+
+                    const { error, count } = await supabase
+                        .from(tableName)
+                        .delete({ count: 'exact' })
+                        .eq('company_id', id)
+                        .lt('last_seen_at', staleCutoff);
+                    if (error) {
+                        if (/last_seen_at/i.test(error.message)) {
+                            console.warn(`[${displayProvider}] ${trading_name} ${tableName}: last_seen_at missing — skip stale purge (run add_last_seen_at.sql)`);
+                        } else {
+                            console.warn(`[${displayProvider}] ${trading_name} ${tableName} stale purge: ${error.message}`);
+                        }
+                        return 0;
+                    }
+                    return count || 0;
+                };
+
+                // Phase 1: never wipe the whole company set when today's filter yields 0 rows.
+                if (!rows.length) {
+                    const purged = await purgeStaleForCompany();
+                    stalePurgedCount += purged;
+                    if (purged > 0) {
+                        console.log(`[${displayProvider}] ${trading_name.padEnd(30)} 🛡️  ${tableName}: 0 saved — preserved live set, purged ${purged} stale (>${STALE_JOB_RETENTION_HOURS}h)`);
                     }
                     return 0;
                 }
 
                 const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
                 if (jobErr) {
-                    if (tableName === 'jobs_IR' && /sector|schema cache|source/i.test(jobErr.message)) {
-                        const fallbackRows = rows.map(({ sector, source, ...rest }) => rest);
-                        const { error: fallbackErr } = await supabase.from(tableName).upsert(fallbackRows, { onConflict: 'url' });
+                    // Graceful degrade when optional columns are missing from the live schema.
+                    const stripSector = /sector|schema cache/i.test(jobErr.message);
+                    const stripSource = /source/i.test(jobErr.message);
+                    const stripSeen = /last_seen_at/i.test(jobErr.message);
+                    if (stripSector || stripSource || stripSeen) {
+                        const stripped = rows.map((row) => {
+                            const next: Record<string, unknown> = {
+                                company_id: row.company_id,
+                                title: row.title,
+                                location: row.location,
+                                url: row.url,
+                                department: row.department,
+                                level: row.level,
+                                updated_at: row.updated_at,
+                            };
+                            if (!stripSector) next.sector = row.sector;
+                            if (!stripSource && row.source) next.source = row.source;
+                            if (!stripSeen) next.last_seen_at = row.last_seen_at;
+                            return next;
+                        });
+                        const { error: fallbackErr } = await supabase
+                            .from(tableName)
+                            .upsert(stripped as any, { onConflict: 'url' });
                         if (!fallbackErr) {
-                            console.warn(`[${displayProvider}] ${trading_name} jobs_IR upsert retried without sector/source (schema may be missing columns).`);
-
-                            const currentUrls = fallbackRows.map(row => row.url);
-                            let existingQuery = supabase.from(tableName).select('url').eq('company_id', id);
-                            // Best-effort: only consider ATS rows stale when source column exists
-                            const { data: existingJobs } = await existingQuery;
-                            if (existingJobs && existingJobs.length > 0) {
-                                const staleUrls = existingJobs
-                                    .map(r => r.url)
-                                    .filter(url => !currentUrls.includes(url) && !/linkedin\.com|lnkd\.in/i.test(url));
-                                if (staleUrls.length > 0) {
-                                    for (const chunk of chunkArray(staleUrls, 100)) {
-                                        await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
-                                    }
-                                }
-                            }
-
-                            return fallbackRows.length;
+                            console.warn(`[${displayProvider}] ${trading_name} ${tableName} upsert retried with reduced columns.`);
+                            const purged = await purgeStaleForCompany();
+                            stalePurgedCount += purged;
+                            return rows.length;
                         }
                         console.error(`[${displayProvider}] ${trading_name} ${tableName} retry failed: ${fallbackErr.message}`);
+                        return 0;
                     }
                     console.error(`[${displayProvider}] ${trading_name} ${tableName} upsert failed: ${jobErr.message}`);
                     return 0;
                 }
 
-                const currentUrls = rows.map(row => row.url);
-                let existingJobs: { url: string }[] | null = null;
-                if (tableName === 'jobs_IR') {
-                    const bySource = await supabase.from(tableName).select('url').eq('company_id', id).eq('source', 'ats');
-                    if (bySource.error && /source/i.test(bySource.error.message)) {
-                        const allForCompany = await supabase.from(tableName).select('url').eq('company_id', id);
-                        existingJobs = (allForCompany.data || []).filter((r) => !/linkedin\.com|lnkd\.in/i.test(r.url));
-                    } else {
-                        existingJobs = bySource.data;
-                    }
-                } else {
-                    const res = await supabase.from(tableName).select('url').eq('company_id', id);
-                    existingJobs = res.data;
-                }
-                if (existingJobs && existingJobs.length > 0) {
-                    const staleUrls = existingJobs.map(r => r.url).filter(url => !currentUrls.includes(url));
-                    if (staleUrls.length > 0) {
-                        for (const chunk of chunkArray(staleUrls, 100)) {
-                            let del = supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
-                            if (tableName === 'jobs_IR') {
-                                del = del.eq('source', 'ats');
-                            }
-                            const { error: delErr } = await del;
-                            if (delErr && /source/i.test(delErr.message)) {
-                                await supabase.from(tableName).delete().in('url', chunk).eq('company_id', id);
-                            }
-                        }
-                    }
-                }
-
+                const purged = await purgeStaleForCompany();
+                stalePurgedCount += purged;
                 return rows.length;
             };
 
             if (!fallbackOnlyDryRun) {
+                // Count once per company when a fetch returned jobs but markets saved nothing
+                // (the old path would have wiped the company job set).
+                if (
+                    (!irelandOnlyMarket && ukRows.length === 0) ||
+                    (irelandOnlyMarket && irelandRows.length === 0)
+                ) {
+                    wipePreventedCount++;
+                }
                 const savedUK = irelandOnlyMarket ? 0 : await persistRows('jobs', ukRows);
                 const savedIreland = await persistRows('jobs_IR', irelandRows);
                 result.saved = savedUK + savedIreland;
@@ -4652,7 +4721,9 @@ export async function syncAll() {
     await Promise.all(companies.map((company) => limit(() => processCompany(company))));
 
     // ─── Summary ─────────────────────────────────────────────────────────────
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const finishedAt = new Date();
+    const durationMs = Date.now() - startTime;
+    const elapsed = (durationMs / 1000).toFixed(1);
     const withJobs = results.filter(r => r.saved > 0);
     const noJobs = results.filter(r => r.saved === 0 && !r.error);
     const errored = results.filter(r => r.error);
@@ -4661,10 +4732,14 @@ export async function syncAll() {
     console.log('  SYNC COMPLETE');
     console.log('════════════════════════════════════════════════════');
     console.log(`  ⏱  Time:          ${elapsed}s`);
+    console.log(`  🆔 Sync run:      ${syncRunId}`);
     console.log(`  🏢 Companies:      ${companies.length} processed`);
-    console.log(`  ✅ With UK jobs:   ${withJobs.length}`);
+    console.log(`  ✅ With jobs:      ${withJobs.length}`);
     console.log(`  ➕ Jobs saved:     ${totalSaved}`);
-    console.log(`  ⚪ No UK jobs:     ${noJobs.length}`);
+    console.log(`  🚫 Rejected:       ${totalRejected}`);
+    console.log(`  🛡️  Wipe prevented: ${wipePreventedCount} (empty filter kept live set)`);
+    console.log(`  🧹 Stale purged:   ${stalePurgedCount} (>${STALE_JOB_RETENTION_HOURS}h)`);
+    console.log(`  ⚪ No jobs saved:  ${noJobs.length}`);
     if (fallbackOnlyDryRun) {
         console.log('  🧪 Mode:          custom fallback dry run (no writes)');
     }
@@ -4674,6 +4749,35 @@ export async function syncAll() {
     if (errored.length > 0) {
         console.log(`  ❌ Errors:        ${errored.length}`);
         errored.forEach(r => console.log(`     - ${r.company}: ${r.error}`));
+    }
+
+    // Persist sync summary for DQ ownership (table: sync_run_summary)
+    if (!fallbackOnlyDryRun) {
+        const summaryRow = {
+            sync_run_id: syncRunId,
+            started_at: new Date(startTime).toISOString(),
+            finished_at: finishedAt.toISOString(),
+            duration_ms: durationMs,
+            companies_processed: companies.length,
+            companies_with_jobs: withJobs.length,
+            companies_errored: errored.length,
+            jobs_saved: totalSaved,
+            jobs_rejected: totalRejected,
+            wipe_prevented: wipePreventedCount,
+            stale_purged: stalePurgedCount,
+            serper_calls: serperCallCount,
+            serper_hits: serperHitCount,
+            dry_run: false,
+            market_filter: targetMarket || null,
+            notes: `retention=${STALE_JOB_RETENTION_HOURS}h`,
+        };
+        const { error: summaryErr } = await supabase.from('sync_run_summary').insert(summaryRow);
+        if (summaryErr) {
+            console.warn(`  ⚠ Could not persist sync_run_summary: ${summaryErr.message}`);
+            console.warn('     Run supabase/create_sync_run_summary.sql if the table is missing.');
+        } else {
+            console.log(`  📊 Sync summary saved (sync_run_id=${syncRunId})`);
+        }
     }
 
     // Gap 9: Print Rejection Summary
