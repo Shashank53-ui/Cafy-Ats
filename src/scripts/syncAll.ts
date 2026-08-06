@@ -1131,11 +1131,11 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
 
             const withMarket = await supabase
                 .from('companies')
-                .select('id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market, ats_status')
+                .select('id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, sync_market, ats_status')
                 .in('id', specificIds)
                 .order('trading_name');
 
-            if (withMarket.error && /sync_market|ats_status/i.test(withMarket.error.message)) {
+            if (withMarket.error && /sync_market|ats_status|careers_url/i.test(withMarket.error.message)) {
                 const fallback = await supabase
                     .from('companies')
                     .select('id, trading_name, ats_provider, ats_board_token, url, company_sector')
@@ -1159,7 +1159,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
                 const override = overrides.get(company.id);
                 const base = {
                     ...company,
-                    careers_url: company.url,
+                    careers_url: company.careers_url || company.url,
                     sync_market: company.sync_market || (company.id >= 900000 ? 'ireland' : 'uk'),
                 };
                 if (!override) return base;
@@ -1188,8 +1188,8 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
         while (true) {
             const to = from + pageSize - 1;
             const selectCols = selectWithMarket
-                ? 'id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market, ats_status'
-                : 'id, trading_name, ats_provider, ats_board_token, url, company_sector, ats_status';
+                ? 'id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, sync_market, ats_status'
+                : 'id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, ats_status';
             const { data, error } = await supabase
                 .from('companies')
                 .select(selectCols)
@@ -1202,8 +1202,8 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
                     selectWithMarket = false;
                     continue;
                 }
-                if (/ats_status/i.test(error.message)) {
-                    // Retry without ats_status
+                if (/ats_status|careers_url/i.test(error.message)) {
+                    // Retry without optional columns that may be missing from schema
                     const fallbackCols = selectWithMarket
                         ? 'id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market'
                         : 'id, trading_name, ats_provider, ats_board_token, url, company_sector';
@@ -1238,7 +1238,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
             const override = overrides.get(company.id);
             const base = {
                 ...company,
-                careers_url: company.url,
+                careers_url: company.careers_url || company.url,
                 sync_market: company.sync_market || (company.id >= 900000 ? 'ireland' : 'uk'),
             };
             if (!override) return base;
@@ -1325,25 +1325,61 @@ async function fetchGreenhouse(token: string): Promise<Job[]> {
 
 async function fetchAshby(token: string): Promise<Job[]> {
     try {
+        // Try the JSON API first
         const r = await fetchWithTimeout(`https://api.ashbyhq.com/posting-api/job-board/${token}`);
-        if (!r.ok) return [];
-        const d = await r.json();
-        return (d.jobs || []).map((j: any) => {
-            const locRaw = typeof j.location === 'string' ? j.location : (j.location?.name || '');
-            const secLocs = (j.secondaryLocations || [])
-                .map((l: any) => typeof l === 'string' ? l : (l.location || l.name || ''))
-                .join(' ');
-            // Gap 4: Ashby Remote boolean check
-            return {
-                title: j.title || '',
-                location: `${locRaw} ${secLocs} ${j.isRemote ? 'Remote' : ''}`.trim(),
-                url: j.jobUrl || '',
-                department: j.department || '',
-                salary: undefined,
-                atsProvider: 'ashby',
-            };
+        if (r.ok) {
+            const d = await r.json();
+            return (d.jobs || []).map((j: any) => {
+                const locRaw = typeof j.location === 'string' ? j.location : (j.location?.name || '');
+                const secLocs = (j.secondaryLocations || [])
+                    .map((l: any) => typeof l === 'string' ? l : (l.location || l.name || ''))
+                    .join(' ');
+                // Gap 4: Ashby Remote boolean check
+                return {
+                    title: j.title || '',
+                    location: `${locRaw} ${secLocs} ${j.isRemote ? 'Remote' : ''}`.trim(),
+                    url: j.jobUrl || '',
+                    department: j.department || '',
+                    salary: undefined,
+                    atsProvider: 'ashby',
+                };
+            });
+        }
+    } catch { /* fall through to HTML */ }
+
+    // Fallback: Parse Ashby's window.__appData payload when the JSON API is unavailable
+    try {
+        const htmlRes = await fetchWithTimeout(`https://jobs.ashbyhq.com/${token}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
         });
-    } catch { return []; }
+        if (htmlRes.ok) {
+            const html = await htmlRes.text();
+            if (html.includes('window.__appData = ')) {
+                const jsonStr = html.split('window.__appData = ')[1].split('};\n')[0] + '}';
+                const appData = JSON.parse(jsonStr);
+                const postings = appData.jobBoard?.jobPostings || [];
+                const teams = appData.jobBoard?.teams || [];
+                const teamMap = new Map(teams.map((t: any) => [t.id, t.name]));
+
+                return postings.map((j: any) => {
+                    const locRaw = j.locationName || '';
+                    const secLocs = (j.secondaryLocations || []).map((l: any) => l.locationName || '').join(' ');
+                    const remoteStr = j.workplaceType === 'Remote' ? 'Remote' : '';
+
+                    return {
+                        title: j.title || '',
+                        location: `${locRaw} ${secLocs} ${remoteStr}`.trim(),
+                        url: `https://jobs.ashbyhq.com/${token}/${j.id}`,
+                        department: teamMap.get(j.teamId) || '',
+                        salary: undefined,
+                        atsProvider: 'ashby',
+                    };
+                });
+            }
+        }
+    } catch { /* ignore */ }
+
+    return [];
 }
 
 async function fetchLever(token: string): Promise<Job[]> {
