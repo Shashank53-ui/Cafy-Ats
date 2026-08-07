@@ -3,6 +3,7 @@
 import { createClient } from '../../utils/supabase/server';
 import { createAdminClient } from '../../utils/supabase/admin';
 import { getSubscriptionStatus } from './subscriptionActions';
+import { ALLOWED_SECTORS } from '../../lib/constants';
 
 export interface Job {
     id: string;
@@ -158,43 +159,15 @@ export async function getJobs(params: {
         }
     }
 
-    // 6. Category preference
+    // 6. Sector preference — filter on the structured `sector` column
+    // (filled by syncAll / backfillJobSectors via inferJobSector), not title keywords.
     if (!params.q && params.userPrefs?.sectors?.length > 0) {
-        const sectorKeywords: Record<string, string[]> = {
-            'Business & Strategy': ['business', 'strategy', 'consultant', 'analyst', 'corporate', 'planning'],
-            'Customer Success': ['customer', 'success', 'support', 'account', 'client'],
-            'Data': ['data', 'analytics', 'statistics', 'machine learning', 'ai', 'sql', 'python', 'bi', 'business intelligence'],
-            'Design': ['design', 'ui', 'ux', 'product designer', 'graphic', 'creative', 'art'],
-            'Engineering (Hardware)': ['hardware', 'electrical', 'electronics', 'mechanical', 'manufacturing', 'firmware'],
-            'Engineering (Other)': ['engineering', 'engineer', 'civil', 'chemical', 'biomedical', 'systems'],
-            'Engineering (Software)': ['software', 'developer', 'engineer', 'frontend', 'backend', 'fullstack', 'ios', 'android', 'web', 'devops', 'cloud'],
-            'Finance': ['finance', 'accounting', 'tax', 'audit', 'financial', 'quant', 'trading', 'investment'],
-            'Healthcare': ['health', 'medical', 'clinical', 'nurse', 'doctor', 'pharma', 'biotech'],
-            'HR / People': ['hr', 'human resources', 'people', 'talent', 'recruiter', 'recruiting', 'acquisition'],
-            'Legal': ['legal', 'counsel', 'lawyer', 'attorney', 'law', 'compliance'],
-            'Marketing & PR': ['marketing', 'pr', 'public relations', 'brand', 'content', 'social media', 'communications', 'seo', 'growth'],
-            'Media & Journalism': ['media', 'journalism', 'writer', 'editor', 'reporter', 'news', 'broadcast'],
-            'Operations': ['operations', 'logistics', 'supply chain', 'facilities', 'admin'],
-            'Other': [],
-            'Product Management': ['product', 'pm', 'product manager', 'owner'],
-            'Project Management': ['project', 'program', 'scrum', 'agile', 'delivery'],
-            'Research (Non-technical)': ['research', 'market research', 'user research', 'ur'],
-            'Research (Technical)': ['research', 'r&d', 'scientist', 'phd', 'investigator'],
-            'Sales & Partnerships': ['sales', 'partnerships', 'bd', 'business development', 'account executive', 'bdr', 'sdr']
-        };
-
-        let allKeywords: string[] = [];
-        params.userPrefs.sectors.forEach((sector: string) => {
-            if (sectorKeywords[sector]) {
-                allKeywords.push(...sectorKeywords[sector]);
-            }
-        });
-        allKeywords.push(...params.userPrefs.sectors);
-        allKeywords = [...new Set(allKeywords)].filter(k => k.trim().length > 0);
-
-        if (allKeywords.length > 0) {
-            const filterConditions = allKeywords.map(keyword => `title.ilike.%${keyword}%,department.ilike.%${keyword}%`).join(',');
-            query = query.or(filterConditions);
+        const allowed = ALLOWED_SECTORS as readonly string[];
+        const sectors = (params.userPrefs.sectors as string[])
+            .map((s) => String(s || '').trim())
+            .filter((s) => allowed.includes(s));
+        if (sectors.length > 0) {
+            query = query.in('sector', sectors);
         }
     }
 
@@ -341,6 +314,8 @@ export async function getAppliedJobs() {
                     url,
                     location,
                     department,
+                    sector,
+                    level,
                     created_at,
                     company_id,
                     companies:company_id (
@@ -349,7 +324,8 @@ export async function getAppliedJobs() {
                         url,
                         url_linkedin,
                         url_favicon,
-                        licensed_sponsor
+                        licensed_sponsor,
+                        company_sector
                     )
                 )
             `)
@@ -369,6 +345,8 @@ export async function getAppliedJobs() {
                 url: jobData.url,
                 location: jobData.location,
                 department: jobData.department,
+                sector: jobData.sector ?? null,
+                level: jobData.level ?? null,
                 created_at: jobData.created_at,
                 company_id: jobData.company_id,
                 company: jobData.companies ? {
@@ -378,6 +356,7 @@ export async function getAppliedJobs() {
                     url_linkedin: jobData.companies.url_linkedin,
                     url_favicon: jobData.companies.url_favicon,
                     licensed_sponsor: jobData.companies.licensed_sponsor,
+                    company_sector: jobData.companies.company_sector ?? null,
                     active_jobs_count: 0 // Default fallback for UI
                 } : undefined,
                 applied_at: record.created_at
