@@ -249,8 +249,8 @@ function hasAustraliaGeoSignal(loc: string): boolean {
     if (/\b(new south wales|\bnsw\b|queensland|tasmania|south australia|western australia|northern territory)\b/.test(l)) {
         return true;
     }
-    // Workday / ATS: AU-NSW-Sydney
-    if (/\bau[-\s](nsw|vic|qld|sa|wa|tas|nt|act)\b/.test(l)) return true;
+    // Workday / ATS: AU-NSW-Sydney, Au-Victoria
+    if (/\bau[-\s](nsw|vic|qld|sa|wa|tas|nt|act|victoria)\b/.test(l)) return true;
     return false;
 }
 function hasUsGeoSignal(loc: string): boolean {
