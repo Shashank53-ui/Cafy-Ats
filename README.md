@@ -1,4 +1,5 @@
-﻿# Getlanded Jobs Sync README
+
+ # Getlanded Jobs Sync README
 
 
 This repository contains a Next.js app and supporting scripts, but the primary operations workflow is the ATS sync pipeline.
