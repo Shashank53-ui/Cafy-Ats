@@ -1,13 +1,9 @@
 /**
- * backfillJobSectors.ts — Phase 2 of the sector/department data-quality fix.
+ * backfillJobSectors.ts — Phase 3 sector backfill.
  *
- * Classifies existing null-sector rows in both `jobs` and `jobs_IR` using
- * inferJobSector(title, department, companySector). Previously this only
- * covered `jobs` and never passed companySector at all, so the P3 company
- * fallback (see backfillCompanySector.ts, which populates it) never had a
- * chance to fire. Anything still unclassifiable after all three inputs is
- * set to 'Other' (a real ALLOWED_SECTORS value) instead of left null, so
- * the UI never has to show a blank sector badge.
+ * Classifies existing null/blank-sector rows in both `jobs` and `jobs_IR` using
+ * inferJobSector(title, department, companySector). Also fills blank department
+ * with the inferred sector when ATS left department empty (same as syncAll).
  *
  * Run: npx tsx src/scripts/backfillJobSectors.ts
  */
@@ -50,16 +46,16 @@ async function loadCompanySectorMap(): Promise<Map<number, string | null>> {
 
 async function backfillTable(table: 'jobs' | 'jobs_IR', companySectorMap: Map<number, string | null>) {
     console.log(`\n=== ${table} ===`);
-    console.log('Fetching null-sector rows...');
+    console.log('Fetching null/blank-sector rows...');
 
-    const rows: { id: number; company_id: number; title: string; department: string | null }[] = [];
+    const rows: { id: number; company_id: number; title: string; department: string | null; sector: string | null }[] = [];
     const PAGE = 1000;
     let from = 0;
     for (;;) {
         const { data, error } = await supabase
             .from(table)
-            .select('id, company_id, title, department')
-            .is('sector', null)
+            .select('id, company_id, title, department, sector')
+            .or('sector.is.null,sector.eq.')
             .range(from, from + PAGE - 1);
         if (error) throw new Error(`${table} fetch failed: ${error.message}`);
         if (!data?.length) break;
@@ -68,10 +64,11 @@ async function backfillTable(table: 'jobs' | 'jobs_IR', companySectorMap: Map<nu
         from += PAGE;
     }
 
-    if (!rows.length) { console.log('No null-sector rows found.'); return; }
+    if (!rows.length) { console.log('No null/blank-sector rows found.'); return; }
     console.log(`Found ${rows.length} rows to classify.`);
 
     const sectorGroups = new Map<string, number[]>();
+    const deptFixes: Array<{ id: number; department: string }> = [];
     let fromRules = 0;
     let fromCompanyFallback = 0;
     let defaultedToOther = 0;
@@ -93,6 +90,10 @@ async function backfillTable(table: 'jobs' | 'jobs_IR', companySectorMap: Map<nu
 
         if (!sectorGroups.has(sector)) sectorGroups.set(sector, []);
         sectorGroups.get(sector)!.push(row.id);
+
+        if (!row.department || !String(row.department).trim()) {
+            deptFixes.push({ id: row.id, department: sector });
+        }
     }
 
     console.log(`Classified via title/department rules: ${fromRules}`);
@@ -114,7 +115,23 @@ async function backfillTable(table: 'jobs' | 'jobs_IR', companySectorMap: Map<nu
             }
         }
     }
-    console.log(`Done. Updated ${totalUpdated} rows in ${table}.`);
+
+    // Fill blank department with sector (same fallback as syncAll), batched by sector value.
+    const deptBySector = new Map<string, number[]>();
+    for (const row of deptFixes) {
+        if (!deptBySector.has(row.department)) deptBySector.set(row.department, []);
+        deptBySector.get(row.department)!.push(row.id);
+    }
+    let deptUpdated = 0;
+    for (const [department, ids] of deptBySector) {
+        for (const chunk of chunkArray(ids, 500)) {
+            const { error } = await supabase.from(table).update({ department }).in('id', chunk);
+            if (!error) deptUpdated += chunk.length;
+            else console.error(`Department fill failed for "${department}": ${error.message}`);
+        }
+    }
+
+    console.log(`Done. Updated sector on ${totalUpdated} rows; filled blank department on ${deptUpdated} rows in ${table}.`);
 }
 
 // Re-run inferJobSector with no companySector to tell whether the P3
