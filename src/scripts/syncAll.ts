@@ -396,8 +396,9 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
 
         if (!locationPasses(cleanedLocation)) {
             if (!locationPasses(raw)) continue;
-            // Keep the row, but never persist the foreign normalized office.
-            cleanedLocation = market === 'uk' ? 'Multiple Locations' : raw;
+            // Keep the row with the original text when normalization dropped UK offices
+            // to a foreign city — never persist the vague "Multiple Locations" placeholder.
+            cleanedLocation = raw;
             if (!locationPasses(cleanedLocation)) continue;
         }
 
@@ -4912,7 +4913,13 @@ async function closePythonWorker(): Promise<void> {
  *      { country: "Ireland" } → "Ireland"
  */
 export function formatNormalizedLocation(n: NormalizedLocation): string | null {
-    if (n.is_multi_location) return 'Multiple Locations';
+    // Never emit the vague "Multiple Locations" placeholder — prefer country or null
+    // so callers keep the raw multi-office string when it already passed the geo filter.
+    if (n.is_multi_location) {
+        if (n.country === 'United Kingdom') return n.city || 'United Kingdom';
+        if (n.country === 'Ireland') return n.city || (n.is_remote ? 'Ireland (Remote)' : 'Ireland');
+        return n.city || n.country || null;
+    }
 
     const dropCountry = n.country === 'United Kingdom' || n.country === 'Ireland';
 

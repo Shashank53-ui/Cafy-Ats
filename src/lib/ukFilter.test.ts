@@ -318,9 +318,14 @@ test('UK Filter: N Locations placeholder alone rejected', () => {
     }
 });
 
-test('UK Filter: Multiple Locations canonical label allowed', () => {
+test('UK Filter: Multiple Locations placeholder rejected', () => {
     const input: JobLocationInput = { isTrustedSource: false, locations: ['Multiple Locations'], isRemote: false };
-    assert.strictEqual(isUKJob(input), true, 'Normalizer "Multiple Locations" must pass');
+    assert.strictEqual(isUKJob(input), false, '"Multiple Locations" has no geography and must fail');
+});
+
+test('UK Filter: Victoria Mexico rejected', () => {
+    const input: JobLocationInput = { isTrustedSource: false, locations: ['Victoria, Mexico'], isRemote: false };
+    assert.strictEqual(isUKJob(input), false, 'Victoria, Mexico must not pass via UK city namesake');
 });
 
 test('UK Filter: UI junk placeholders rejected', () => {

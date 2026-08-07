@@ -169,7 +169,7 @@ const HARD_BLOCKS = [
 const PLACEHOLDER_LOCATION_RE =
     /^(\d+\s+locations?|\+\d+\s*more.*|all roles|#li)$/i;
 
-/** Canonical multi-office label written by our normalizer after a job already passed geo checks. */
+/** Vague multi-office placeholder — no specific geography; never admit alone. */
 const MULTIPLE_LOCATIONS_RE = /^multiple\s+locations?$/i;
 
 // Kept separate from HARD_BLOCKS: a bare "Remote" text signal is ambiguous and
@@ -362,9 +362,9 @@ export function isUKJob(input: JobLocationInput): boolean {
         .filter(Boolean)
         .filter(loc => !PLACEHOLDER_LOCATION_RE.test(loc));
 
-    // Canonical multi-office label from normalizeLocations — already passed geo once.
-    for (const loc of locs) {
-        if (MULTIPLE_LOCATIONS_RE.test(loc)) return true;
+    // "Multiple Locations" / "3 Locations" carry no geography — reject (same as placeholders).
+    if (locs.length > 0 && locs.every((loc) => MULTIPLE_LOCATIONS_RE.test(loc) || PLACEHOLDER_LOCATION_RE.test(loc))) {
+        return false;
     }
 
     const allCombined = locs.join(' ');
@@ -416,10 +416,10 @@ export function isUKJob(input: JobLocationInput): boolean {
         ) {
             return hasDefinitiveUKSignal(allCombined);
         }
-        // Other foreign country / Dublin present → require a real UK *city* (or Northern Ireland).
-        // Bare "United Kingdom" / "England" is not enough (fixes "Hoofddorp, ENGLAND, Netherlands",
-        // "Dublin, United Kingdom").
-        return hasUkCitySignal(allCombined);
+        // Other foreign country present (Mexico, Netherlands, …) → require an explicit
+        // UK country/nation term as well as a UK city. City namesakes alone are not enough
+        // (fixes "Victoria, Mexico", "London, Ontario" without Canada text, etc.).
+        return hasDefinitiveUKSignal(allCombined) && hasUkCitySignal(allCombined);
     }
 
     // No hard block — any UK geography term is sufficient
