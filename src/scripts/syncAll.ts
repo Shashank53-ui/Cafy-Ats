@@ -140,6 +140,15 @@ export interface CompanyRow {
     ats_status?: string | null;
 }
 
+/**
+ * Infer sync market when companies.sync_market is missing.
+ * Ireland permit seeds: 900000–959999. Phase-4 UK gap companies: 960000+.
+ */
+export function inferDefaultSyncMarket(id: number): 'uk' | 'ireland' {
+    if (id >= 900000 && id < 960000) return 'ireland';
+    return 'uk';
+}
+
 interface FilterLogEntry {
     company_id: string;
     job_url: string | null;
@@ -341,7 +350,8 @@ export function buildLocationInput(job: Job) {
     return {
         locations: locs,
         isRemote: /\bremote\b/i.test(raw),
-        isTrustedSource: false,
+        // Workday UK-facet results set verified=true when the country facet is trusted.
+        isTrustedSource: !!job.verified,
     };
 }
 
@@ -1179,7 +1189,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
                 const base = {
                     ...company,
                     careers_url: company.careers_url || company.url,
-                    sync_market: company.sync_market || (company.id >= 900000 ? 'ireland' : 'uk'),
+                    sync_market: company.sync_market || inferDefaultSyncMarket(company.id),
                 };
                 if (!override) return base;
 
@@ -1258,7 +1268,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
             const base = {
                 ...company,
                 careers_url: company.careers_url || company.url,
-                sync_market: company.sync_market || (company.id >= 900000 ? 'ireland' : 'uk'),
+                sync_market: company.sync_market || inferDefaultSyncMarket(company.id),
             };
             if (!override) return base;
 
@@ -1832,8 +1842,30 @@ async function fetchJobvite(token: string): Promise<Job[]> {
 
 async function fetchAvature(token: string): Promise<Job[]> {
     try {
-        const subdomain = String(token || '').trim().replace(/^https?:\/\//, '').split('.')[0];
-        if (!subdomain) return [];
+        const raw = String(token || '').trim();
+        if (!raw) return [];
+
+        // Prefer public careers-marketplace HTML (REST /api/rest/v1/jobs is often auth-walled).
+        // Tokens may be subdomain ("virginmediao2") or a full careers URL.
+        let portalBase = '';
+        if (/^https?:\/\//i.test(raw)) {
+            const u = new URL(raw);
+            portalBase = `${u.protocol}//${u.host}`;
+        } else {
+            const subdomain = raw.replace(/\.avature\.net.*/i, '').split('/')[0];
+            // Known custom hosts (Avature white-label)
+            if (subdomain === 'virginmediao2') {
+                portalBase = 'https://jobs.virginmediao2.co.uk';
+            } else {
+                portalBase = `https://${subdomain}.avature.net`;
+            }
+        }
+
+        const htmlJobs = await fetchAvatureSearchJobsHtml(portalBase);
+        if (htmlJobs.length) return htmlJobs;
+
+        // Legacy REST fallback
+        const subdomain = portalBase.replace(/^https?:\/\//, '').split('.')[0];
         const r = await fetchWithTimeout(`https://${subdomain}.avature.net/api/rest/v1/jobs`, {
             headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
         });
@@ -1844,11 +1876,99 @@ async function fetchAvature(token: string): Promise<Job[]> {
             location: j.location || '',
             url: j.detailUrl || j.url || `https://${subdomain}.avature.net/`,
             department: j.category || j.department || '',
-            salary: undefined
+            salary: undefined,
+            atsProvider: 'avature',
         }));
     } catch {
         return [];
     }
+}
+
+/** Paginate Avature careersmarketplace SearchJobs HTML (public, no API key). */
+async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
+    const base = portalBase.replace(/\/$/, '');
+    const searchPaths = [
+        '/en_US/careersmarketplace/SearchJobs/',
+        '/careersmarketplace/SearchJobs/',
+        '/en_GB/careersmarketplace/SearchJobs/',
+    ];
+
+    let searchPath = '';
+    for (const p of searchPaths) {
+        const probe = await fetchWithTimeout(
+            `${base}${p}?listFilterMode=1&jobRecordsPerPage=20&jobOffset=0`,
+            { headers: { 'User-Agent': 'Mozilla/5.0' } }
+        );
+        if (probe.ok) {
+            const html = await probe.text();
+            if (/JobDetail\//i.test(html)) {
+                searchPath = p;
+                break;
+            }
+        }
+    }
+    if (!searchPath) return [];
+
+    const byUrl = new Map<string, Job>();
+    const pageSize = 20;
+    for (let offset = 0; offset < 2000; offset += pageSize) {
+        const url = `${base}${searchPath}?listFilterMode=1&jobRecordsPerPage=${pageSize}&jobOffset=${offset}`;
+        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) break;
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        let pageCount = 0;
+
+        $('a[href*="JobDetail/"]').each((_, el) => {
+            const href = String($(el).attr('href') || '').trim();
+            if (!href) return;
+            const title = $(el).text().replace(/\s+/g, ' ').trim();
+            if (!title || /^view job$/i.test(title)) return;
+            const abs = href.startsWith('http') ? href : `${base}${href.startsWith('/') ? '' : '/'}${href}`;
+            // Location from JobDetail slug — titles alone often collide
+            // ("Field Sales Representative" x many towns).
+            // Examples:
+            //   .../JobDetail/Retail-Advisor-16hrs-Poole/109860
+            //   .../JobDetail/Birmingham-United-Kingdom-...-Field-Sales-Representative/12007
+            const slug = decodeURIComponent((abs.split('/JobDetail/')[1] || '').split('/')[0] || '');
+            let location = 'United Kingdom';
+            const ukCountryMatch = slug.match(
+                /^(.+?)-United-Kingdom(?:-of-Great-Britain-and-Northern-Ireland)?-/i
+            );
+            if (ukCountryMatch) {
+                location = `${ukCountryMatch[1].replace(/-/g, ' ')}, United Kingdom`;
+            } else {
+                const titleParts = title.split(',').map((s) => s.trim()).filter(Boolean);
+                if (titleParts.length >= 2) {
+                    location = `${titleParts[titleParts.length - 1]}, United Kingdom`;
+                } else {
+                    // Fallback: last token of slug often is the town (Poole, Aylesbury…)
+                    const tokens = slug.split('-').filter(Boolean);
+                    const last = tokens[tokens.length - 1] || '';
+                    if (last && !/^\d+$/.test(last) && last.length > 2) {
+                        location = `${last}, United Kingdom`;
+                    }
+                }
+            }
+            if (!byUrl.has(abs)) {
+                byUrl.set(abs, {
+                    title,
+                    location,
+                    url: abs,
+                    department: '',
+                    salary: undefined,
+                    atsProvider: 'avature',
+                    verified: true,
+                });
+                pageCount++;
+            }
+        });
+
+        if (pageCount === 0) break;
+        await sleep(200);
+    }
+
+    return Array.from(byUrl.values());
 }
 
 async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
@@ -2080,7 +2200,9 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                         //   Country         — e.g. RBC, Baxter
                         //   Location_Country — e.g. Pfizer
                         if (posts.length === 0 && (gd.jobPostings || []).length > 0 && !dbAppliedFacets) {
-                            for (const altKey of ['Country', 'Location_Country']) {
+                            // Different Workday tenants use different country facet keys.
+                            // Country___Territory — RELX/Elsevier; locationMainGroup — Iberdrola.
+                            for (const altKey of ['Country', 'Location_Country', 'Country___Territory', 'locationMainGroup']) {
                                 try {
                                     const altRes = await fetchWithTimeout(apiUrl, {
                                         method: 'POST',
@@ -2359,13 +2481,12 @@ async function fetchWipro(token: string): Promise<Job[]> {
 }
 
 async function fetchSuccessFactors(token: string): Promise<Job[]> {
-    const allJobs: Job[] = [];
     try {
         let domain = token;
         
         // If the token is just a company ID like 'bmwag', construct the default legacy URL to extract the real CSB domain
         if (!token.includes('.') && !token.includes('http')) {
-            token = `https://career5.successfactors.eu/careers?company=${token}`;
+            token = `https://career2.successfactors.eu/careers?company=${token}`;
         }
         
         if (token.includes('http')) {
@@ -2373,27 +2494,45 @@ async function fetchSuccessFactors(token: string): Promise<Job[]> {
             const htmlText = await redirectRes.text();
             
             const csbMatch = htmlText.match(/https?:\/\/([^\/]+)\/services\/security\/logoutp/i) || 
-                             htmlText.match(/https?:\/\/([^\/]+)\/search\/?\?/i);
+                             htmlText.match(/https?:\/\/([^\/]+)\/search\/?\?/i) ||
+                             htmlText.match(/https?:\/\/(jobdetails\.[^\/\"']+)/i) ||
+                             htmlText.match(/https?:\/\/(careers\.[^\/\"']+)/i);
             if (csbMatch) {
                 domain = csbMatch[1];
             } else {
-                return [];
+                try {
+                    domain = new URL(token).hostname;
+                } catch {
+                    return [];
+                }
             }
         } else if (token.includes('.')) {
-            // It's already a domain like jobs.company.com
-            domain = token;
+            domain = token.replace(/^https?:\/\//, '').split('/')[0];
         } else {
             return [];
         }
 
         const csbBaseUrl = `https://${domain}`;
+
+        // Prefer JSON API; many Nestlé/GKN tenants return "Error retrieving jobs" — fall back to HTML.
+        const apiJobs = await fetchSuccessFactorsJsonApi(csbBaseUrl);
+        if (apiJobs.length) return apiJobs;
+
+        return await fetchSuccessFactorsHtmlSearch(csbBaseUrl, { preferUk: true });
+    } catch (e: any) {
+        console.error(`[SuccessFactors] ${token} error: ${e.message}`);
+        return [];
+    }
+}
+
+async function fetchSuccessFactorsJsonApi(csbBaseUrl: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    try {
         const searchUrl = `${csbBaseUrl}/search/?q=`;
-        
         const initRes = await fetchWithTimeout(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!initRes.ok) return [];
-        
+
         const initHtml = await initRes.text();
-        // Extract cookie name=value pairs only — never forward Set-Cookie attributes
         const headersAny = initRes.headers as Headers & { getSetCookie?: () => string[] };
         const setCookieList = typeof headersAny.getSetCookie === 'function'
             ? headersAny.getSetCookie()
@@ -2405,15 +2544,13 @@ async function fetchSuccessFactors(token: string): Promise<Job[]> {
             .map(c => c.split(';')[0].trim())
             .filter(pair => pair.includes('='))
             .join('; ');
-        
+
         const csrfMatch = initHtml.match(/"X-CSRF-Token"\s*:\s*"([^"]+)"/i);
         if (!csrfMatch) return [];
-        
         const csrf = csrfMatch[1];
-        
+
         let offset = 0;
         const limit = 100;
-        
         while (true) {
             const apiRes = await fetchWithTimeout(`${csbBaseUrl}/services/recruiting/v1/jobs`, {
                 method: 'POST',
@@ -2431,50 +2568,134 @@ async function fetchSuccessFactors(token: string): Promise<Job[]> {
                     offset
                 })
             });
-            
+
             if (!apiRes.ok) break;
             const data = await apiRes.json();
+            if (data?.error) break;
             const jobReqs = data.jobSearchResult || [];
-            
             if (jobReqs.length === 0) break;
-            
+
             for (const j of jobReqs) {
-                if (j.response) {
-                    const title = j.response.unifiedStandardTitle || j.response.title || j.response.jobTitle || '';
-                    let location = j.response.location || j.response.city || j.response.country || j.response.department || '';
-                    
-                    if (!location && j.response.customField5) {
-                        location = j.response.customField5;
-                    }
-                    
-                    const urlTitle = j.response.urlTitle || j.response.unifiedUrlTitle || '';
-                    const jobId = j.response.id || '';
-                    const jobUrl = `${csbBaseUrl}/job/${urlTitle}/${jobId}-en_US`;
-                    
-                    if (title && jobId) {
-                        allJobs.push({
-                            title,
-                            location,
-                            url: jobUrl,
-                            department: '',
-                            salary: undefined,
-                            verified: false,
-                            atsProvider: 'successfactors'
-                        });
-                    }
+                if (!j.response) continue;
+                const title = j.response.unifiedStandardTitle || j.response.title || j.response.jobTitle || '';
+                let location = j.response.location || j.response.city || j.response.country || j.response.department || '';
+                if (!location && j.response.customField5) location = j.response.customField5;
+                const urlTitle = j.response.urlTitle || j.response.unifiedUrlTitle || '';
+                const jobId = j.response.id || '';
+                const jobUrl = `${csbBaseUrl}/job/${urlTitle}/${jobId}-en_US`;
+                if (title && jobId) {
+                    allJobs.push({
+                        title,
+                        location,
+                        url: jobUrl,
+                        department: '',
+                        salary: undefined,
+                        verified: false,
+                        atsProvider: 'successfactors'
+                    });
                 }
             }
-            
+
             offset += jobReqs.length;
             if (offset >= (data.totalJobs || 0)) break;
-            
             await sleep(300);
         }
-    } catch (e: any) {
-        console.error(`[SuccessFactors] ${token} error: ${e.message}`);
+    } catch {
+        return [];
     }
-    
     return allJobs;
+}
+
+/** HTML list scrape for SuccessFactors CSB boards when the JSON API is blocked. */
+async function fetchSuccessFactorsHtmlSearch(
+    csbBaseUrl: string,
+    opts?: { preferUk?: boolean }
+): Promise<Job[]> {
+    const byUrl = new Map<string, Job>();
+    const pageSize = 10; // SF classic search pages typically show 10 rows
+    // "GB" ranks UK rows more reliably than "United Kingdom" (which drifts to US after early pages).
+    const queries = opts?.preferUk
+        ? [
+            `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('GB')}`,
+            `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('United Kingdom')}`,
+            `${csbBaseUrl}/search/?q=`,
+          ]
+        : [`${csbBaseUrl}/search/?q=`];
+
+    for (const baseSearch of queries) {
+        let emptyPages = 0;
+        let nonUkStreak = 0;
+        for (let startrow = 0; startrow < 5000; startrow += pageSize) {
+            const pageUrl = `${baseSearch}&startrow=${startrow}`;
+            const res = await fetchWithTimeout(pageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) break;
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            let pageNew = 0;
+            let pageUk = 0;
+
+            $('a.jobTitle-link, a[href*="/job/"]').each((_, el) => {
+                const href = String($(el).attr('href') || '').trim();
+                if (!href || !/\/job\//i.test(href)) return;
+                const title = $(el).text().replace(/\s+/g, ' ').trim();
+                if (!title) return;
+                const abs = href.startsWith('http') ? href : `${csbBaseUrl}${href.startsWith('/') ? '' : '/'}${href}`;
+                const row = $(el).closest('tr.data-row, tr, li, article, div');
+                let location = row.find('span.jobLocation').first().text().replace(/\s+/g, ' ').trim();
+                location = location.replace(/\+\d+\s*more.*$/i, '').trim();
+                if (!location) location = '';
+
+                if (opts?.preferUk) {
+                    const uk = isUKJob({
+                        locations: location ? [location] : [],
+                        isRemote: /\bremote\b/i.test(location),
+                        isTrustedSource: false,
+                    });
+                    if (!uk) return;
+                    pageUk++;
+                }
+
+                if (!byUrl.has(abs)) {
+                    byUrl.set(abs, {
+                        title,
+                        location: location || (opts?.preferUk ? 'United Kingdom' : ''),
+                        url: abs.split('?')[0],
+                        department: row.find('span.jobDepartment, span.jobFacility').first().text().replace(/\s+/g, ' ').trim(),
+                        salary: undefined,
+                        verified: false,
+                        atsProvider: 'successfactors',
+                    });
+                    pageNew++;
+                }
+            });
+
+            if (opts?.preferUk) {
+                if (pageUk === 0) {
+                    nonUkStreak++;
+                    // Nestlé "United Kingdom" search pads later pages with US roles — stop early.
+                    if (nonUkStreak >= 3 && byUrl.size > 0) break;
+                } else {
+                    nonUkStreak = 0;
+                }
+            }
+
+            if (pageNew === 0) {
+                emptyPages++;
+                if (emptyPages >= 2) break;
+            } else {
+                emptyPages = 0;
+            }
+
+            const startrows = [...html.matchAll(/startrow=(\d+)/g)].map(m => Number(m[1]));
+            const maxStart = startrows.length ? Math.max(...startrows) : startrow;
+            if (startrow >= maxStart && pageNew < pageSize) break;
+
+            await sleep(200);
+        }
+        if (byUrl.size > 0) break;
+    }
+
+    return Array.from(byUrl.values());
 }
 
 async function fetchHibob(token: string): Promise<Job[]> {
@@ -4244,60 +4465,193 @@ async function fetchMercor(token: string): Promise<Job[]> {
 async function fetchPhenom(token: string): Promise<Job[]> {
     try {
         const baseUrl = token.replace(/\/$/, '');
-        const locale = 'en_us';
-        const country = 'us';
-        const searchUrl = `${baseUrl}/${country}/en/search-results`;
-        
-        const initRes = await fetchWithTimeout(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (!initRes.ok) return [];
-        const html = await initRes.text();
-        const csrfMatch = html.match(/"csrfToken"\s*:\s*"([^"]+)"/);
-        const csrf = csrfMatch ? csrfMatch[1] : '';
-        
+        // DHL and many global Phenom boards use /global/en, not /us/en.
+        const localePaths = [
+            '/global/en/search-results',
+            '/us/en/search-results',
+            '/gb/en/search-results',
+            '/en/search-results',
+            '/search-results',
+        ];
+
+        let searchPath = '';
+        let seedHtml = '';
+        let cookieHeader = '';
+        let csrf = '';
+
+        for (const path of localePaths) {
+            const initRes = await fetchWithTimeout(`${baseUrl}${path}`, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (!initRes.ok) continue;
+            const html = await initRes.text();
+            if (!/"jobs"\s*:\s*\[/.test(html) && !/csrfToken/i.test(html)) continue;
+            searchPath = path;
+            seedHtml = html;
+            const headersAny = initRes.headers as Headers & { getSetCookie?: () => string[] };
+            const setCookieList = typeof headersAny.getSetCookie === 'function'
+                ? headersAny.getSetCookie()
+                : [];
+            cookieHeader = (setCookieList.length > 0
+                ? setCookieList
+                : [initRes.headers.get('set-cookie') || ''].filter(Boolean)
+            )
+                .map(c => c.split(';')[0].trim())
+                .filter(pair => pair.includes('='))
+                .join('; ');
+            const csrfMatch = html.match(/"csrfToken"\s*:\s*"([^"]+)"/);
+            csrf = csrfMatch ? csrfMatch[1] : '';
+            break;
+        }
+        if (!searchPath) return [];
+
+        // Prefer HTML pagination — DHL's /widgets endpoint often returns totalHits
+        // without a jobs array (bot/session quirks). `?from=N&size=100` works.
+        // For global boards, try a United Kingdom keyword filter first to avoid
+        // pulling thousands of non-UK rows.
+        const ukSeedUrl = `${baseUrl}${searchPath}?keywords=${encodeURIComponent('United Kingdom')}`;
+        let ukSeedHtml = '';
+        try {
+            const ukRes = await fetchWithTimeout(ukSeedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (ukRes.ok) ukSeedHtml = await ukRes.text();
+        } catch { /* ignore */ }
+
+        const ukSeed = ukSeedHtml ? extractPhenomJobsFromHtml(ukSeedHtml) : { jobs: [], totalHits: 0 };
+        if (ukSeed.jobs.length && ukSeed.totalHits > 0 && ukSeed.totalHits < 5000) {
+            const ukJobs = await fetchPhenomHtmlPages(
+                baseUrl,
+                searchPath,
+                ukSeedHtml,
+                { keywords: 'United Kingdom', maxJobs: 2500 }
+            );
+            if (ukJobs.length) return ukJobs;
+        }
+
+        const htmlJobs = await fetchPhenomHtmlPages(baseUrl, searchPath, seedHtml, { maxJobs: 1500 });
+        if (htmlJobs.length) return htmlJobs;
+
+        // Widgets API fallback (works on some Phenom tenants)
         let allJobs: any[] = [];
         let from = 0;
-        
+        const locale = searchPath.includes('/global/') ? 'en_global'
+            : searchPath.includes('/gb/') ? 'en_gb' : 'en_us';
+        const country = searchPath.includes('/global/') ? 'global'
+            : searchPath.includes('/gb/') ? 'gb' : 'us';
+
         while (true) {
             const payload = {
-                lang: locale, country: country, deviceType: "desktop", pageName: "search-results",
-                ddoKey: "refineSearch", from: from, size: 100, siteType: "external", global: true
+                lang: locale, country, deviceType: "desktop", pageName: "search-results",
+                ddoKey: "refineSearch", from, size: 100, siteType: "external", global: true
             };
-            const headers: any = { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' };
+            const headers: any = {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0',
+                'Referer': `${baseUrl}${searchPath}`,
+                'Origin': baseUrl,
+            };
             if (csrf) headers['x-csrf-token'] = csrf;
-            
+            if (cookieHeader) headers['Cookie'] = cookieHeader;
+
             const reqRes = await fetchWithTimeout(`${baseUrl}/widgets`, {
                 method: 'POST',
-                headers: headers,
+                headers,
                 body: JSON.stringify(payload)
             });
             if (!reqRes.ok) break;
             const data = await reqRes.json();
-            
+
             const rs = data?.refineSearch || {};
             const hits = rs?.data?.jobs || rs?.jobs || rs?.hits || data?.jobs || [];
             if (!hits.length) break;
-            
+
             allJobs.push(...hits);
             const total = rs?.totalHits || rs?.data?.totalHits || rs?.hitsCount || 0;
             from += hits.length;
             if (!total || from >= total) break;
         }
-        
-        return allJobs.map((j: any) => {
-            const atsId = j.jobId || j.id || '';
-            let url = j.jobUrl || j.url || `${baseUrl}/job/${atsId}`;
-            if (!url.startsWith('http')) {
-                url = `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-            }
-            return {
-                title: j.title || j.jobTitle || '',
-                url: url,
-                location: [j.city, j.state, j.country].filter(Boolean).join(', ') || j.location || '',
-                department: j.department || j.category || '',
-                atsProvider: 'phenom'
-            };
-        }).filter((j: any) => j.title && j.url);
+
+        return mapPhenomJobs(allJobs, baseUrl);
     } catch { return []; }
+}
+
+function extractPhenomJobsFromHtml(html: string): { jobs: any[]; totalHits: number } {
+    const m = html.match(/"jobs"\s*:\s*(\[)/);
+    if (!m || m.index == null) return { jobs: [], totalHits: 0 };
+    const start = m.index + m[0].length - 1;
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < Math.min(html.length, start + 2_000_000); i++) {
+        const ch = html[i];
+        if (ch === '[') depth++;
+        else if (ch === ']') {
+            depth--;
+            if (depth === 0) { end = i; break; }
+        }
+    }
+    if (end < 0) return { jobs: [], totalHits: 0 };
+    let jobs: any[] = [];
+    try { jobs = JSON.parse(html.slice(start, end + 1)); } catch { return { jobs: [], totalHits: 0 }; }
+    const th = html.match(/"totalHits"\s*:\s*(\d+)/);
+    return { jobs, totalHits: th ? Number(th[1]) : jobs.length };
+}
+
+async function fetchPhenomHtmlPages(
+    baseUrl: string,
+    searchPath: string,
+    seedHtml: string,
+    opts?: { keywords?: string; maxJobs?: number }
+): Promise<Job[]> {
+    const pageSize = 100;
+    const maxJobs = opts?.maxJobs ?? 2000;
+    const first = extractPhenomJobsFromHtml(seedHtml);
+    const all: any[] = [...(first.jobs || [])];
+    const total = Math.min(first.totalHits || all.length, maxJobs);
+    if (!all.length) return [];
+
+    const qs = (from: number) => {
+        const params = new URLSearchParams();
+        params.set('from', String(from));
+        params.set('size', String(pageSize));
+        if (opts?.keywords) params.set('keywords', opts.keywords);
+        return params.toString();
+    };
+
+    for (let from = all.length; from < total; from += pageSize) {
+        const url = `${baseUrl}${searchPath}?${qs(from)}`;
+        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) break;
+        const html = await res.text();
+        const { jobs } = extractPhenomJobsFromHtml(html);
+        if (!jobs.length) break;
+        all.push(...jobs);
+        if (all.length >= maxJobs) break;
+        if (jobs.length < pageSize) break;
+        await sleep(250);
+    }
+
+    return mapPhenomJobs(all.slice(0, maxJobs), baseUrl);
+}
+
+function mapPhenomJobs(allJobs: any[], baseUrl: string): Job[] {
+    return allJobs.map((j: any) => {
+        const atsId = j.jobId || j.id || j.reqId || '';
+        let url = j.jobUrl || j.applyUrl || j.url || '';
+        if (url && !url.startsWith('http')) {
+            url = `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+        }
+        if (!url && atsId) url = `${baseUrl}/job/${atsId}`;
+        const location = [j.city, j.state, j.country].filter(Boolean).join(', ')
+            || j.cityStateCountry
+            || j.location
+            || '';
+        return {
+            title: j.title || j.jobTitle || '',
+            url,
+            location,
+            department: j.department || j.category || '',
+            atsProvider: 'phenom'
+        };
+    }).filter((j: any) => j.title && j.url);
 }
 
 // --- Recruiterbox ---
@@ -4674,14 +5028,14 @@ export async function syncAll() {
 
     if (targetMarket === 'ireland') {
         companies = companies.filter((c) => {
-            const market = String(c.sync_market || 'uk').toLowerCase();
+            const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
             const provider = String(c.ats_provider || '').toLowerCase();
-            return market === 'ireland' || market === 'both' || provider === 'linkedin' || c.id >= 900000;
+            return market === 'ireland' || market === 'both' || provider === 'linkedin';
         });
         console.log(`Ireland-market companies: ${companies.length}`);
     } else if (targetMarket === 'uk') {
         companies = companies.filter((c) => {
-            const market = String(c.sync_market || 'uk').toLowerCase();
+            const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
             return market === 'uk' || market === 'both';
         });
         console.log(`UK-market companies: ${companies.length}`);
