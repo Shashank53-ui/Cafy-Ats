@@ -5,6 +5,7 @@ This repository contains a Next.js app and supporting scripts, but the primary o
 The master sync entrypoint is:
 
 - `src/scripts/syncAll.ts`
+- 
 
 This README focuses on how to run, operate, and troubleshoot sync.
 
