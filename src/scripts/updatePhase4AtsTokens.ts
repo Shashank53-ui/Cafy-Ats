@@ -98,6 +98,30 @@ const UPDATES: Update[] = [
     careers_url: 'https://joinus.gknaerospace.com/',
     notes: 'SuccessFactors company gknaerospa → careers.gknaerospace.com',
   },
+  {
+    id: 960005,
+    ats_provider: 'oracle_cloud',
+    ats_board_token: 'fa-euup-saasfaprod1.fa.ocs.oraclecloud.com|CX_1',
+    ats_status: 'unchecked',
+    careers_url: 'https://careers.itv.com/jobs',
+    notes: 'Oracle Cloud HCM CE site CX_1; REST returns UK requisitions',
+  },
+  {
+    id: 960013,
+    ats_provider: 'generic_careers',
+    ats_board_token: 'https://careers.edfenergy.com/jobs',
+    ats_status: 'unchecked',
+    careers_url: 'https://careers.edfenergy.com/jobs',
+    notes: 'Attrax SSR job list on /jobs; generic HTML scraper (first page)',
+  },
+  {
+    id: 960010,
+    ats_provider: 'talenttrack',
+    ats_board_token: '5|https://jobs.barchester.com|barchester',
+    ats_status: 'unchecked',
+    careers_url: 'https://jobs.barchester.com/',
+    notes: 'TalentTrack oid/5 public search API (~980 UK care roles)',
+  },
 ];
 
 async function main() {
@@ -133,12 +157,9 @@ async function main() {
 
   // Leave needs_manual_review for unsupported boards (mark notes in output only)
   const manual = [
-    { id: 960004, reason: 'Network Rail — Workday tenant flaky/403; careers site blocks bots' },
-    { id: 960005, reason: 'ITV — Oracle Cloud HCM (no fetcher)' },
-    { id: 960010, reason: 'Barchester — custom Angular careers site' },
+    { id: 960004, reason: 'Network Rail — AmberTrack / custom; no supported public ATS API' },
     { id: 960011, reason: 'HC-One — Softscape apply.hc-one.co.uk' },
     { id: 960012, reason: 'Teach First — Salesforce PeoplePlatform' },
-    { id: 960013, reason: 'EDF Energy — Attrax/custom careers.edfenergy.com' },
     { id: 960016, reason: 'CMS — SelectMinds referrals portal' },
   ];
   console.log('\nStill needs_manual_review:');

@@ -3475,6 +3475,113 @@ async function fetchEploy(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
+// ─── TalentTrack (World Careers Network) ─────────────────────────────────────
+// Token: "oid|https://jobs.example.com|urlSlug"
+// Example: "5|https://jobs.barchester.com|barchester"
+// Public search: GET https://api.uk.talenttrack.co/v3b/search/oid/{oid}?orderBy=1&page=N&limitPerPage=50
+async function fetchTalentTrack(token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    try {
+        const parts = String(token || '').split('|').map((p) => p.trim()).filter(Boolean);
+        const oid = (parts[0] || '').replace(/^oid[=/]?/i, '');
+        if (!oid || !/^\d+$/.test(oid)) return [];
+
+        let siteBase = parts[1] || '';
+        let urlSlug = parts[2] || '';
+        if (siteBase && !/^https?:\/\//i.test(siteBase)) siteBase = `https://${siteBase}`;
+        siteBase = siteBase.replace(/\/+$/, '');
+        if (!urlSlug && siteBase) {
+            try {
+                const host = new URL(siteBase).hostname.replace(/^www\./, '');
+                urlSlug = host.split('.')[0] || 'jobs';
+            } catch {
+                urlSlug = 'jobs';
+            }
+        }
+        if (!siteBase) siteBase = 'https://jobs.barchester.com';
+        if (!urlSlug) urlSlug = 'barchester';
+
+        const limitPerPage = 50;
+        let page = 1;
+        let totalPage = 1;
+
+        while (page <= totalPage && page <= 40) {
+            const url =
+                `https://api.uk.talenttrack.co/v3b/search/oid/${oid}` +
+                `?orderBy=1&page=${page}&limitPerPage=${limitPerPage}&useTrueLocation=0`;
+            const res = await fetchWithTimeout(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0',
+                    Accept: 'application/json',
+                    Origin: siteBase,
+                    Referer: `${siteBase}/`,
+                },
+            });
+            if (!res.ok) break;
+
+            const data: any = await res.json();
+            const rows: any[] = Array.isArray(data?.data) ? data.data : [];
+            if (typeof data?.totalPage === 'number' && data.totalPage > 0) {
+                totalPage = data.totalPage;
+            } else if (!rows.length) {
+                break;
+            }
+
+            for (const j of rows) {
+                const title = String(j?.name || '').trim();
+                const jobId = j?.jobId;
+                if (!title || jobId == null) continue;
+
+                const slug = title
+                    .toLowerCase()
+                    .replace(/&amp;/g, 'and')
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-+|-+$/g, '');
+                const jobUrl = `${siteBase}/job/${urlSlug}/${slug || 'role'}-${jobId}`;
+
+                const location = [
+                    j?.city,
+                    j?.addressRegion,
+                    j?.fullLocation,
+                    j?.postcode,
+                    j?.country,
+                ]
+                    .map((x: unknown) => String(x || '').trim())
+                    .filter(Boolean)
+                    // Prefer compact city/region; fall back to fullLocation if city empty
+                    .filter((v: string, i: number, arr: string[]) => {
+                        if (i === 2 && arr[0]) return false; // skip fullLocation when city present
+                        if (i === 1 && arr[0] && v.toLowerCase().includes(arr[0].toLowerCase())) return false;
+                        return true;
+                    })
+                    .slice(0, 3)
+                    .join(', ');
+
+                const payRaw = String(j?.pay || '')
+                    .replace(/&pound;/gi, '£')
+                    .replace(/&amp;/g, '&')
+                    .replace(/<[^>]+>/g, '')
+                    .trim();
+
+                allJobs.push({
+                    title,
+                    location: location || 'United Kingdom',
+                    url: jobUrl,
+                    department: String(j?.type || j?.hours || '').trim(),
+                    salary: payRaw || undefined,
+                });
+            }
+
+            if (!rows.length) break;
+            page += 1;
+        }
+
+        return Array.from(new Map(allJobs.filter((j) => j.title && j.url).map((j) => [j.url, j])).values());
+    } catch {
+        return allJobs;
+    }
+}
+
 // ─── AstraZeneca (Playwright / TalentBrew SPA) ───────────────────────────────
 // Token: "astrazeneca" — JS-rendered careers.astrazeneca.com
 async function fetchAstraZeneca(_token: string): Promise<Job[]> {
@@ -4725,6 +4832,7 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     recruiterbox: fetchRecruiterbox,
     
     eploy: fetchEploy,
+    talenttrack: fetchTalentTrack,
 
     // Company-specific scrapers
     astrazeneca: fetchAstraZeneca,
