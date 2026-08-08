@@ -3582,6 +3582,306 @@ async function fetchTalentTrack(token: string): Promise<Job[]> {
     }
 }
 
+// ─── Softscape / Eploy map board (e.g. HC-One) ───────────────────────────────
+// Token: careers base host, e.g. "https://apply.hc-one.co.uk"
+// Map view embeds a JSON marker array with titles, postcodes, and vacancy URLs.
+async function fetchSoftscape(token: string): Promise<Job[]> {
+    try {
+        let base = String(token || '').trim().replace(/\/+$/, '');
+        if (!base) return [];
+        if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
+
+        const mapUrl = `${base}/vacancies/vacancy-search-results.aspx?view=map`;
+        const res = await fetchWithTimeout(mapUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                Accept: 'text/html',
+            },
+        }, 30000);
+        if (!res.ok) return [];
+
+        const html = await res.text();
+        const start = html.indexOf('[{"ID":');
+        if (start < 0) return [];
+
+        let depth = 0;
+        let end = -1;
+        for (let p = start; p < html.length; p++) {
+            const c = html[p];
+            if (c === '[') depth++;
+            else if (c === ']') {
+                depth--;
+                if (depth === 0) {
+                    end = p + 1;
+                    break;
+                }
+            }
+        }
+        if (end < 0) return [];
+
+        const markers: any[] = JSON.parse(html.slice(start, end));
+        const jobs: Job[] = [];
+
+        for (const m of markers) {
+            const title = String(m?.ToolTipText || '').trim();
+            const id = m?.ID;
+            if (!title || id == null) continue;
+
+            const content = String(m?.ItemContent || m?.FormattedText || '');
+            const hrefMatch = content.match(/href=['"]([^'"]*\/vacancies\/\d+\/[^'"]+\.html)['"]/i);
+            let jobUrl = hrefMatch?.[1] || '';
+            if (jobUrl && !/^https?:\/\//i.test(jobUrl)) {
+                jobUrl = `${base}/${jobUrl.replace(/^\//, '')}`;
+            }
+            if (!jobUrl) {
+                const slug = title
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-+|-+$/g, '');
+                jobUrl = `${base}/vacancies/${id}/${slug || 'role'}.html`;
+            }
+
+            const locFromHtml = content.match(/Location:<\/span><\/div><div class='content'>([^<]+)/i)?.[1]?.trim();
+            const location = [locFromHtml, m?.Address || m?.ResolvedPinLocation]
+                .map((x: unknown) => String(x || '').trim())
+                .filter(Boolean)
+                .join(', ');
+
+            const salary = content.match(/£[\d,\.]+(?:\s*[-–]\s*£[\d,\.]+)?(?:\s*(?:per\s*(?:hour|annum|year)|p\.?h\.?|p\.?a\.?))?/i)?.[0];
+
+            jobs.push({
+                title,
+                location: location || 'United Kingdom',
+                url: jobUrl,
+                department: content.match(/Job Family:<\/span><\/div><div class='content'>([^<]+)/i)?.[1]?.trim() || '',
+                salary: salary || undefined,
+            });
+        }
+
+        return Array.from(new Map(jobs.filter((j) => j.title && j.url).map((j) => [j.url, j])).values());
+    } catch {
+        return [];
+    }
+}
+
+// ─── Teach First vacancies page (Salesforce PeoplePlatform apply links) ───────
+// Token: vacancies page URL (default Teach First vacancies)
+async function fetchTeachFirst(token: string): Promise<Job[]> {
+    try {
+        const url = String(token || '').trim() || 'https://www.teachfirst.org.uk/working-teach-first/vacancies';
+        const res = await fetchWithTimeout(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' },
+        });
+        if (!res.ok) return [];
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        const jobs: Job[] = [];
+
+        $('a[href*="vacancyNo="], a[href*="fRecruit__ApplyJob"]').each((_, el) => {
+            const applyUrl = String($(el).attr('href') || '').trim();
+            if (!applyUrl) return;
+
+            // Walk up until we find a block that includes the vacancy heading.
+            let card = $(el).parent();
+            for (let i = 0; i < 8 && card.length; i++) {
+                if (card.find('h2, h3').length) break;
+                card = card.parent();
+            }
+
+            const title = card.find('h2, h3').first().text().replace(/\s+/g, ' ').trim();
+            if (!title || /^apply now$/i.test(title)) return;
+
+            const cardText = card.text().replace(/\s+/g, ' ').trim();
+            const locationRaw =
+                cardText.match(/Location:\s*([A-Za-z][A-Za-z0-9 ,\-]{0,40}?)(?=\s*(?:Salary|Type|Closing|$))/i)?.[1]?.trim() ||
+                cardText.match(/\b(Nationwide|London|Manchester|Birmingham|Leeds|Bristol|Newcastle|Nottingham|Norwich|Chatham|Bournemouth)\b/i)?.[1] ||
+                'United Kingdom';
+            const location = /^nationwide$/i.test(locationRaw)
+                ? 'United Kingdom'
+                : locationRaw;
+            const salary = cardText.match(/Salary:\s*([^|]+?)(?:\s+Type:|$)/i)?.[1]?.trim();
+
+            jobs.push({
+                title,
+                location,
+                url: applyUrl.startsWith('http') ? applyUrl : new URL(applyUrl, url).href,
+                department: cardText.match(/Type:\s*([^|]+)/i)?.[1]?.trim() || '',
+                salary: salary || undefined,
+            });
+        });
+
+        // Fallback: heading + nearby apply link
+        if (!jobs.length) {
+            $('h3').each((_, el) => {
+                const title = $(el).text().replace(/\s+/g, ' ').trim();
+                if (!title || title.length < 4) return;
+                const block = $(el).parent();
+                const apply = block.find('a[href*="vacancyNo="], a[href*="Apply"]').first().attr('href');
+                if (!apply) return;
+                const text = block.text().replace(/\s+/g, ' ');
+                jobs.push({
+                    title,
+                    location: text.match(/Location:\s*([A-Za-z0-9 ,\-]+)/i)?.[1]?.trim() || 'United Kingdom',
+                    url: apply.startsWith('http') ? apply : new URL(apply, url).href,
+                    department: '',
+                    salary: undefined,
+                });
+            });
+        }
+
+        return Array.from(new Map(jobs.filter((j) => j.title && j.url).map((j) => [j.url, j])).values());
+    } catch {
+        return [];
+    }
+}
+
+// ─── Network Rail (Oracle APEX recruitment portal) ───────────────────────────
+// Token unused — scrapes Maintenance + Corporate Services category pages via
+// Playwright + apex.model.fetchAll (progressive TemplateComponent reports).
+// Portal: https://apxprodnwrl.opc.oracleoutsourcing.com/ords/r/xxapex/recruitment-external-candidate/
+async function fetchNetworkRail(_token: string): Promise<Job[]> {
+    const categoryUrls = [
+        'https://apxprodnwrl.opc.oracleoutsourcing.com/ords/r/xxapex/recruitment-external-candidate/find-a-job-in-maintenance',
+        'https://apxprodnwrl.opc.oracleoutsourcing.com/ords/r/xxapex/recruitment-external-candidate/find-a-job-in-corporate-services',
+    ];
+    const allJobs: Job[] = [];
+    let browser: Browser | undefined;
+    let context: BrowserContext | undefined;
+
+    const decode = (s: string) =>
+        s
+            .replace(/&amp;/g, '&')
+            .replace(/&pound;/gi, '£')
+            .replace(/&#x27;/g, "'")
+            .replace(/&nbsp;/g, ' ')
+            .replace(/<[^>]+>/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+    try {
+        browser = await getSharedBrowser();
+        context = await browser.newContext({
+            userAgent:
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+        });
+
+        for (const categoryUrl of categoryUrls) {
+            const page = await context.newPage();
+            try {
+                await page.goto(categoryUrl, { waitUntil: 'networkidle', timeout: 90000 });
+                await page.waitForTimeout(1000);
+
+                const rows: Array<[string, string]> = await page.evaluate(async () => {
+                    const anyWin = window as any;
+                    const modelName = (anyWin.apex?.model?.list?.() || [])[0];
+                    if (!modelName || !anyWin.apex?.model) return [];
+                    const model = anyWin.apex.model.get(modelName);
+                    const regionId = String(modelName).replace(/^R/, '');
+                    const dataKey = `gTemplateReport${regionId}data`;
+
+                    if (typeof model.fetchAll === 'function') {
+                        await new Promise<void>((resolve) => {
+                            try {
+                                const ret = model.fetchAll({
+                                    success() {
+                                        resolve();
+                                    },
+                                    error() {
+                                        resolve();
+                                    },
+                                });
+                                if (ret && typeof ret.then === 'function') {
+                                    ret.then(() => resolve()).catch(() => resolve());
+                                } else {
+                                    setTimeout(() => resolve(), 10000);
+                                }
+                            } catch {
+                                resolve();
+                            }
+                        });
+                    }
+
+                    // Extra progressive fetches if moreData remains
+                    for (let i = 0; i < 20; i++) {
+                        const data = anyWin[dataKey];
+                        if (!data?.moreData) break;
+                        const before = data.values?.length || 0;
+                        await new Promise<void>((resolve) => {
+                            try {
+                                const ret = model.fetch({
+                                    success() {
+                                        resolve();
+                                    },
+                                    error() {
+                                        resolve();
+                                    },
+                                });
+                                if (ret && typeof ret.then === 'function') {
+                                    ret.then(() => resolve()).catch(() => resolve());
+                                } else {
+                                    setTimeout(() => resolve(), 2000);
+                                }
+                            } catch {
+                                resolve();
+                            }
+                        });
+                        await new Promise((r) => setTimeout(r, 400));
+                        const after = anyWin[dataKey]?.values?.length || 0;
+                        if (after <= before) break;
+                    }
+
+                    return (anyWin[dataKey]?.values || []) as Array<[string, string]>;
+                });
+
+                for (const row of rows) {
+                    const id = String(row?.[0] || '').trim();
+                    const html = String(row?.[1] || '');
+                    if (!id || !html) continue;
+
+                    const titleMatch =
+                        html.match(/t-ContentRow-title[^>]*>([\s\S]*?)<div class="department/i) ||
+                        html.match(/t-ContentRow-title[^>]*>([\s\S]*?)<\//i);
+                    const title = decode(titleMatch?.[1] || '');
+                    if (!title) continue;
+
+                    const locationRaw = decode(
+                        html.match(/fa-map-marker-o[\s\S]*?<\/span>([^<]+)/i)?.[1] || ''
+                    ) || 'United Kingdom';
+                    // Depot/station names often aren't in the UK city list — keep a country hint.
+                    const location = /united kingdom|\buk\b|england|scotland|wales|northern ireland/i.test(locationRaw)
+                        ? locationRaw
+                        : `${locationRaw}, United Kingdom`;
+                    const salaryRaw = decode(
+                        html.match(/fa-money[\s\S]*?<\/span>([^<]+)/i)?.[1] || ''
+                    );
+                    const department = decode(
+                        html.match(/class="department[^"]*"[^>]*>([\s\S]*?)<\//i)?.[1] || ''
+                    );
+
+                    allJobs.push({
+                        title,
+                        location,
+                        url: `https://apxprodnwrl.opc.oracleoutsourcing.com/ords/r/xxapex/recruitment-external-candidate/vacancy-details?p402_vacancy_id=${id}`,
+                        department,
+                        salary: salaryRaw || undefined,
+                    });
+                }
+            } finally {
+                await page.close().catch(() => undefined);
+            }
+        }
+
+        return Array.from(
+            new Map(allJobs.filter((j) => j.title && j.url).map((j) => [j.url, j])).values()
+        );
+    } catch {
+        return allJobs;
+    } finally {
+        if (context) await context.close().catch(() => undefined);
+    }
+}
+
 // ─── AstraZeneca (Playwright / TalentBrew SPA) ───────────────────────────────
 // Token: "astrazeneca" — JS-rendered careers.astrazeneca.com
 async function fetchAstraZeneca(_token: string): Promise<Job[]> {
@@ -4833,6 +5133,9 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     
     eploy: fetchEploy,
     talenttrack: fetchTalentTrack,
+    softscape: fetchSoftscape,
+    teachfirst: fetchTeachFirst,
+    networkrail: fetchNetworkRail,
 
     // Company-specific scrapers
     astrazeneca: fetchAstraZeneca,
