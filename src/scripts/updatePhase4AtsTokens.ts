@@ -122,6 +122,38 @@ const UPDATES: Update[] = [
     careers_url: 'https://jobs.barchester.com/',
     notes: 'TalentTrack oid/5 public search API (~980 UK care roles)',
   },
+  {
+    id: 960016,
+    ats_provider: 'workday',
+    ats_board_token: 'cmno/CMS_Career_Site',
+    ats_status: 'unchecked',
+    careers_url: 'https://cmno.wd3.myworkdayjobs.com/CMS_Career_Site',
+    notes: 'CMS UK moved to Workday board CMS_Career_Site (was SelectMinds)',
+  },
+  {
+    id: 960011,
+    ats_provider: 'softscape',
+    ats_board_token: 'https://apply.hc-one.co.uk',
+    ats_status: 'unchecked',
+    careers_url: 'https://apply.hc-one.co.uk/vacancies/vacancy-search-results.aspx',
+    notes: 'Softscape map markers JSON (~320 UK care vacancies)',
+  },
+  {
+    id: 960012,
+    ats_provider: 'teachfirst',
+    ats_board_token: 'https://www.teachfirst.org.uk/working-teach-first/vacancies',
+    ats_status: 'unchecked',
+    careers_url: 'https://www.teachfirst.org.uk/working-teach-first/vacancies',
+    notes: 'Drupal vacancies page with Salesforce PeoplePlatform apply links',
+  },
+  {
+    id: 960004,
+    ats_provider: 'networkrail',
+    ats_board_token: 'networkrail',
+    ats_status: 'unchecked',
+    careers_url: 'https://apxprodnwrl.opc.oracleoutsourcing.com/ords/r/xxapex/recruitment-external-candidate/find-a-job',
+    notes: 'Oracle APEX portal; Playwright fetchAll on Maintenance + Corporate pages',
+  },
 ];
 
 async function main() {
@@ -155,18 +187,10 @@ async function main() {
     );
   }
 
-  // Leave needs_manual_review for unsupported boards (mark notes in output only)
-  const manual = [
-    { id: 960004, reason: 'Network Rail — AmberTrack / custom; no supported public ATS API' },
-    { id: 960011, reason: 'HC-One — Softscape apply.hc-one.co.uk' },
-    { id: 960012, reason: 'Teach First — Salesforce PeoplePlatform' },
-    { id: 960016, reason: 'CMS — SelectMinds referrals portal' },
-  ];
-  console.log('\nStill needs_manual_review:');
-  for (const m of manual) console.log(`  ${m.id}: ${m.reason}`);
+  console.log('\nAll Phase-4 seed companies now have ATS wiring (Network Rail via Oracle APEX).');
 
   await import('fs').then((fs) =>
-    fs.writeFileSync('tmp-phase4-ats-updates.json', JSON.stringify({ results, manual }, null, 2))
+    fs.writeFileSync('tmp-phase4-ats-updates.json', JSON.stringify({ results }, null, 2))
   );
 }
 
