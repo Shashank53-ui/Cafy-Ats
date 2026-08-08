@@ -175,9 +175,25 @@ test('Ireland Filter: rejects US state-code namesakes', () => {
     assert.strictEqual(isIrelandJob('Westport, Mo'), true);
     assert.strictEqual(isIrelandJob('Kenmare, Ky'), true);
     assert.strictEqual(isIrelandJob('Carrigaline, Co'), true);
-    // Multi-loc with Irish city still ok
+    // Multi-loc with Irish city still ok (no US country term)
     assert.strictEqual(isIrelandJob('Detroit, MI; Dublin, Ireland'), true);
     assert.strictEqual(isIrelandJob('SF, New York, Seattle, Dublin'), true);
+
+    // US-addressed Irish namesakes must not pass
+    for (const location of [
+        'Ennis, TX, United States',
+        'Westport-Mertztown, PA, United States',
+        'Store -Waterford Park-Lanebryant-Clarksville, IN, United States',
+        'Store -Parkwest-Ann-Peoria, AZ, United States',
+        'Waterford Works, NJ, United States',
+    ]) {
+        assert.strictEqual(isIrelandJob(location), false, `${location} should be rejected`);
+    }
+    // Multi-loc that includes Dublin alongside US offices still OK
+    assert.strictEqual(
+        isIrelandJob('United Kingdom Dublin United States New York Sofia Germany Poland Boston Remote'),
+        true,
+    );
 });
 
 test('Ireland Filter: rejects WW/worldwide and NI typos; accepts Eircode', () => {

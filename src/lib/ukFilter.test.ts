@@ -328,6 +328,19 @@ test('UK Filter: Victoria Mexico rejected', () => {
     assert.strictEqual(isUKJob(input), false, 'Victoria, Mexico must not pass via UK city namesake');
 });
 
+test('UK Filter: Au-Victoria and Peru Victoria rejected', () => {
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['Au-Victoria'], isRemote: false }),
+        false,
+        'Au-Victoria is Australia',
+    );
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['La Victoria, Lambayeque, Peru'], isRemote: false }),
+        false,
+        'Peru Victoria must not pass',
+    );
+});
+
 test('UK Filter: UI junk placeholders rejected', () => {
     for (const loc of ['+2 More…', '+1 More...', 'All Roles', '#Li']) {
         const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };

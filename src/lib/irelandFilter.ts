@@ -244,18 +244,19 @@ function hasUsStateSignal(combined: string, rawJoined: string): boolean {
  * "Dublin, CA" / "Westport, CT" / "Dublin, Ohio" — Irish namesake immediately
  * qualified by a US state. Multi-loc like "SF, New York, Seattle, Dublin" must NOT match.
  */
-const IRISH_US_NAMESAKES = 'dublin|cork|waterford|westport|newport|tralee|killarney|galway|limerick|athlone|sligo|drogheda|dundalk|wexford|carlow|kilkenny|clonmel|naas|navan|bray|shannon';
+const IRISH_US_NAMESAKES =
+    'dublin|cork|waterford|westport|newport|tralee|killarney|galway|limerick|athlone|sligo|drogheda|dundalk|wexford|carlow|kilkenny|clonmel|naas|navan|bray|shannon|ennis|castlebar|ballina|letterkenny|mullingar|portlaoise|tullamore|youghal|cobh|mallow|midleton|arklow|greystones|leixlip|balbriggan|nenagh|thurles|tipperary|cashel|kells|trim|birr|gorey|tuam|parkwest|park west|citywest|city west|santry|cherrywood|rathfarnham|stillorgan|clongriffin';
 
 function isIrishNamesakeQualifiedByUsState(combined: string, rawJoined: string): boolean {
     if (new RegExp(
-        `\\b(${IRISH_US_NAMESAKES})\\s*,\\s*(${US_ONLY_STATE_CODES})\\b`,
+        `\\b(${IRISH_US_NAMESAKES})\\b[\\w\\s./-]*?,\\s*(${US_ONLY_STATE_CODES})\\b`,
         'i',
     ).test(rawJoined)) return true;
 
     // Full state name after namesake with comma: "Dublin, Ohio, United States"
     if (US_STATE_NAMES.some(state =>
         new RegExp(
-            `\\b(${IRISH_US_NAMESAKES})\\s*,\\s*${state.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+            `\\b(${IRISH_US_NAMESAKES})\\b[\\w\\s./-]*?,\\s*${state.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
             'i',
         ).test(rawJoined),
     )) return true;
@@ -385,6 +386,19 @@ export function isIrelandJob(location: string | null | undefined, locations: str
         if (hasUsStateSignal(combined, rawJoined)) {
             if (isIrishNamesakeQualifiedByUsState(combined, rawJoined) && !hasDefinitiveIrelandSignal(combined)) {
                 return false;
+            }
+            // US-addressed jobs ("Ennis, TX, United States") without Ireland/Éire/Eircode:
+            // reject unless an Irish city/county appears as its own token (multi-loc lists).
+            if (hasUsCountrySignal(combined) && !hasDefinitiveIrelandSignal(combined)) {
+                if (
+                    !hasIrishCitySignal(combined) &&
+                    !hasIrishCountySignal(combined) &&
+                    !EIRCODE_RE.test(combined)
+                ) {
+                    return false;
+                }
+                // Irish city present but glued to a US state (namesake address) → already
+                // rejected above. Remaining cases are multi-loc like "… Dublin … United States".
             }
             if (hasIrishCitySignal(combined) || hasIrishCountySignal(combined) || EIRCODE_RE.test(combined)) {
                 return true;
