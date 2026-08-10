@@ -15,7 +15,9 @@ const PHARMA_INDUSTRY_SIGNAL =
 const PHARMA_COMPANY_SECTOR =
     /\b(pharmaceuticals?|pharma|biotech|biotechnology|biopharma|life\s*sciences?)\b/;
 
-const RULES: [RegExp, string][] = [
+// Exported (read-only use) so audit tooling can report which rule fired for
+// a given job without re-implementing/duplicating the match logic.
+export const RULES: [RegExp, string][] = [
     // Built-environment architecture — BEFORE software "architect" catch-all
     [/\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\s+architect|riba|architecture practice)\b/, 'Construction & Infrastructure'],
     // Engineering (Software) — IT architects + developers (not building architects)
@@ -30,7 +32,10 @@ const RULES: [RegExp, string][] = [
     // Finance
     [/\b(finance|accounting|tax|audit|financial|quant|trading|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|accountant|accounts)\b/, 'Finance'],
     // Healthcare (clinical/medical) — patient-facing care; before Healthcare & Social Care
-    [/\b(health|medical|clinical|nurse|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp)\b/, 'Healthcare'],
+    // Includes NHS "Consultant [Specialty]" clinical grade titles — without these,
+    // titles like "Consultant Psychiatrist" fall through to the bare `consultant`
+    // catch-all below and land in Business & Strategy (found via audit, ~400+ jobs).
+    [/\b(health|medical|clinical|nurse|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|clinical psycholog(?:y|ist))\b/, 'Healthcare'],
     // Healthcare & Social Care
     [/\b(dietitian|social worker|ward manager|carer|care worker|care home|social care|community care|matron|sonographer|podiatrist|care assistant|general practitioner|veterinary|practice manager)\b/, 'Healthcare & Social Care'],
     // Legal
@@ -73,6 +78,15 @@ const RULES: [RegExp, string][] = [
 function matchRules(text: string): string | null {
     for (const [regex, sector] of RULES) {
         if (regex.test(text)) return sector;
+    }
+    return null;
+}
+
+/** Same as matchRules, but also returns which rule (index + pattern) fired — for audit tooling only. */
+export function matchRuleDebug(text: string): { sector: string; ruleIndex: number; pattern: string } | null {
+    for (let i = 0; i < RULES.length; i++) {
+        const [regex, sector] = RULES[i];
+        if (regex.test(text)) return { sector, ruleIndex: i, pattern: regex.source };
     }
     return null;
 }
