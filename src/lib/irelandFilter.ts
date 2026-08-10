@@ -253,6 +253,12 @@ function isIrishNamesakeQualifiedByUsState(combined: string, rawJoined: string):
         'i',
     ).test(rawJoined)) return true;
 
+    // Space form without comma: "Wexford Pa", "Dublin OH" (US_ONLY excludes mo/ky/mn Mayo/Kerry collisions)
+    if (new RegExp(
+        `\\b(${IRISH_US_NAMESAKES})\\s+(${US_ONLY_STATE_CODES})\\b`,
+        'i',
+    ).test(rawJoined)) return true;
+
     // Full state name after namesake with comma: "Dublin, Ohio, United States"
     if (US_STATE_NAMES.some(state =>
         new RegExp(
@@ -269,6 +275,104 @@ function isIrishNamesakeQualifiedByUsState(combined: string, rawJoined: string):
                 `\\b(${IRISH_US_NAMESAKES})\\s+${state.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
             ).test(combined),
         );
+    }
+    return false;
+}
+
+/** US street / highway addresses that reused Irish place names (Wexford PA, Dublin OH). */
+function looksLikeUsStreetAddress(raw: string): boolean {
+    const street =
+        /\b(rd\.?|road|st\.?|street|ave\.?|avenue|hwy\.?|highway|blvd\.?|boulevard|lane|ln\.?|drive|dr\.?|suite|perry\s+highway|granville\s+rd)\b/i.test(
+            raw,
+        );
+    if (!street) return false;
+    return (
+        new RegExp(`,\\s*(${US_ONLY_STATE_CODES})\\b`, 'i').test(raw) ||
+        new RegExp(`\\b(${IRISH_US_NAMESAKES})\\s+(${US_ONLY_STATE_CODES})\\b`, 'i').test(raw) ||
+        /\b(united states|usa|u\.s\.a?|ohio|pennsylvania|texas|california|colorado|kentucky|minnesota|arizona|indiana|new jersey)\b/i.test(
+            raw,
+        )
+    );
+}
+
+/**
+ * A clean Ireland-only segment from a multi-loc string, e.g. "Dublin, Ireland" in
+ * "Detroit, MI; Dublin, Ireland". Space-glued dumps like "UK Dublin US New York" have none.
+ */
+function hasCleanIrelandSegment(rawJoined: string): boolean {
+    // Explicit Ireland remote / office markers inside multi-loc dumps.
+    if (/\bireland\s*\(\s*remote\s*\)/i.test(rawJoined)) return true;
+    if (
+        /\bireland\s*[-–]\s*[a-z0-9]/i.test(rawJoined) &&
+        !looksLikeUsStreetAddress(rawJoined) &&
+        !new RegExp(`,\\s*(${US_ONLY_STATE_CODES})\\b`, 'i').test(rawJoined) &&
+        !new RegExp(`\\b(${IRISH_US_NAMESAKES})\\s+(${US_ONLY_STATE_CODES})\\b`, 'i').test(rawJoined)
+    ) {
+        return true;
+    }
+
+    const segs = rawJoined
+        .split(/\s*[|;/]\s*|\s+OR\s+/i)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    // Two-part lists like "London, Dublin" / "Ireland, United Kingdom" (no US state).
+    if (segs.length <= 1) {
+        const commaParts = rawJoined.split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean);
+        if (commaParts.length === 2) {
+            const [a, b] = commaParts;
+            const na = normalizeLocation(a);
+            const nb = normalizeLocation(b);
+            const joinedN = normalizeLocation(rawJoined);
+            if (
+                hasUsStateSignal(joinedN, rawJoined) ||
+                hasUsCountrySignal(joinedN) ||
+                isIrishNamesakeQualifiedByUsState(joinedN, rawJoined)
+            ) {
+                return false;
+            }
+            const irishA = hasIrishCitySignal(na) || hasDefinitiveIrelandSignal(na);
+            const irishB = hasIrishCitySignal(nb) || hasDefinitiveIrelandSignal(nb);
+            // "Bordeaux, Ireland" / "London, Ireland" — foreign city + bare Ireland is not enough.
+            if (hasForeignCity(na) && hasDefinitiveIrelandSignal(nb) && !hasIrishCitySignal(na)) return false;
+            if (hasForeignCity(nb) && hasDefinitiveIrelandSignal(na) && !hasIrishCitySignal(nb)) return false;
+            if (irishA || irishB) return true;
+        }
+        return false;
+    }
+
+    return segs.some((seg) => {
+        if (looksLikeUsStreetAddress(seg)) return false;
+        const n = normalizeLocation(seg);
+        if (!n) return false;
+        if (isIrishNamesakeQualifiedByUsState(n, seg)) return false;
+        if (hasUsCountrySignal(n)) return false;
+        if (hasUsStateSignal(n, seg) && !hasDefinitiveIrelandSignal(n)) return false;
+
+        const hasIePlace =
+            hasDefinitiveIrelandSignal(n) ||
+            hasIrishCitySignal(n) ||
+            hasIrishCountySignal(n) ||
+            EIRCODE_RE.test(n);
+        if (!hasIePlace) return false;
+
+        if (hasForeignCity(n) && !hasDefinitiveIrelandSignal(n)) return false;
+        if (isHardBlocked(n, seg) && !hasDefinitiveIrelandSignal(n)) return false;
+
+        return true;
+    });
+}
+
+function isMultiCountryDump(combined: string): boolean {
+    const countryHints = [
+        'united kingdom', 'united states', 'usa', 'germany', 'france', 'spain', 'poland',
+        'portugal', 'netherlands', 'sweden', 'italy', 'canada', 'australia', 'india',
+        'china', 'czechia', 'czech republic', 'bulgaria', 'ukraine', 'remote',
+    ];
+    let hits = 0;
+    for (const c of countryHints) {
+        if (containsLocationPhrase(combined, c)) hits++;
+        if (hits >= 2) return true;
     }
     return false;
 }
@@ -371,6 +475,14 @@ export function isIrelandJob(location: string | null | undefined, locations: str
     // Scraped ATS garbage timestamps are never real locations.
     if (/\b(\d+\s+)?(months?|weeks?|days?)\s+ago\b/.test(combined)) return false;
 
+    // US street / highway addresses that reuse Irish place names.
+    if (looksLikeUsStreetAddress(rawJoined)) return false;
+
+    // Irish namesake immediately glued to a US state ("Wexford Pa", "Dublin, OH").
+    if (isIrishNamesakeQualifiedByUsState(combined, rawJoined) && !hasDefinitiveIrelandSignal(combined)) {
+        return false;
+    }
+
     // Bare Eircode is a definitive RoI signal — but never when a non-IE country
     // prefix / hard-block is present (e.g. Workday "CA-QC-… J01 BLDG").
     if (EIRCODE_RE.test(combined) && !isHardBlocked(combined, rawJoined)) return true;
@@ -378,41 +490,49 @@ export function isIrelandJob(location: string | null | undefined, locations: str
     // Bare ISO / county codes alone ("CN", "US") are not Ireland locations.
     if (/^[a-z]{2}$/.test(combined) && combined !== 'ie') return false;
 
+    // Multi-country space dumps ("Poland Portugal Ireland Germany Remote") need a
+    // clean Ireland-only segment — a bare "Ireland"/"Dublin" token in the glue is not enough.
+    if (isMultiCountryDump(combined) && !hasCleanIrelandSegment(rawJoined)) {
+        // Still allow a single clean place when the whole string is just Ireland/Dublin/…
+        // without foreign countries — isMultiCountryDump would be false then.
+        // If multi-country and no clean segment → reject (unless Eircode already handled).
+        if (isHardBlocked(combined, rawJoined) || hasUsStateSignal(combined, rawJoined) || hasUsCountrySignal(combined)) {
+            return false;
+        }
+    }
+
     if (isHardBlocked(combined, rawJoined)) {
         // US state name/code handling:
         // - "Dublin, CA" / "Westport, CT" (namesake + state code) → reject
         // - "New York, Ireland" (US state + Ireland word, no Irish place) → reject
-        // - "SF, New York, Seattle, Dublin" (multi-loc with Irish city) → accept
+        // - "Detroit, MI; Dublin, Ireland" (clean Ireland segment) → accept
         if (hasUsStateSignal(combined, rawJoined)) {
-            if (isIrishNamesakeQualifiedByUsState(combined, rawJoined) && !hasDefinitiveIrelandSignal(combined)) {
+            if (isIrishNamesakeQualifiedByUsState(combined, rawJoined)) {
                 return false;
             }
-            // US-addressed jobs ("Ennis, TX, United States") without Ireland/Éire/Eircode:
-            // reject unless an Irish city/county appears as its own token (multi-loc lists).
-            if (hasUsCountrySignal(combined) && !hasDefinitiveIrelandSignal(combined)) {
-                if (
-                    !hasIrishCitySignal(combined) &&
-                    !hasIrishCountySignal(combined) &&
-                    !EIRCODE_RE.test(combined)
-                ) {
-                    return false;
-                }
-                // Irish city present but glued to a US state (namesake address) → already
-                // rejected above. Remaining cases are multi-loc like "… Dublin … United States".
-            }
-            if (hasIrishCitySignal(combined) || hasIrishCountySignal(combined) || EIRCODE_RE.test(combined)) {
-                return true;
-            }
-            // "New York, Ireland" — Ireland word alone is not enough with a US state
-            return false;
+            return hasCleanIrelandSegment(rawJoined);
         }
         // Foreign city + bare "Ireland" (e.g. "Bordeaux, Ireland") is not enough.
         if (hasForeignCity(combined)) {
-            return hasIrishCitySignal(combined) || EIRCODE_RE.test(combined) || hasIrishCountySignal(combined);
+            return hasCleanIrelandSegment(rawJoined) || (
+                // Single-segment Irish city with Ireland country already handled above;
+                // multi-loc without separators still needs a city + no US state (rare).
+                (hasIrishCitySignal(combined) || EIRCODE_RE.test(combined) || hasIrishCountySignal(combined)) &&
+                hasDefinitiveIrelandSignal(combined) &&
+                !isMultiCountryDump(combined)
+            );
         }
         // Leading ISO prefix with no Irish place — reject even if a county abbrev collides.
         if (hasLeadingNonIeIsoPrefix(combined)) return false;
-        return hasDefinitiveIrelandSignal(combined);
+        // Hard-blocked countries present: only accept with a clean Ireland segment
+        // or a definitive Ireland signal without US geography.
+        if (hasCleanIrelandSegment(rawJoined)) return true;
+        if (isMultiCountryDump(combined)) return false;
+        return (
+            hasDefinitiveIrelandSignal(combined) &&
+            !hasUsCountrySignal(combined) &&
+            !hasUsStateSignal(combined, rawJoined)
+        );
     }
 
     return candidates.some(candidate =>

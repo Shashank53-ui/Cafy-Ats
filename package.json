@@ -17,6 +17,8 @@
     "migrate:ireland": "tsx src/scripts/applyIrelandMigration.ts",
     "backfill:company-sectors": "tsx src/scripts/backfillCompanySector.ts",
     "backfill:sectors": "tsx src/scripts/backfillJobSectors.ts",
+    "reclassify:sectors": "tsx src/scripts/reclassifyJobSectors.ts",
+    "reclassify:sectors:pharma": "tsx src/scripts/reclassifyJobSectors.ts --apply --only Pharmaceutical",
     "validate:ats": "tsx src/scripts/validateAtsTokens.ts",
     "repair:ats": "tsx src/scripts/repairBadTokens.ts",
     "baseline:ats": "tsx src/scripts/exportAtsBaseline.ts",
@@ -25,7 +27,15 @@
     "detect:ats:single": "tsx src/scripts/detectAtsFromCareersPage.ts --company-id",
     "import:ats:csv": "tsx src/scripts/importAtsFromCsv.ts",
     "seed:companies": "tsx src/scripts/seedCompaniesFromCsv.ts",
-    "import:full": "tsx src/scripts/importFullCompanies.ts"
+    "import:full": "tsx src/scripts/importFullCompanies.ts",
+    "purge:unlicensed": "tsx src/scripts/purgeUnlicensedJobs.ts",
+    "cleanup:jobs-ir": "tsx src/scripts/cleanupJobsIR.ts",
+    "cleanup:jobs-uk": "tsx src/scripts/cleanupJobsUK.ts",
+    "audit:locations": "tsx src/scripts/auditLocationQuality.ts",
+    "backfill:locations": "tsx src/scripts/backfillVagueLocations.ts",
+    "backfill:levels": "tsx src/scripts/backfillJobLevels.ts",
+    "list:missing-jobs": "tsx src/scripts/listSponsorsMissingJobs.ts",
+    "expire:stale": "tsx src/scripts/expireStaleCustomJobs.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

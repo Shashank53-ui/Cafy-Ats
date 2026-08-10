@@ -175,9 +175,10 @@ test('Ireland Filter: rejects US state-code namesakes', () => {
     assert.strictEqual(isIrelandJob('Westport, Mo'), true);
     assert.strictEqual(isIrelandJob('Kenmare, Ky'), true);
     assert.strictEqual(isIrelandJob('Carrigaline, Co'), true);
-    // Multi-loc with Irish city still ok (no US country term)
+    // Multi-loc with Irish city still ok when there is a clean Ireland segment
     assert.strictEqual(isIrelandJob('Detroit, MI; Dublin, Ireland'), true);
-    assert.strictEqual(isIrelandJob('SF, New York, Seattle, Dublin'), true);
+    // Space-glued dumps without a clean ";"/ "|" Ireland segment must not pass
+    assert.strictEqual(isIrelandJob('SF, New York, Seattle, Dublin'), false);
 
     // US-addressed Irish namesakes must not pass
     for (const location of [
@@ -186,14 +187,18 @@ test('Ireland Filter: rejects US state-code namesakes', () => {
         'Store -Waterford Park-Lanebryant-Clarksville, IN, United States',
         'Store -Parkwest-Ann-Peoria, AZ, United States',
         'Waterford Works, NJ, United States',
+        'Wexford Pa, ,  Perry Highway',
+        'Dublin, 3734 W Dublin Granville Rd, Columbus, OH 43235',
+        'Pittsburgh (Castle Shannon), PA',
     ]) {
         assert.strictEqual(isIrelandJob(location), false, `${location} should be rejected`);
     }
-    // Multi-loc that includes Dublin alongside US offices still OK
+    // Multi-country glue dumps without a clean Ireland segment must not pass
     assert.strictEqual(
         isIrelandJob('United Kingdom Dublin United States New York Sofia Germany Poland Boston Remote'),
-        true,
+        false,
     );
+    assert.strictEqual(isIrelandJob('Poland Portugal Ireland Germany Remote'), false);
 });
 
 test('Ireland Filter: rejects WW/worldwide and NI typos; accepts Eircode', () => {
@@ -211,4 +216,15 @@ test('Ireland Filter: rejects Canada Workday site codes (false Eircode J01 BLDG)
     assert.strictEqual(isIrelandJob('CA-ON-TORONTO-A01 ~ Some Street'), false);
     assert.strictEqual(isIrelandJob('J01 BLDG'), false, 'Invalid routing key J must not match Eircode');
     assert.strictEqual(isIrelandJob('Longueuil, Quebec, Canada'), false);
+});
+
+test('Ireland Filter: accepts clean Ireland segment in multi-loc lists', () => {
+    assert.strictEqual(
+        isIrelandJob('Berlin, Germany | Dublin, Ireland | Remote - Ireland'),
+        true,
+    );
+    assert.strictEqual(
+        isIrelandJob('Warsaw, Poland / London, UK / Dublin, Ireland'),
+        true,
+    );
 });
