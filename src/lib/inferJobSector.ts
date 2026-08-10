@@ -30,7 +30,8 @@ export const RULES: [RegExp, string][] = [
     // Data
     [/\b(data|analytics|statistics|sql|python|bi|business intelligence|dba|database administrator)\b/, 'Data'],
     // Finance
-    [/\b(finance|accounting|tax|audit|financial|quant|trading|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|accountant|accounts)\b/, 'Finance'],
+    // `trader`/`traders` added — \btrading\b didn't match "Index Trader" etc.
+    [/\b(finance|accounting|tax|audit|financial|quant|trading|traders?|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|accountant|accounts|regulatory reporting)\b/, 'Finance'],
     // Healthcare (clinical/medical) — patient-facing care; before Healthcare & Social Care
     // Includes NHS "Consultant [Specialty]" clinical grade titles — without these,
     // titles like "Consultant Psychiatrist" fall through to the bare `consultant`
@@ -56,7 +57,9 @@ export const RULES: [RegExp, string][] = [
     // HR / People — \bpeople\b catches ATS depts named "People"
     [/\b(hr|human resources|people ops|talent|recruiter|recruiting|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people)\b/, 'HR / People'],
     // Construction & Infrastructure — includes bare "Architect" without IT cues (handled in inferJobSector)
-    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contract manager|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town planning)\b/, 'Construction & Infrastructure'],
+    // bim/hydraulic/flood/highways/vertical transportation added from audit
+    // samples that were falling through to the Engineering (Other)/Other catch-alls.
+    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contract manager|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town planning|\bbim\b|hydraulic|flood (risk|model)|vertical transportation|highways?)\b/, 'Construction & Infrastructure'],
     // Retail & Hospitality
     [/\b(beauty|chef|retail|store manager|hospitality|barista|restaurant|hotel|catering|cook|merchandiser|buyer)\b/, 'Retail & Hospitality'],
     // Logistics & Transport — before Operations to claim warehouse/logistics/supply chain
@@ -72,7 +75,8 @@ export const RULES: [RegExp, string][] = [
     // Engineering (Other) — generic catch-all after all specific engineering types
     [/\b(engineer|engineering)\b/, 'Engineering (Other)'],
     // Business & Strategy — broadest catch-all last
-    [/\b(business|strategy|consultant|analyst|corporate|planning)\b/, 'Business & Strategy'],
+    // `pursuit` (bid/pursuit management — BD terminology at consultancies) added.
+    [/\b(business|strategy|consultant|analyst|corporate|planning|pursuit)\b/, 'Business & Strategy'],
 ];
 
 function matchRules(text: string): string | null {
@@ -117,6 +121,16 @@ export function inferJobSector(
     const t = (title || '').toLowerCase().trim();
     const d = (department || '').toLowerCase().trim();
     const combined = `${d} ${t}`.trim();
+
+    // Unambiguous legal-practitioner titles ("Banking Lawyer", "Insurance
+    // Lawyer", "Structured Finance Lawyer") stay Legal even when a finance-
+    // domain modifier is present — Finance's broader word list (banking,
+    // insurance, trading, ...) would otherwise win first on title order.
+    // Deliberately narrow to lawyer/solicitor/attorney — bare "legal" is too
+    // ambiguous (e.g. "Legal Entity Risk" is a genuine Finance/risk term).
+    if (/\b(lawyer|solicitor|attorney)\b/.test(combined)) {
+        return 'Legal';
+    }
 
     // Built-env architect titles (before department/title generic rules)
     if (

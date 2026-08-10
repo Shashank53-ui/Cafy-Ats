@@ -58,6 +58,11 @@ storage/
 logs/
 rejection_log.json
 
+# local scratch / one-off agent dumps (never commit)
+tmp-*
+src/scripts/_tmp*
+data/sponsors_missing_jobs_ids.txt
+
 # local-only test fixtures
 data/excel/
 

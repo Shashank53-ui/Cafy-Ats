@@ -422,12 +422,16 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             if (!locationPasses(cleanedLocation)) continue;
         }
 
-        // Every row must end up with both a sector and a department — never null.
         // Some ATS providers (Workday, Oracle Cloud, several custom scrapers)
-        // structurally don't expose a department field in their feed at all,
-        // so there's no real value to extract there. In that case the job's
-        // own sector is the best available substitute for department, rather
-        // than leaving the column blank.
+        // structurally don't expose a department field in their feed at all.
+        // Leave `department` blank in that case — do NOT backfill it with the
+        // job's own sector. That used to happen here, but it poisons future
+        // reclassification: inferJobSector() checks `department` before
+        // `title`, so a department that just echoes the sector permanently
+        // re-confirms whatever sector was computed at write time, even after
+        // the classifier rules improve later. The UI already falls back to
+        // `job.sector` for display when `department` is blank (JobFeed.tsx
+        // and friends), so nothing downstream needs this persisted.
         const sector = inferJobSector(safeStr(j.title), j.department, company.company_sector) || 'Other';
         const rawDept = j.department ? safeStr(j.department, 255) : '';
         const nowIso = new Date().toISOString();
@@ -437,7 +441,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             title: safeStr(j.title, 255),
             location: safeStr(cleanedLocation, 255),
             url: j.url,
-            department: rawDept || sector,
+            department: rawDept,
             level: inferJobLevel(safeStr(j.title)),
             sector,
             updated_at: nowIso,
