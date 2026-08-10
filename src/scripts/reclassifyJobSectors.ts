@@ -131,9 +131,17 @@ async function reclassifyTable(
 
     for (const row of rows) {
         const companySector = companySectorMap.get(Number(row.company_id)) ?? null;
-        const inferred =
-            inferJobSector(row.title, row.department, companySector) || 'Other';
         const current = (row.sector || '').trim() || null;
+
+        // `department` gets backfilled to the sector string itself when the ATS gave
+        // none (see syncAll.ts / backfillJobSectors.ts). Feeding that straight back in
+        // would let inferJobSector's department-priority step re-confirm the row's own
+        // (possibly stale) sector forever, regardless of title-rule improvements. Treat
+        // a department that merely echoes the current sector as no signal at all.
+        const deptForClassification =
+            row.department && row.department.trim() === current ? null : row.department;
+        const inferred =
+            inferJobSector(row.title, deptForClassification, companySector) || 'Other';
 
         if (current === inferred) {
             unchanged++;
