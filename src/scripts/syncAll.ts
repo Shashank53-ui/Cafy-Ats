@@ -35,6 +35,7 @@ import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
+import { refineVagueLocation, pickMostSpecificLocation } from '../lib/refineLocation';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -138,6 +139,14 @@ export interface CompanyRow {
     sync_market?: 'uk' | 'ireland' | 'both' | null;
     /** From validate:ats — dead / needs_manual_review are skipped unless --include-dead-ats */
     ats_status?: string | null;
+    /** UK Home Office licensed sponsor — required to write to `jobs` */
+    licensed_sponsor?: boolean | null;
+    /** Ireland employment-permit employer — required to write to `jobs_IR` */
+    ireland_permit_employer?: boolean | null;
+}
+
+function isLicenceTruthy(v: unknown): boolean {
+    return v === true || v === 'true' || v === 't' || v === 1 || v === '1';
 }
 
 /**
@@ -393,6 +402,17 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             market === 'uk'
                 ? isUKJob(buildLocationInput({ location: loc, title: j.title } as Job))
                 : isIrelandJob(loc);
+
+        // Prefer a city-bearing fragment when ATS emitted a multi-part / country-only string.
+        const rawParts = raw.split(/\s*[|;/]\s*/).map((s) => s.trim()).filter(Boolean);
+        if (rawParts.length > 1) {
+            const specific = pickMostSpecificLocation(rawParts, market);
+            if (specific && locationPasses(specific)) {
+                cleanedLocation = specific;
+            }
+        }
+
+        cleanedLocation = refineVagueLocation(cleanedLocation, j.title, j.url, market);
 
         if (!locationPasses(cleanedLocation)) {
             if (!locationPasses(raw)) continue;
@@ -1161,14 +1181,14 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
 
             const withMarket = await supabase
                 .from('companies')
-                .select('id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, sync_market, ats_status')
+                .select('id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, sync_market, ats_status, licensed_sponsor, ireland_permit_employer')
                 .in('id', specificIds)
                 .order('trading_name');
 
-            if (withMarket.error && /sync_market|ats_status|careers_url/i.test(withMarket.error.message)) {
+            if (withMarket.error && /sync_market|ats_status|careers_url|licensed_sponsor|ireland_permit/i.test(withMarket.error.message)) {
                 const fallback = await supabase
                     .from('companies')
-                    .select('id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector')
+                    .select('id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, licensed_sponsor')
                     .in('id', specificIds)
                     .order('trading_name');
                 data = fallback.data;
@@ -1218,8 +1238,8 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
         while (true) {
             const to = from + pageSize - 1;
             const selectCols = selectWithMarket
-                ? 'id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, sync_market, ats_status'
-                : 'id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, ats_status';
+                ? 'id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, sync_market, ats_status, licensed_sponsor, ireland_permit_employer'
+                : 'id, trading_name, ats_provider, ats_board_token, url, careers_url, company_sector, ats_status, licensed_sponsor, ireland_permit_employer';
             const { data, error } = await supabase
                 .from('companies')
                 .select(selectCols)
@@ -1232,11 +1252,11 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
                     selectWithMarket = false;
                     continue;
                 }
-                if (/ats_status|careers_url/i.test(error.message)) {
+                if (/ats_status|careers_url|ireland_permit|licensed_sponsor/i.test(error.message)) {
                     // Retry without optional columns that may be missing from schema
                     const fallbackCols = selectWithMarket
-                        ? 'id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market'
-                        : 'id, trading_name, ats_provider, ats_board_token, url, company_sector';
+                        ? 'id, trading_name, ats_provider, ats_board_token, url, company_sector, sync_market, licensed_sponsor'
+                        : 'id, trading_name, ats_provider, ats_board_token, url, company_sector, licensed_sponsor';
                     const retry = await supabase
                         .from('companies')
                         .select(fallbackCols)
@@ -3313,13 +3333,20 @@ async function fetchNHS(token: string): Promise<Job[]> {
                 if (!link.title || !link.url) continue;
                 const lines = link.containerText.split('\n').map((l: string) => l.trim()).filter(Boolean);
                 const agency = lines[1] || 'NHS';
-                const location = lines[2] || 'United Kingdom';
+                const locationLine =
+                    lines.find((l: string) =>
+                        /\b(united kingdom|england|scotland|wales|northern ireland|london|manchester|birmingham|leeds|bristol|glasgow|edinburgh|liverpool|sheffield|nottingham|newcastle|cardiff|belfast|cambridge|oxford|remote)\b/i.test(
+                            l,
+                        ),
+                    ) ||
+                    lines[2] ||
+                    'United Kingdom';
                 allJobs.push({
                     title: link.title,
                     url: link.url,
-                    location: location,
+                    location: locationLine,
                     department: agency,
-                    verified: true
+                    verified: true,
                 });
             }
         };
@@ -5719,11 +5746,34 @@ export async function syncAll() {
             result.needsReview = needsReviewCount;
             totalRejected += rejectedCount;
 
-            const ukRows = irelandOnlyMarket ? [] : await buildRowsForJobs(company, id, ukJobs, 'uk');
-            const irelandRows = (await buildRowsForJobs(company, id, irelandJobs, 'ireland')).map((row) => ({
-                ...row,
-                source: 'ats' as const,
-            }));
+            const canWriteUk = isLicenceTruthy(company.licensed_sponsor);
+            // Allow Ireland dual-write for UK licensed sponsors even when the
+            // ireland_permit_employer flag has not been backfilled yet. Clear junk
+            // (neither flag) is still blocked.
+            const canWriteIreland =
+                isLicenceTruthy(company.ireland_permit_employer) ||
+                isLicenceTruthy(company.licensed_sponsor);
+
+            if (!canWriteUk && ukJobs.length) {
+                console.log(
+                    `[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⛔ Skip UK write — not licensed_sponsor (${ukJobs.length} matched)`
+                );
+            }
+            if (!canWriteIreland && irelandJobs.length) {
+                console.log(
+                    `[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⛔ Skip IR write — not permit/sponsor (${irelandJobs.length} matched)`
+                );
+            }
+
+            const ukRows = !canWriteUk || irelandOnlyMarket
+                ? []
+                : await buildRowsForJobs(company, id, ukJobs, 'uk');
+            const irelandRows = !canWriteIreland
+                ? []
+                : (await buildRowsForJobs(company, id, irelandJobs, 'ireland')).map((row) => ({
+                    ...row,
+                    source: 'ats' as const,
+                }));
 
             const persistRows = async (tableName: 'jobs' | 'jobs_IR', rows: JobRow[]) => {
                 const staleCutoff = new Date(

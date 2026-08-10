@@ -1,20 +1,36 @@
 const IT_ARCHITECT_CUES =
     /\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|it|application|infrastructure|network|aws|azure|saas|salesforce|sap|workday|identity|cyber|ai|ml)\b/;
 
+/** Patient-facing pharmacy / clinical care — keep under Healthcare, not industry Pharmaceutical. */
+const PATIENT_FACING_PHARMACY_OR_CARE =
+    /\b(pharmacist|pharmacy technician|pharmacy accuracy|gp practice pharmacist|retail pharmacy|inpatient pharmacy|outpatient pharmacy|nurse|doctor|physician|midwife|paramedic|dentist|\bgp\b)\b/;
+
+/** Roles that should not inherit a company's Pharmaceutical label. */
+const NON_PHARMA_ROLE_OVERRIDE =
+    /\b(chef|commis|barista|food service|catering|cleaner|housekeeping|security guard|software|developer|frontend|backend|fullstack|devops|sre)\b/;
+
+const PHARMA_INDUSTRY_SIGNAL =
+    /\b(pharmaceuticals?|pharma|biotech|biotechnology|biopharma|biopharmaceutical|life\s*sciences?|pharmacovigilance|drug discovery|drug development|medicinal chemistry|bioprocess|biomanufacturing|biotechnician|formulation scientist|process development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc)\b/;
+
+const PHARMA_COMPANY_SECTOR =
+    /\b(pharmaceuticals?|pharma|biotech|biotechnology|biopharma|life\s*sciences?)\b/;
+
 const RULES: [RegExp, string][] = [
     // Built-environment architecture — BEFORE software "architect" catch-all
     [/\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\s+architect|riba|architecture practice)\b/, 'Construction & Infrastructure'],
     // Engineering (Software) — IT architects + developers (not building architects)
     [/\b(software|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|cloud|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|technology|qa|quality assurance)\b/, 'Engineering (Software)'],
     [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap)\s+architect\b/, 'Engineering (Software)'],
+    // Pharmaceutical / life sciences industry — before Hardware "manufacturing" and Healthcare
+    [PHARMA_INDUSTRY_SIGNAL, 'Pharmaceutical'],
     // Engineering (Hardware)
     [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded)\b/, 'Engineering (Hardware)'],
     // Data
     [/\b(data|analytics|statistics|sql|python|bi|business intelligence|dba|database administrator)\b/, 'Data'],
     // Finance
     [/\b(finance|accounting|tax|audit|financial|quant|trading|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|accountant|accounts)\b/, 'Finance'],
-    // Healthcare (clinical/medical) — before Healthcare & Social Care so nurse/doctor go here
-    [/\b(health|medical|clinical|nurse|doctor|pharma|biotech|physician|therapist|pharmacist|pharmacy|physiotherapist|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp)\b/, 'Healthcare'],
+    // Healthcare (clinical/medical) — patient-facing care; before Healthcare & Social Care
+    [/\b(health|medical|clinical|nurse|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp)\b/, 'Healthcare'],
     // Healthcare & Social Care
     [/\b(dietitian|social worker|ward manager|carer|care worker|care home|social care|community care|matron|sonographer|podiatrist|care assistant|general practitioner|veterinary|practice manager)\b/, 'Healthcare & Social Care'],
     // Legal
@@ -61,6 +77,24 @@ function matchRules(text: string): string | null {
     return null;
 }
 
+function isPharmaCompanySector(companySector: string | null | undefined): boolean {
+    if (!companySector) return false;
+    return PHARMA_COMPANY_SECTOR.test(companySector.toLowerCase());
+}
+
+/** Ambiguous sectors that should yield to a clear pharma company context. */
+const COMPANY_PHARMA_OVERRIDE_FROM = new Set([
+    'Healthcare',
+    'Healthcare & Social Care',
+    'Business & Strategy',
+    'Engineering (Other)',
+    'Engineering (Hardware)',
+    'Research (Technical)',
+    'Operations',
+    'Project Management',
+    'Other',
+]);
+
 export function inferJobSector(
     title: string,
     department?: string | null,
@@ -85,11 +119,25 @@ export function inferJobSector(
         return 'Construction & Infrastructure';
     }
 
+    // Strong pharma industry signals on title/dept — before department labels like "Healthcare"
+    if (PHARMA_INDUSTRY_SIGNAL.test(combined) && !PATIENT_FACING_PHARMACY_OR_CARE.test(combined)) {
+        return 'Pharmaceutical';
+    }
+
     // P1: Department matching
     if (d) {
         const fromDept = matchRules(d);
-        if (fromDept) return fromDept;
-        // Department keyword overrides not caught by main rules
+        if (fromDept) {
+            if (
+                isPharmaCompanySector(companySector) &&
+                COMPANY_PHARMA_OVERRIDE_FROM.has(fromDept) &&
+                !PATIENT_FACING_PHARMACY_OR_CARE.test(combined) &&
+                !NON_PHARMA_ROLE_OVERRIDE.test(combined)
+            ) {
+                return 'Pharmaceutical';
+            }
+            return fromDept;
+        }
         if (/\b(infrastructure|real estate|energy)\b/.test(d)) return 'Construction & Infrastructure';
         if (/\bdigital\b/.test(d)) return 'Engineering (Software)';
     }
@@ -97,11 +145,30 @@ export function inferJobSector(
     // P2: Title matching
     if (t) {
         const fromTitle = matchRules(t);
-        if (fromTitle) return fromTitle;
+        if (fromTitle) {
+            if (
+                isPharmaCompanySector(companySector) &&
+                COMPANY_PHARMA_OVERRIDE_FROM.has(fromTitle) &&
+                !PATIENT_FACING_PHARMACY_OR_CARE.test(combined) &&
+                !NON_PHARMA_ROLE_OVERRIDE.test(combined)
+            ) {
+                return 'Pharmaceutical';
+            }
+            return fromTitle;
+        }
     }
 
-    // P3: Company sector fallback
-    if (companySector) return companySector;
+    // P3: Company sector fallback (normalize pharma compound labels)
+    if (companySector) {
+        if (
+            isPharmaCompanySector(companySector) &&
+            !PATIENT_FACING_PHARMACY_OR_CARE.test(combined) &&
+            !NON_PHARMA_ROLE_OVERRIDE.test(combined)
+        ) {
+            return 'Pharmaceutical';
+        }
+        return companySector;
+    }
 
     // P4: Unclassifiable
     return null;

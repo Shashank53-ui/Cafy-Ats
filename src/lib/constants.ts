@@ -34,6 +34,7 @@ export const ALLOWED_SECTORS = [
     'Media & Journalism',
     'Operations',
     'Other',
+    'Pharmaceutical',
     'Product Management',
     'Project Management',
     'Research (Non-technical)',
