@@ -132,6 +132,16 @@ export function inferJobSector(
         return 'Legal';
     }
 
+    // "Product Designer" is a design discipline, not product management —
+    // must win even when filed under a bare "Product" department (a common
+    // ATS department name for cross-functional product orgs), which would
+    // otherwise match Product Management's department-priority step first.
+    // Checked against title only, deliberately — a department that says
+    // "Product Design" is already unambiguous via the normal P1 rule match.
+    if (/\bproduct design(er|ers)?\b/.test(t)) {
+        return 'Design';
+    }
+
     // Built-env architect titles (before department/title generic rules)
     if (
         /\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\b.*architect|riba)\b/.test(

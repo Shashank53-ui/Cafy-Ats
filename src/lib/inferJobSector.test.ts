@@ -33,6 +33,39 @@ const cases: Case[] = [
   { title: 'Barista', expect: 'Retail & Hospitality' },
   { title: 'Mystery Role XYZ', companySector: 'Legal', expect: 'Legal' },
   { title: 'Mystery Role XYZ', expect: null },
+
+  // Regression cases from the Aug 2026 sector-quality pass — see
+  // auditSectorQuality.ts / auditCompanySector.ts for how these were found.
+
+  // NHS "Consultant [Specialty]" clinical grade titles were falling through
+  // to the bare `consultant` catch-all → Business & Strategy (~400+ jobs).
+  { title: 'Consultant Psychiatrist', department: 'NHS', expect: 'Healthcare' },
+  { title: 'Consultant Psychiatrist in Old Age', department: 'NHS', expect: 'Healthcare' },
+  { title: 'Gastroenterologist', expect: 'Healthcare' },
+  { title: 'Consultant Cardiologist', expect: 'Healthcare' },
+  // Non-clinical consultants must still resolve to Business & Strategy —
+  // the specialty-term fix is additive, not a reorder.
+  { title: 'Senior Sustainability Consultant', expect: 'Business & Strategy' },
+
+  // Unambiguous legal-practitioner titles stay Legal even with a finance-
+  // domain modifier ("Banking Lawyer") that would otherwise match Finance
+  // first on title order.
+  { title: 'Banking Lawyer', expect: 'Legal' },
+  { title: 'Insurance lawyer', expect: 'Legal' },
+  { title: 'Structured Finance Lawyer', department: 'Dublin - Talent Management', expect: 'Legal' },
+  // Bare "legal" stays out of this pre-check — too ambiguous
+  // ("Legal Entity Risk" is a genuine Finance/risk term).
+  { title: 'VP, Enterprise Risk Management & Legal Entity Risk', expect: 'Finance' },
+
+  // "Product Designer" is a design discipline, not product management —
+  // Design must win this collision regardless of rule order.
+  { title: 'Senior Product Designer', expect: 'Design' },
+  { title: 'Staff Product Designer', department: 'Product', expect: 'Design' },
+
+  // A department that's merely an echo of the sector column (the old
+  // poisoning bug) is a caller-side concern (see reclassifyJobSectors.ts) —
+  // inferJobSector itself still takes department at face value here.
+  { title: 'Front Office Manager', companySector: 'Retail & Hospitality', expect: 'Retail & Hospitality' },
 ];
 
 let failed = 0;
