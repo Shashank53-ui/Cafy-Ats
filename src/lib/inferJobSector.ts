@@ -55,7 +55,7 @@ export const RULES: [RegExp, string][] = [
     // Project Management
     [/\b(project manager|programme|program manager|scrum|agile|delivery manager)\b/, 'Project Management'],
     // Sales & Partnerships
-    [/\b(sales|partnerships|business development|account executive|bdr|sdr|revenue|client advisor|account director)\b/, 'Sales & Partnerships'],
+    [/\b(sales|partnerships|business development|account executive|bdr|sdr|revenue|client advisor|account director|partner manager|partnership manager)\b/, 'Sales & Partnerships'],
     // Customer Success
     [/\b(customer success|customer support|account manager|client success)\b/, 'Customer Success'],
     // HR / People — \bpeople\b catches ATS depts named "People"

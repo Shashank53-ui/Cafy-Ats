@@ -86,6 +86,11 @@ const cases: Case[] = [
   { title: 'Trader', expect: 'Finance' },
   { title: 'Quantitative Trading & Research Analyst', expect: 'Finance' },
   { title: 'Trading Floor Support Engineer', expect: 'Finance' },
+
+  // "Partner Manager" is a recognizable BD/sales title — should resolve via
+  // title regardless of the posting company's own industry (e.g. a legal-tech
+  // company's Partner Manager isn't doing legal work).
+  { title: 'Strategic Partner Manager (Ecosystem & Frontier Alliances)', companySector: 'Legal', expect: 'Sales & Partnerships' },
 ];
 
 let failed = 0;
