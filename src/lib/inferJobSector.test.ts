@@ -91,6 +91,13 @@ const cases: Case[] = [
   // title regardless of the posting company's own industry (e.g. a legal-tech
   // company's Partner Manager isn't doing legal work).
   { title: 'Strategic Partner Manager (Ecosystem & Frontier Alliances)', companySector: 'Legal', expect: 'Sales & Partnerships' },
+
+  // "Medical Device [function]" is medtech, even under a generic department —
+  // but bare "medical device" alone shouldn't hijack a genuine engineering role.
+  { title: 'Medical Device Regulatory and Quality Consultant', department: 'Corporate', expect: 'Pharmaceutical' },
+  { title: 'Medical Device Engineer', department: 'Corporate', expect: 'Pharmaceutical' },
+  { title: 'Product Security Specialist for Medical Devices (Cyber Security)', expect: 'Engineering (Software)' },
+  { title: 'Medical Device Advisor', expect: 'Healthcare' },
 ];
 
 let failed = 0;

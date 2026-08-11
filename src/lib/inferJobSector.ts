@@ -136,6 +136,16 @@ export function inferJobSector(
         return 'Legal';
     }
 
+    // "Medical Device [regulatory/quality/engineering]" roles are medtech —
+    // stay Pharmaceutical even under a generic department like "Corporate"
+    // (which would otherwise win via the Business & Strategy catch-all).
+    // Narrower than bare "medical device" so it doesn't swallow roles where
+    // the device is just the product, not the job function (e.g. a cyber
+    // security specialist who happens to secure medical devices).
+    if (/\bmedical devices?\b.*\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b|\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b.*\bmedical devices?\b/.test(combined)) {
+        return 'Pharmaceutical';
+    }
+
     // "Product Designer" is a design discipline, not product management —
     // must win even when filed under a bare "Product" department (a common
     // ATS department name for cross-functional product orgs), which would
