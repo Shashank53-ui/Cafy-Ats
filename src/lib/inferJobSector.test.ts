@@ -66,6 +66,26 @@ const cases: Case[] = [
   // poisoning bug) is a caller-side concern (see reclassifyJobSectors.ts) —
   // inferJobSector itself still takes department at face value here.
   { title: 'Front Office Manager', companySector: 'Retail & Hospitality', expect: 'Retail & Hospitality' },
+
+  // Mined from the "Other" / "Engineering (Other)" catch-all buckets.
+  { title: 'Back of House Nandoca', expect: 'Retail & Hospitality' },
+  { title: 'Fitness Coach', department: 'Store Colleague', expect: 'Retail & Hospitality' },
+  { title: 'Senior Regulatory Toxicologist', expect: 'Pharmaceutical' },
+  { title: 'Principal Hydrologist', expect: 'Construction & Infrastructure' },
+  { title: 'Senior Process Engineer - Water / Wastewater', expect: 'Construction & Infrastructure' },
+
+  // Nursery/childcare cluster — no dedicated sector exists, mapped to the
+  // closest fit (caregiving overlap) per product decision.
+  { title: 'Early Years Level 3 Qualified Casual Activity Leader', expect: 'Healthcare & Social Care' },
+  { title: 'Breakfast Club & After School Club Manager', expect: 'Healthcare & Social Care' },
+  { title: 'Afterschool Club Manager', expect: 'Healthcare & Social Care' },
+
+  // Bare "trading" false-positived on UK grocery retail job titles.
+  { title: 'Customer and Trading Manager - Nightshift', expect: null },
+  { title: 'Trading Assistant - Shift', expect: null },
+  { title: 'Trader', expect: 'Finance' },
+  { title: 'Quantitative Trading & Research Analyst', expect: 'Finance' },
+  { title: 'Trading Floor Support Engineer', expect: 'Finance' },
 ];
 
 let failed = 0;
