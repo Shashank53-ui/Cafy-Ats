@@ -5444,7 +5444,9 @@ export async function syncAll() {
 
     const includeLinkedin = !args.includes('--exclude-linkedin');
     const includeDeadAts = args.includes('--include-dead-ats');
-    const skipFilterLog = args.includes('--skip-filter-log');
+    // Default OFF: location_filter_log filled the Free-tier disk (~3M rows).
+    // Pass --enable-filter-log only when you explicitly need DQ audit rows.
+    const skipFilterLog = !args.includes('--enable-filter-log');
 
     const marketIndex = args.indexOf('--market');
     const targetMarket = marketIndex !== -1
@@ -5984,7 +5986,7 @@ export async function syncAll() {
         }
     } else if (skipFilterLog) {
         filterLogBuffer.length = 0;
-        console.log('  📋 Filter log skipped (--skip-filter-log)');
+        console.log('  📋 Filter log skipped (default; pass --enable-filter-log to write)');
     }
 
     // Persist sync summary for DQ ownership (table: sync_run_summary)

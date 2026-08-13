@@ -63,7 +63,7 @@ Key tables:
 - `user_applied_jobs` — applied job tracking
 - `subscriptions` / `customers` — Stripe subscription state
 - `graduate_roles` — separate table for graduate scheme listings
-- `location_filter_log` — audit trail for UK filter decisions
+- ~~`location_filter_log`~~ — removed (filled Free-tier disk; sync logging off unless `--enable-filter-log`)
 - `reported_jobs` — user-reported job flags
 
 Two Supabase clients:
