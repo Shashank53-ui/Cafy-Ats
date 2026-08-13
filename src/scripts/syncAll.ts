@@ -2387,7 +2387,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
     return [];
 }
 
-async function fetchOracleCloud(token: string): Promise<Job[]> {
+export async function fetchOracleCloud(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     try {
         let domain = '';
@@ -2748,7 +2748,7 @@ async function fetchHibob(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-async function fetchEightfold(token: string): Promise<Job[]> {
+export async function fetchEightfold(token: string): Promise<Job[]> {
     let host = '';
     let apiDomain = '';
     let country = '';
@@ -4901,7 +4901,7 @@ async function fetchMercor(token: string): Promise<Job[]> {
 }
 
 // --- Phenom ---
-async function fetchPhenom(token: string): Promise<Job[]> {
+export async function fetchPhenom(token: string): Promise<Job[]> {
     try {
         const baseUrl = token.replace(/\/$/, '');
         // DHL and many global Phenom boards use /global/en, not /us/en.
