@@ -1,5 +1,6 @@
--- Persist pass/block decisions from UK/Ireland location filtering for auditability
--- NOTE: companies.id is TEXT in production — company_id must match.
+-- ⚠ Do NOT recreate on Free/Nano without a retention purge.
+-- This table previously grew to ~3.2M rows (~GB) from daily sync and filled the disk.
+-- syncAll only writes here when run with --enable-filter-log.
 
 CREATE TABLE IF NOT EXISTS public.location_filter_log (
     id BIGSERIAL PRIMARY KEY,
