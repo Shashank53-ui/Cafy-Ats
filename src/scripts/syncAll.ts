@@ -29,6 +29,7 @@ import { fetchCustom } from './customScrapers';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { inferJobLevel } from '../lib/inferJobLevel';
 import { inferJobSector } from '../lib/inferJobSector';
+import { sanitizeJobDepartment } from '../lib/sanitizeJobDepartment';
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
@@ -424,16 +425,13 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
 
         // Some ATS providers (Workday, Oracle Cloud, several custom scrapers)
         // structurally don't expose a department field in their feed at all.
-        // Leave `department` blank in that case — do NOT backfill it with the
-        // job's own sector. That used to happen here, but it poisons future
-        // reclassification: inferJobSector() checks `department` before
-        // `title`, so a department that just echoes the sector permanently
-        // re-confirms whatever sector was computed at write time, even after
-        // the classifier rules improve later. The UI already falls back to
-        // `job.sector` for display when `department` is blank (JobFeed.tsx
-        // and friends), so nothing downstream needs this persisted.
-        const sector = inferJobSector(safeStr(j.title), j.department, company.company_sector) || 'Other';
+        // Classify from the raw ATS department (so GTM → Sales), then sanitize
+        // for display. Junk/missing departments fall back to the inferred sector
+        // so the UI never shows blank/null. reclassifyJobSectors ignores
+        // department values that are sector-taxonomy labels when re-inferring.
         const rawDept = j.department ? safeStr(j.department, 255) : '';
+        const sector = inferJobSector(safeStr(j.title), rawDept || null, company.company_sector) || 'Other';
+        const department = sanitizeJobDepartment(rawDept) || sector;
         const nowIso = new Date().toISOString();
 
         rows.push({
@@ -441,7 +439,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             title: safeStr(j.title, 255),
             location: safeStr(cleanedLocation, 255),
             url: j.url,
-            department: rawDept,
+            department,
             level: inferJobLevel(safeStr(j.title)),
             sector,
             updated_at: nowIso,

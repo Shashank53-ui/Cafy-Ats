@@ -54,8 +54,8 @@ export const RULES: [RegExp, string][] = [
     [/\b(product manager|product management|product owner|product lead|head of product|product)\b/, 'Product Management'],
     // Project Management
     [/\b(project manager|programme|program manager|scrum|agile|delivery manager)\b/, 'Project Management'],
-    // Sales & Partnerships
-    [/\b(sales|partnerships|business development|account executive|bdr|sdr|revenue|client advisor|account director|partner manager|partnership manager)\b/, 'Sales & Partnerships'],
+    // Sales & Partnerships — include GTM / go-to-market ATS team labels
+    [/\b(sales|partnerships|business development|account executive|bdr|sdr|revenue|client advisor|account director|partner manager|partnership manager|go[\s-]*to[\s-]*market|goto\s*market|\bgtm\b)\b/, 'Sales & Partnerships'],
     // Customer Success
     [/\b(customer success|customer support|account manager|client success)\b/, 'Customer Success'],
     // HR / People — \bpeople\b catches ATS depts named "People"
