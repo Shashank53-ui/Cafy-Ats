@@ -98,6 +98,12 @@ const cases: Case[] = [
   { title: 'Medical Device Engineer', department: 'Corporate', expect: 'Pharmaceutical' },
   { title: 'Product Security Specialist for Medical Devices (Cyber Security)', expect: 'Engineering (Software)' },
   { title: 'Medical Device Advisor', expect: 'Healthcare' },
+
+  // ATS team labels must not poison display / classification
+  { title: 'Quantity Surveyor', department: 'Recruitment Manila', expect: 'Construction & Infrastructure' },
+  { title: 'GTM Operator', department: 'Go to Market', expect: 'Sales & Partnerships' },
+  { title: 'Community & Events Lead', department: 'Go-To-Market', expect: 'Sales & Partnerships' },
+  { title: 'Account Executive, Mid Market', department: 'Go to Market', expect: 'Sales & Partnerships' },
 ];
 
 let failed = 0;
