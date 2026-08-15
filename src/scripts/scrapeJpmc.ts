@@ -2,6 +2,7 @@ import https from 'https';
 import { supabase } from '../lib/supabase';
 import dotenv from 'dotenv';
 import { isUKJob } from '../lib/ukFilter';
+import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 
 dotenv.config({ path: '.env.local' });
 
@@ -80,14 +81,19 @@ async function scrapeJPMorgan() {
     console.log(`Filtered down to ${ukJobs.length} exact UK jobs.`);
 
     if (ukJobs.length > 0) {
-        const { data: company } = await supabase.from('companies').select('id').eq('trading_name', 'JPMorgan Chase & Co.').single();
+        const { data: company } = await supabase.from('companies').select('id, company_sector').eq('trading_name', 'JPMorgan Chase & Co.').single();
         if (company) {
-            const jobsToInsert = ukJobs.map(j => ({
-                company_id: company.id,
-                title: j.title,
-                location: j.location,
-                url: j.url
-            }));
+            const jobsToInsert = ukJobs.map(j => {
+                const { sector, department } = classifyJobTaxonomy(j.title, null, company.company_sector);
+                return {
+                    company_id: company.id,
+                    title: j.title,
+                    location: j.location,
+                    url: j.url,
+                    department,
+                    sector,
+                };
+            });
             await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
             await supabase.from('companies').update({
                 ats_provider: 'taleo_api',

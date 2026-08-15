@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { isIrelandJob } from '../lib/irelandFilter';
+import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -232,13 +233,6 @@ async function scrapeLinkedin() {
         if (/\b(manager|head|director|vp)\b/.test(lower)) return 'Manager';
         return 'Mid';
     };
-    const getSector = (t: string) => {
-        const lower = t.toLowerCase();
-        if (/engineer|developer|data|software|devops|cloud/.test(lower)) return 'Engineering & Data';
-        if (/sales|account|marketing/.test(lower)) return 'Sales & Marketing';
-        if (/product|project/.test(lower)) return 'Product & Project';
-        return 'Operations & Support';
-    };
 
     log.info('Upserting jobs into jobs_IR (source=linkedin)...');
     let upserted = 0;
@@ -247,18 +241,21 @@ async function scrapeLinkedin() {
     for (let i = 0; i < irelandJobs.length; i += 500) {
         const batch = irelandJobs
             .slice(i, i + 500)
-            .map((j) => ({
-                company_id: companyMap.get(j.company),
-                title: j.title.substring(0, 255),
-                location: j.location.substring(0, 255),
-                url: j.url,
-                department: null,
-                level: getLevel(j.title),
-                sector: getSector(j.title),
-                updated_at: timestamp,
-                last_seen_at: timestamp,
-                source: 'linkedin',
-            }))
+            .map((j) => {
+                const { sector, department } = classifyJobTaxonomy(j.title, null);
+                return {
+                    company_id: companyMap.get(j.company),
+                    title: j.title.substring(0, 255),
+                    location: j.location.substring(0, 255),
+                    url: j.url,
+                    department,
+                    level: getLevel(j.title),
+                    sector,
+                    updated_at: timestamp,
+                    last_seen_at: timestamp,
+                    source: 'linkedin',
+                };
+            })
             .filter((j) => j.company_id);
 
         let { error } = await supabase.from('jobs_IR').upsert(batch, { onConflict: 'url' });

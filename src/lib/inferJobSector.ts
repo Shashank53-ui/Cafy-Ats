@@ -150,6 +150,16 @@ export function inferJobSector(
     department?: string | null,
     companySector?: string | null
 ): string | null {
+    const result = inferJobSectorUnclamped(title, department, companySector);
+    if (!result) return null;
+    return ALLOWED_SECTOR_SET.has(result) ? result : 'Other';
+}
+
+function inferJobSectorUnclamped(
+    title: string,
+    department?: string | null,
+    companySector?: string | null
+): string | null {
     const t = (title || '').toLowerCase().trim();
     const d = (department || '').toLowerCase().trim();
     const combined = `${d} ${t}`.trim();

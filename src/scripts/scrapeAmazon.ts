@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
+import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
@@ -122,13 +123,20 @@ async function scrapeAmazon() {
             const absoluteUrl = `https://www.amazon.jobs${job.job_path}`;
             const locationStr = mapLocation(job);
 
+            const { sector, department } = classifyJobTaxonomy(
+                job.title,
+                job.job_category || job.job_family_name || '',
+                company.company_sector,
+            );
+
             const { error: upsertError } = await supabase
                 .from('jobs')
                 .upsert({
                     company_id: company.id,
                     url: truncate(absoluteUrl, 500),
                     title: truncate(job.title, 500),
-                    department: truncate(job.job_category || job.job_family_name || 'Various', 500),
+                    department,
+                    sector,
                     location: truncate(locationStr, 500)
                 }, { onConflict: 'url' });
 

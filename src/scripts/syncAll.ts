@@ -28,8 +28,7 @@ import * as cheerio from 'cheerio';
 import { fetchCustom } from './customScrapers';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { inferJobLevel } from '../lib/inferJobLevel';
-import { inferJobSector } from '../lib/inferJobSector';
-import { sanitizeJobDepartment } from '../lib/sanitizeJobDepartment';
+import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
@@ -426,13 +425,15 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
 
         // Some ATS providers (Workday, Oracle Cloud, several custom scrapers)
         // structurally don't expose a department field in their feed at all.
-        // Classify from the raw ATS department (so GTM → Sales), then sanitize
-        // for display. Junk/missing departments fall back to the inferred sector
-        // so the UI never shows blank/null. reclassifyJobSectors ignores
-        // department values that are sector-taxonomy labels when re-inferring.
+        // Classify from the raw ATS department (so GTM → Sales), then persist
+        // only allowlisted sector terms. Unknown/junk departments fall back
+        // to the inferred sector so the UI never shows blank/null.
         const rawDept = j.department ? safeStr(j.department, 255) : '';
-        const sector = inferJobSector(safeStr(j.title), rawDept || null, company.company_sector) || 'Other';
-        const department = sanitizeJobDepartment(rawDept) || sector;
+        const { sector, department } = classifyJobTaxonomy(
+            safeStr(j.title),
+            rawDept || null,
+            company.company_sector,
+        );
         const nowIso = new Date().toISOString();
 
         rows.push({
