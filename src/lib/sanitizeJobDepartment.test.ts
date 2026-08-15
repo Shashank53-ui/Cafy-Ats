@@ -74,10 +74,33 @@ test('nulls business-unit names like Asiera', () => {
   assert.equal(sanitizeJobDepartment('Asiera'), null);
 });
 
+test('nulls convenience-store location departments', () => {
+  assert.equal(sanitizeJobDepartment('MACE Newgate'), null);
+  assert.equal(sanitizeJobDepartment('MACE Sallynoggin'), null);
+  assert.equal(sanitizeJobDepartment('SPAR Little Island'), null);
+  assert.equal(sanitizeJobDepartment('EUROSPAR Fairview'), null);
+  assert.equal(sanitizeJobDepartment('Londis Castlebar'), null);
+  assert.equal(sanitizeJobDepartment('SPAR Westport (Corrib Oil)'), null);
+  assert.equal(sanitizeJobDepartment("O'Hare Retail Group"), null);
+  assert.equal(sanitizeJobDepartment('MACE'), null); // opaque brand code → sector fallback
+});
+
 test('strips HQU- org prefixes', () => {
   assert.equal(sanitizeJobDepartment('HQU-COM - Group Commercial'), 'Group Commercial');
   assert.equal(sanitizeJobDepartment('HQU-ITC - IT Team'), 'IT Team');
   assert.equal(sanitizeJobDepartment('HQU-HRU - Human Resources'), 'Human Resources');
+});
+
+test('nulls cost-center and kiosk placeholders', () => {
+  assert.equal(sanitizeJobDepartment('All Cost Centers'), null);
+  assert.equal(sanitizeJobDepartment('Cost Centers'), null);
+  assert.equal(sanitizeJobDepartment('Kiosk'), null);
+});
+
+test('strips leading GL / Workday numbers', () => {
+  assert.equal(sanitizeJobDepartment('30000 - DTC Digital Experience'), 'DTC Digital Experience');
+  assert.equal(sanitizeJobDepartment('1340 Customer Success Management'), 'Customer Success Management');
+  assert.equal(sanitizeJobDepartment('80000 - Accounting'), 'Accounting');
 });
 
 test('detects GTM departments', () => {

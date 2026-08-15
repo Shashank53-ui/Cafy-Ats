@@ -1,3 +1,5 @@
+import { ALLOWED_SECTORS } from './constants';
+
 const IT_ARCHITECT_CUES =
     /\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|it|application|infrastructure|network|aws|azure|saas|salesforce|sap|workday|identity|cyber|ai|ml)\b/;
 
@@ -97,6 +99,32 @@ export function matchRuleDebug(text: string): { sector: string; ruleIndex: numbe
         if (regex.test(text)) return { sector, ruleIndex: i, pattern: regex.source };
     }
     return null;
+}
+
+const ALLOWED_SECTOR_SET = new Set<string>(ALLOWED_SECTORS);
+
+const COMPANY_SECTOR_MAP: Record<string, string> = {
+    'facilities services': 'Operations',
+    'manufacturing / engineering': 'Engineering (Hardware)',
+    'financial technology / wealth management': 'Finance',
+    'healthcare / clinical research': 'Healthcare',
+    'entertainment / recreation': 'Retail & Hospitality',
+    'software / it management': 'Engineering (Software)',
+    'financial services / banking': 'Finance',
+    'engineering / architecture': 'Construction & Infrastructure',
+    'medical devices / healthcare': 'Pharmaceutical',
+    'semiconductors / manufacturing': 'Engineering (Hardware)',
+};
+
+function normalizeCompanySectorLabel(companySector: string): string | null {
+    const raw = companySector.trim();
+    if (!raw) return null;
+    if (ALLOWED_SECTOR_SET.has(raw)) return raw;
+    const mapped = COMPANY_SECTOR_MAP[raw.toLowerCase()];
+    if (mapped) return mapped;
+    const fromRules = matchRules(raw.toLowerCase());
+    if (fromRules) return fromRules;
+    return 'Other';
 }
 
 function isPharmaCompanySector(companySector: string | null | undefined): boolean {
@@ -210,7 +238,7 @@ export function inferJobSector(
         }
     }
 
-    // P3: Company sector fallback (normalize pharma compound labels)
+    // P3: Company sector fallback (normalize pharma + map leaked company_sector labels)
     if (companySector) {
         if (
             isPharmaCompanySector(companySector) &&
@@ -219,7 +247,7 @@ export function inferJobSector(
         ) {
             return 'Pharmaceutical';
         }
-        return companySector;
+        return normalizeCompanySectorLabel(companySector);
     }
 
     // P4: Unclassifiable

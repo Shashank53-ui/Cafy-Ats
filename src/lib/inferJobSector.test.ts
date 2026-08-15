@@ -32,6 +32,9 @@ const cases: Case[] = [
   { title: 'Warehouse Operative', expect: 'Logistics & Transport' },
   { title: 'Barista', expect: 'Retail & Hospitality' },
   { title: 'Mystery Role XYZ', companySector: 'Legal', expect: 'Legal' },
+  { title: 'Mystery Role XYZ', companySector: 'Facilities Services', expect: 'Operations' },
+  { title: 'Mystery Role XYZ', companySector: 'Financial Technology / Wealth Management', expect: 'Finance' },
+  { title: 'Mystery Role XYZ', companySector: 'Software / IT Management', expect: 'Engineering (Software)' },
   { title: 'Mystery Role XYZ', expect: null },
 
   // Regression cases from the Aug 2026 sector-quality pass — see

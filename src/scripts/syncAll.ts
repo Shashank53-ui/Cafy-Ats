@@ -36,7 +36,7 @@ import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
-import { refineVagueLocation, pickMostSpecificLocation } from '../lib/refineLocation';
+import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -414,6 +414,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
         }
 
         cleanedLocation = refineVagueLocation(cleanedLocation, j.title, j.url, market);
+        cleanedLocation = sanitizeJobLocation(cleanedLocation, market, j.title, j.url);
 
         if (!locationPasses(cleanedLocation)) {
             if (!locationPasses(raw)) continue;
