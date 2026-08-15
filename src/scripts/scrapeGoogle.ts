@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import dotenv from 'dotenv';
 import { chromium } from 'playwright';
 import { isUKJob } from '../lib/ukFilter';
+import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
     try {
@@ -136,13 +137,21 @@ async function scrapeGoogle() {
     console.log(`Attempting to save ${uniqueJobs.length} Google jobs to DB.`);
 
     if (uniqueJobs.length > 0) {
-        const jobsToInsert = uniqueJobs.map((job: any) => ({
-            company_id: company.id,
-            title: job.title,
-            location: job.location,
-            url: job.url,
-            department: job.department || null
-        }));
+        const jobsToInsert = uniqueJobs.map((job: any) => {
+            const { sector, department } = classifyJobTaxonomy(
+                job.title,
+                job.department,
+                company.company_sector,
+            );
+            return {
+                company_id: company.id,
+                title: job.title,
+                location: job.location,
+                url: job.url,
+                department,
+                sector,
+            };
+        });
 
         const { error: jobErr } = await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
 

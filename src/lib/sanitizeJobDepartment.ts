@@ -4,6 +4,9 @@
  * "Go to Market", or "Co-Sec - Centre of Excellence - CD0404" surfaces as
  * if it were a sector/category.
  */
+import { ALLOWED_SECTORS } from './constants';
+
+const ALLOWED_SECTOR_SET = new Set<string>(ALLOWED_SECTORS);
 
 /** Short labels that are real function names — keep even though they look like codes. */
 const KEEP_SHORT_DEPARTMENTS = new Set([
@@ -63,6 +66,9 @@ export function sanitizeJobDepartment(department: string | null | undefined): st
         compact === 'unknown' ||
         compact === 'tbd' ||
         compact === 'general' ||
+        compact === 'alldepartments' ||
+        compact === 'various' ||
+        spaced === 'all departments' ||
         spaced === 'n/a' ||
         spaced === 'not available' ||
         spaced === 'not applicable' ||
@@ -185,6 +191,108 @@ export function sanitizeJobDepartment(department: string | null | undefined): st
     if (cleaned.length > 80) return null;
 
     return cleaned;
+}
+
+/** Map common ATS department aliases onto the 25 display sectors. */
+const DEPARTMENT_ALIASES: Record<string, string> = {
+    it: 'Engineering (Software)',
+    tech: 'Engineering (Software)',
+    technology: 'Engineering (Software)',
+    digital: 'Engineering (Software)',
+    software: 'Engineering (Software)',
+    'software engineering': 'Engineering (Software)',
+    devops: 'Engineering (Software)',
+    cloud: 'Engineering (Software)',
+    qa: 'Engineering (Software)',
+    hardware: 'Engineering (Hardware)',
+    engineering: 'Engineering (Other)',
+    'r&d': 'Research (Technical)',
+    rd: 'Research (Technical)',
+    research: 'Research (Technical)',
+    hr: 'HR / People',
+    'human resources': 'HR / People',
+    people: 'HR / People',
+    talent: 'HR / People',
+    nhs: 'Healthcare',
+    nursing: 'Healthcare',
+    clinical: 'Healthcare',
+    medical: 'Healthcare',
+    psychiatry: 'Healthcare',
+    doctors: 'Healthcare',
+    'acute doctors': 'Healthcare',
+    finance: 'Finance',
+    accounting: 'Finance',
+    underwriting: 'Finance',
+    audit: 'Finance',
+    tax: 'Finance',
+    legal: 'Legal',
+    sales: 'Sales & Partnerships',
+    commercial: 'Sales & Partnerships',
+    revenue: 'Sales & Partnerships',
+    marketing: 'Marketing & PR',
+    pr: 'Marketing & PR',
+    growth: 'Marketing & PR',
+    retail: 'Retail & Hospitality',
+    hospitality: 'Retail & Hospitality',
+    'store colleague': 'Retail & Hospitality',
+    operations: 'Operations',
+    ops: 'Operations',
+    product: 'Product Management',
+    design: 'Design',
+    ux: 'Design',
+    ui: 'Design',
+    data: 'Data',
+    infrastructure: 'Construction & Infrastructure',
+    construction: 'Construction & Infrastructure',
+    'real estate': 'Construction & Infrastructure',
+    bim: 'Construction & Infrastructure',
+    logistics: 'Logistics & Transport',
+    pmo: 'Project Management',
+    'project management': 'Project Management',
+    consulting: 'Business & Strategy',
+    strategy: 'Business & Strategy',
+    'customer success': 'Customer Success',
+    pharmaceutical: 'Pharmaceutical',
+    pharma: 'Pharmaceutical',
+    'social care': 'Healthcare & Social Care',
+};
+
+function matchAllowedSector(value: string): string | null {
+    if (ALLOWED_SECTOR_SET.has(value)) return value;
+    const lower = value.toLowerCase();
+    for (const allowed of ALLOWED_SECTORS) {
+        if (allowed.toLowerCase() === lower) return allowed;
+    }
+    return null;
+}
+
+function aliasForDepartment(cleaned: string): string | undefined {
+    const spaced = normalizeSpaced(cleaned).replace(/&/g, ' ').replace(/\s+/g, ' ').trim();
+    if (DEPARTMENT_ALIASES[spaced]) return DEPARTMENT_ALIASES[spaced];
+    const stripped = spaced
+        .replace(/\b(team|department|dept|group|function|division|unit|services?|management)\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (stripped && DEPARTMENT_ALIASES[stripped]) return DEPARTMENT_ALIASES[stripped];
+    return undefined;
+}
+
+/**
+ * Persist only allowlisted sector terms for display.
+ * Unknown ATS labels fall back to the job's inferred sector.
+ */
+export function canonicalJobDepartment(
+    department: string | null | undefined,
+    sector: string | null | undefined,
+): string {
+    const fallback = matchAllowedSector(String(sector || '').trim()) || 'Other';
+    const cleaned = sanitizeJobDepartment(department);
+    if (!cleaned) return fallback;
+    const allowed = matchAllowedSector(cleaned);
+    if (allowed) return allowed;
+    const alias = aliasForDepartment(cleaned);
+    if (alias && ALLOWED_SECTOR_SET.has(alias)) return alias;
+    return fallback;
 }
 
 /** True when department is a GTM-style org label (use as Sales cue for classification). */

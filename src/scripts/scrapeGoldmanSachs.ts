@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import dotenv from 'dotenv';
 import * as cheerio from 'cheerio';
 import { isUKJob } from '../lib/ukFilter';
+import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
     try {
@@ -111,13 +112,21 @@ async function scrapeGoldmanSachs() {
     console.log(`Attempting to save ${ukJobs.length} Goldman Sachs jobs to DB.`);
 
     if (ukJobs.length > 0) {
-        const jobsToInsert = ukJobs.map((job: any) => ({
-            company_id: company.id,
-            title: job.title,
-            location: job.location,
-            url: job.url,
-            department: job.department || null
-        }));
+        const jobsToInsert = ukJobs.map((job: any) => {
+            const { sector, department } = classifyJobTaxonomy(
+                job.title,
+                job.department,
+                company.company_sector,
+            );
+            return {
+                company_id: company.id,
+                title: job.title,
+                location: job.location,
+                url: job.url,
+                department,
+                sector,
+            };
+        });
 
         const { error: jobErr } = await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
 
