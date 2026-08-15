@@ -32,6 +32,8 @@ function stripCostCenterSuffix(raw: string): string {
     // "HQU-COM - Group Commercial", "HQU-ITC - IT Team"
     return raw
         .replace(/^HQU-[A-Z]{2,6}\s*[-–—]\s*/i, '')
+        .replace(/^\d{3,6}\s*[-–—:]\s*/, '')
+        .replace(/^\d{3,6}\s+/, '')
         .replace(/\s*[-–—]\s*(group|as|uk|emea|apac)\s*[-–—]\s*[A-Z]{1,6}\d{2,}\b/gi, '')
         .replace(/\s*[-–—]\s*[A-Z]\s*[-–—]\s*[A-Z]{1,6}\d{2,}\b/gi, '')
         .replace(/\s*[-–—]\s*[A-Z]{1,6}\d{2,}\b/gi, '')
@@ -78,6 +80,29 @@ export function sanitizeJobDepartment(department: string | null | undefined): st
 
     // Named business units / brands mistaken for departments
     if (compact === 'asiera') {
+        return null;
+    }
+
+    // Workday / finance "All Cost Centers" is not a function
+    if (/^(all\s+)?cost\s+cent(er|re)s?$/.test(spaced) || compact === 'kiosk') {
+        return null;
+    }
+
+    // Convenience / grocery store location names (Recruitee etc. put store in department)
+    // e.g. "MACE Newgate", "SPAR Little Island", "Londis Castlebar", "EUROSPAR Fairview"
+    if (
+        /^(mace|spar|eurospar|londis|centra|supervalu|super\s*valu|maxol|costcutter|daybreak)\b/.test(
+            spaced
+        ) &&
+        spaced.split(' ').length >= 2
+    ) {
+        return null;
+    }
+    // Franchise / group trading names used as department
+    if (
+        /\b(retail group|o'?hare retail|corrib oil|tirlan)\b/.test(spaced) ||
+        /^(spar|eurospar|londis|mace|centra)\b.+\(.*\)$/.test(spaced)
+    ) {
         return null;
     }
 
@@ -141,6 +166,23 @@ export function sanitizeJobDepartment(department: string | null | undefined): st
     if (/\b[A-Z]{1,6}\d{3,}\b/.test(cleaned)) {
         return null;
     }
+
+    // Collapse repeated "Property - Property - Property" ATS dumps
+    const hyphenParts = cleaned.split(/\s*[-–—]\s*/).map((p) => p.trim()).filter(Boolean);
+    if (hyphenParts.length >= 4) {
+        const uniq = [...new Set(hyphenParts.map((p) => p.toLowerCase()))];
+        if (uniq.length <= 2) {
+            cleaned = hyphenParts[hyphenParts.length - 1];
+            if (/^\d+$/.test(cleaned) && hyphenParts.length >= 2) {
+                cleaned = hyphenParts[hyphenParts.length - 2];
+            }
+        } else if (cleaned.length > 70) {
+            const lastHuman = [...hyphenParts].reverse().find((p) => !/^\d+$/.test(p));
+            if (lastHuman && lastHuman.length <= 60) cleaned = lastHuman;
+        }
+    }
+
+    if (cleaned.length > 80) return null;
 
     return cleaned;
 }

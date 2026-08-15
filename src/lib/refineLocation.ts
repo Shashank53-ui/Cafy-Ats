@@ -78,3 +78,67 @@ export function pickMostSpecificLocation(parts: string[], market: 'uk' | 'irelan
 
     return cleaned[0];
 }
+
+/**
+ * Clean ATS location dumps: country codes, requisition IDs, N/A suffixes,
+ * and multi-country lists. Never returns empty — falls back to a country label.
+ */
+export function sanitizeJobLocation(
+    location: string | null | undefined,
+    market: 'uk' | 'ireland' = 'uk',
+    title?: string | null,
+    url?: string | null,
+): string {
+    const fallback = market === 'ireland' ? 'Ireland' : 'United Kingdom';
+    let loc = String(location || '').trim();
+    if (!loc) return fallback;
+
+    const firstLine = loc.split(/\n/)[0].replace(/\+\s*\d+\s+more\b[.…]* /gi, '').trim();
+    if (firstLine && isTargetMarketPart(firstLine, market) && firstLine.length <= 80) {
+        loc = firstLine;
+    }
+
+    loc = loc
+        .replace(/\+\s*\d+\s+more\b[.…]* /gi, ' ')
+        .replace(/\n+/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    if (/^(gbr|gb)$/i.test(loc)) return 'United Kingdom';
+    if (/^(irl|ie)$/i.test(loc)) return 'Ireland';
+    if (/^r\d{5,}$/i.test(loc)) return fallback;
+
+    loc = loc.replace(/,?\s*n\/a\s*$/i, '').trim();
+    if (!loc) return fallback;
+
+    const parts = loc
+        .split(/\s*[|;]\s*/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+    const targetParts = parts.filter((p) => isTargetMarketPart(p, market));
+    if (targetParts.length) {
+        loc = pickMostSpecificLocation(targetParts, market) || targetParts[0];
+    } else if (parts.length > 1) {
+        // Multi-country dump with no usable target fragment
+        loc = fallback;
+    }
+
+    loc = refineVagueLocation(loc, title, url, market);
+    if (!loc || loc.length > 80) return fallback;
+    if (/\+\s*\d+\s+more/i.test(loc)) return fallback;
+    return loc;
+}
+
+function isTargetMarketPart(part: string, market: 'uk' | 'ireland'): boolean {
+    if (market === 'uk') {
+        if (UK_COUNTRY_ONLY.test(part)) return true;
+        if (/\b(united kingdom|\buk\b|\bgb\b|gbr|england|scotland|wales|northern ireland)\b/i.test(part)) return true;
+        return Boolean(findCityInText(part, UK_CITIES));
+    }
+    if (IE_COUNTRY_ONLY.test(part)) return true;
+    if (/\b(ireland|éire|eire|dublin|cork|galway|limerick)\b/i.test(part) && !/\bnorthern ireland\b/i.test(part)) {
+        return true;
+    }
+    return Boolean(findCityInText(part, IE_CITIES));
+}
