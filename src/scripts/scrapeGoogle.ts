@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { chromium } from 'playwright';
 import { isUKJob } from '../lib/ukFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { sanitizeJobLocation } from '../lib/refineLocation';
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
     try {
@@ -146,7 +147,7 @@ async function scrapeGoogle() {
             return {
                 company_id: company.id,
                 title: job.title,
-                location: job.location,
+                location: sanitizeJobLocation(job.location, 'uk', job.title, job.url),
                 url: job.url,
                 department,
                 sector,

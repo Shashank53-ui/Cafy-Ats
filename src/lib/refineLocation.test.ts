@@ -21,6 +21,22 @@ test('sanitizeJobLocation maps codes and strips N/A', () => {
     assert.strictEqual(sanitizeJobLocation('Finland; Ireland', 'ireland'), 'Ireland');
     assert.strictEqual(sanitizeJobLocation('USA; Remote, UK; Remote, Sweden; Stockholm', 'uk'), 'Remote, UK');
     assert.strictEqual(sanitizeJobLocation('Ireland; United Kingdom', 'ireland'), 'Ireland');
+    assert.strictEqual(
+        sanitizeJobLocation('London San Francisco Boston New York', 'uk'),
+        'London',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('San Francisco London Stockholm', 'uk'),
+        'London',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('Maryland HQ + Boston Office + California - Remote - Bay Area + Ireland', 'ireland'),
+        'Ireland (Remote)',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('UK Edinburgh Manchester Ireland Stockholm Dublin Amsterdam Toronto', 'ireland'),
+        'Dublin',
+    );
 });
 
 test('inferJobLevel maps frontline roles to Junior', () => {

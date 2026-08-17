@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import dotenv from 'dotenv';
 import { isUKJob } from '../lib/ukFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { sanitizeJobLocation } from '../lib/refineLocation';
 
 dotenv.config({ path: '.env.local' });
 
@@ -88,7 +89,7 @@ async function scrapeJPMorgan() {
                 return {
                     company_id: company.id,
                     title: j.title,
-                    location: j.location,
+                    location: sanitizeJobLocation(j.location, 'uk', j.title, j.url),
                     url: j.url,
                     department,
                     sector,

@@ -63,6 +63,14 @@ tmp-*
 src/scripts/_tmp*
 data/sponsors_missing_jobs_ids.txt
 
+# one-off audits / backfills / local dumps (not part of sync)
+src/scripts/auditSectorQuality.ts
+src/scripts/backfillJobSectors.ts
+src/scripts/reclassifyJobSectors.ts
+src/lib/classifyJobTaxonomy.test.ts
+supabase/constrain_job_taxonomy.sql
+docs/ats_providers_and_custom_scrapers.csv
+
 # local-only test fixtures
 data/excel/
 

@@ -112,7 +112,7 @@ export function sanitizeJobLocation(
     if (!loc) return fallback;
 
     const parts = loc
-        .split(/\s*[|;]\s*/)
+        .split(/\s*[|;/]\s*/)
         .map((p) => p.trim())
         .filter(Boolean);
 
@@ -124,10 +124,37 @@ export function sanitizeJobLocation(
         loc = fallback;
     }
 
+    loc = collapseForeignDump(loc, market, fallback);
     loc = refineVagueLocation(loc, title, url, market);
     if (!loc || loc.length > 80) return fallback;
     if (/\+\s*\d+\s+more/i.test(loc)) return fallback;
     return loc;
+}
+
+/** Non-UK/Ireland geography that marks an ATS multi-office dump. */
+const FOREIGN_GEO =
+    /\b(united states|\busa\b|canada|australia|singapore|germany|france|spain|sweden|netherlands|portugal|czechia|czech|finland|india|belgium|croatia|greece|iceland|estonia|bulgaria|latvia|lithuania|austria|switzerland|italy|denmark|colombia|brazil|sao paulo|melbourne|sydney|new york|san francisco|amsterdam|berlin|paris|toronto|dubai|maryland|california|boston|stockholm|tallinn|erlangen|tuerkiye|turkey)\b/i;
+
+/**
+ * Space-separated dumps like "London San Francisco Boston" don't split on `;`.
+ * If both a target-market signal and foreign geography are present, keep only
+ * the local city / remote label / country fallback.
+ */
+function collapseForeignDump(
+    loc: string,
+    market: 'uk' | 'ireland',
+    fallback: string,
+): string {
+    if (!FOREIGN_GEO.test(loc)) return loc;
+    if (!isTargetMarketPart(loc, market)) return loc;
+
+    const city = findCityInText(loc, market === 'uk' ? UK_CITIES : IE_CITIES);
+    if (city) return city;
+
+    if (/\bremote\b/i.test(loc)) {
+        return market === 'ireland' ? 'Ireland (Remote)' : 'Remote, UK';
+    }
+    return fallback;
 }
 
 function isTargetMarketPart(part: string, market: 'uk' | 'ireland'): boolean {
