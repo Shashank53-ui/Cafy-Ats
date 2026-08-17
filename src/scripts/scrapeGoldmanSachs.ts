@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import * as cheerio from 'cheerio';
 import { isUKJob } from '../lib/ukFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { sanitizeJobLocation } from '../lib/refineLocation';
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
     try {
@@ -121,7 +122,7 @@ async function scrapeGoldmanSachs() {
             return {
                 company_id: company.id,
                 title: job.title,
-                location: job.location,
+                location: sanitizeJobLocation(job.location, 'uk', job.title, job.url),
                 url: job.url,
                 department,
                 sector,

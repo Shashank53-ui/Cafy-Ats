@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { isIrelandJob } from '../lib/irelandFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { sanitizeJobLocation } from '../lib/refineLocation';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -246,7 +247,7 @@ async function scrapeLinkedin() {
                 return {
                     company_id: companyMap.get(j.company),
                     title: j.title.substring(0, 255),
-                    location: j.location.substring(0, 255),
+                    location: sanitizeJobLocation(j.location, 'ireland', j.title, j.url).substring(0, 255),
                     url: j.url,
                     department,
                     level: getLevel(j.title),
