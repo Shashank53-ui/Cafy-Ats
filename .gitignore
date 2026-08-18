@@ -68,7 +68,6 @@ src/scripts/auditSectorQuality.ts
 src/scripts/backfillJobSectors.ts
 src/scripts/reclassifyJobSectors.ts
 src/lib/classifyJobTaxonomy.test.ts
-supabase/constrain_job_taxonomy.sql
 docs/ats_providers_and_custom_scrapers.csv
 
 # local-only test fixtures
