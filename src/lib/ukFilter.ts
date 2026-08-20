@@ -349,10 +349,15 @@ function hasUkCitySignal(combined: string): boolean {
     });
 }
 
+import { isRelocateAbroadTitle } from './jobIngestGuards';
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function isUKJob(input: JobLocationInput): boolean {
     const { locations, isRemote, isTrustedSource } = input;
+
+    // Relocate-abroad titles with a UK interview city must never pass.
+    if (locations.some((loc) => isRelocateAbroadTitle(loc))) return false;
 
     // 1. Trust the source (e.g. facet-filtered Workday results, NHS)
     if (isTrustedSource) return true;

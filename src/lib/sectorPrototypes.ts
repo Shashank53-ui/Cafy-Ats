@@ -37,7 +37,7 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
     ],
   },
   'Construction & Infrastructure': {
-    base: 'Construction infrastructure built environment civil structural quantity surveying architecture RIBA BIM highways.',
+    base: 'Construction infrastructure built environment civil structural quantity surveying architecture RIBA BIM highways ecology town planning site manager.',
     examples: [
       'Quantity Surveyor',
       'Civil Engineer',
@@ -55,6 +55,11 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Clerk of Works',
       'Part 1 Architect',
       'Part 3 Architect',
+      'Principal Ecologist',
+      'Town Planner',
+      'Hydrogeologist',
+      'Contracts Manager',
+      'BMS Service Technician',
     ],
   },
   'Customer Success': {
@@ -177,7 +182,7 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
     ],
   },
   Healthcare: {
-    base: 'Clinical healthcare nurse doctor pharmacist physician medical patient care. Not corporate health and safety.',
+    base: 'Clinical healthcare nurse doctor pharmacist physician medical patient care echocardiography audiology pathology. Not corporate health and safety.',
     examples: [
       'Staff Nurse',
       'Registered Nurse',
@@ -193,6 +198,12 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Occupational Therapist',
       'Staff Nurse- Northwood',
       'Bank MRI Radiographer',
+      'Echocardiographer',
+      'Cardiac Physiologist',
+      'Audiology Services Manager',
+      'Pathology Administrator',
+      'A&E Nurses',
+      'Home Manager',
     ],
   },
   'Healthcare & Social Care': {
@@ -370,7 +381,7 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
     ],
   },
   'Retail & Hospitality': {
-    base: 'Retail hospitality store fashion food hotel restaurant. Not FX investment trader.',
+    base: 'Retail hospitality store fashion food hotel restaurant cafe bar waiting butcher merchandiser kitchen. Not FX investment trader.',
     examples: [
       'Store Manager',
       'Fashion Assistant',
@@ -378,6 +389,7 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Customer and Trading Manager',
       'Trading Assistant',
       'Merchandiser',
+      'Visual Merchandiser',
       'Buyer',
       'Barista',
       'Chef',
@@ -387,6 +399,13 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Beauty Consultant',
       'Customer Care Agent',
       'Front of House',
+      'Bar & Waiting Staff',
+      'Butcher',
+      'Cafe Team Leader',
+      'Kitchen Team Leader',
+      'Luxury Skincare Advisor',
+      'Sommelier',
+      'Leisure Supervisor',
       'Regional Sales Manager - Structural Heart',
     ],
   },

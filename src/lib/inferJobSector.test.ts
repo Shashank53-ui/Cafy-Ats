@@ -115,6 +115,39 @@ const cases: Case[] = [
   { title: 'GTM Operator', department: 'Go to Market', expect: 'Sales & Partnerships' },
   { title: 'Community & Events Lead', department: 'Go-To-Market', expect: 'Sales & Partnerships' },
   { title: 'Account Executive, Mid Market', department: 'Go to Market', expect: 'Sales & Partnerships' },
+
+  // Golden-set regressions (sector_golden_set_1.csv, Aug 2026)
+  { title: 'Investment Banking - EMEA Technology - Vice President - London', expect: 'Finance' },
+  { title: 'Visual & Creative Merchandiser- Home', expect: 'Retail & Hospitality' },
+  { title: 'Retail Sales Merchandiser', expect: 'Sales & Partnerships' },
+  { title: 'Sales Merchandiser - Suntory', expect: 'Sales & Partnerships' },
+  { title: 'Composite Laminating Technician - Contract (2027 Build)', expect: 'Engineering (Hardware)' },
+  { title: 'Device and Packaging Technologist', expect: 'Engineering (Hardware)' },
+  { title: 'Customer ServiceHaslingden, Great BritainFull-TimePermanentOnsiteApply now', expect: 'Customer Success' },
+  { title: 'Java Sr Lead eSoftware Engineer - Equities Algo Trading - VP', expect: 'Engineering (Software)' },
+  { title: 'Application Analyst', expect: 'Engineering (Software)' },
+  { title: 'Cost Analyst', expect: 'Finance' },
+  { title: 'KYC Analyst', expect: 'Finance' },
+  { title: 'Data Protection Analyst', expect: 'Legal' },
+  { title: 'Search Engine Optimization Analyst', expect: 'Marketing & PR' },
+  { title: 'Senior Workday Analyst', expect: 'HR / People' },
+  { title: 'Bar & Waiting Staff', expect: 'Retail & Hospitality' },
+  { title: 'Butcher', expect: 'Retail & Hospitality' },
+  { title: 'Band 7 Locum Echocardiographer - Preston', expect: 'Healthcare' },
+  { title: 'A&E (Accident & Emergency) Nurses, Merseyside', expect: 'Healthcare' },
+  { title: 'Principal Ecologist', expect: 'Construction & Infrastructure' },
+  { title: 'Contracts Manager', expect: 'Construction & Infrastructure' },
+  { title: 'Site Manager', expect: 'Construction & Infrastructure' },
+  { title: 'Transfer Pricing Senior Manager, 6-Month FTC', expect: 'Finance' },
+  { title: 'Prisoner Custody Officer', expect: 'Operations' },
+  { title: 'Resourcer - London', expect: 'HR / People' },
+
+  // Auditor/banker — \baudit\b alone does not match "auditor"; company Soft must not win.
+  { title: 'Senior Auditor', expect: 'Finance' },
+  { title: 'Senior Auditor', companySector: 'Engineering (Software)', expect: 'Finance' },
+  { title: 'Junior Private Banker', expect: 'Finance' },
+  { title: 'Junior Private Banker Remote', companySector: 'Engineering (Software)', expect: 'Finance' },
+  { title: 'Mystery Role XYZ', companySector: 'Engineering (Software)', expect: null },
 ];
 
 let failed = 0;
