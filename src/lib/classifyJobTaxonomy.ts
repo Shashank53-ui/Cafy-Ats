@@ -1,5 +1,6 @@
 import { ALLOWED_SECTORS } from './constants';
 import { inferJobSector } from './inferJobSector';
+import { sanitizeCompanySectorForInference } from './jobIngestGuards';
 import { mergeJobSector, type SectorMergeSource } from './mergeJobSector';
 import { canonicalJobDepartment } from './sanitizeJobDepartment';
 
@@ -22,8 +23,9 @@ export function classifyJobTaxonomy(
     companySector?: string | null,
     embeddingSector?: string | null,
 ): { sector: string; department: string; source: SectorMergeSource } {
+    const safeCompanySector = sanitizeCompanySectorForInference(companySector);
     const rulesSector = clampAllowedSector(
-        inferJobSector(title, rawDepartment, companySector),
+        inferJobSector(title, rawDepartment, safeCompanySector),
     );
     const { sector, source } = mergeJobSector(rulesSector, embeddingSector, title);
     return {

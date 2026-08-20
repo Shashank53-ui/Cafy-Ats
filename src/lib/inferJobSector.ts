@@ -22,67 +22,67 @@ const PHARMA_COMPANY_SECTOR =
 export const RULES: [RegExp, string][] = [
     // Built-environment architecture — BEFORE software "architect" catch-all
     [/\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\s+architect|riba|architecture practice)\b/, 'Construction & Infrastructure'],
-    // Engineering (Software) — IT architects + developers (not building architects)
-    [/\b(software|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|cloud|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|technology|qa|quality assurance)\b/, 'Engineering (Software)'],
+    // Engineering (Software) — IT architects + developers (not building architects).
+    // Bare "technology" deliberately excluded — IB/coverage titles like
+    // "Investment Banking - EMEA Technology" are Finance, not SWE.
+    [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|cloud|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa|quality assurance|application analysts?|applications? analysts?|application support|service desk|it (onsite )?support)\b/, 'Engineering (Software)'],
     [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap)\s+architect\b/, 'Engineering (Software)'],
     // Pharmaceutical / life sciences industry — before Hardware "manufacturing" and Healthcare
     [PHARMA_INDUSTRY_SIGNAL, 'Pharmaceutical'],
     // Engineering (Hardware)
-    [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded)\b/, 'Engineering (Hardware)'],
-    // Data
-    [/\b(data|analytics|statistics|sql|python|bi|business intelligence|dba|database administrator)\b/, 'Data'],
+    [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded|machine operators?|factory automation|energy storage|shipbuild|packaging technicians?|maintenance technicians?|wind turbine|plant fitters?)\b|\bcomposite laminat\w*|\bpackaging technolog\w*/, 'Engineering (Hardware)'],
+    // Data — after Legal "data protection" override in inferJobSectorUnclamped
+    [/\b(data|analytics|statistics|sql|python|bi|business intelligence|dba|database administrator|customer targeting)\b/, 'Data'],
     // Finance
     // `trader`/`traders` added — \btrading\b didn't match "Index Trader" etc.
     // Bare "trading"/"trader" deliberately excluded — UK grocery retail uses
     // "Trading Assistant" / "Customer and Trading Manager" for shop-floor
     // staff (found via audit, 155 jobs), which isn't financial trading at
     // all. Require a specific financial-trading phrase instead.
-    [/\b(finance|accounting|tax|audit|financial|quant|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|accountant|accounts|regulatory reporting|trading (floor|desk|strategy|systems?)|(equities?|fx|commodit(y|ies)|quantitative|electronic|algo(rithmic)?|proprietary|derivatives?|credit|securities) trading|\btraders?\b)\b/, 'Finance'],
+    [/\b(finance|accounting|tax|audit(?:or|ors|ing)?|financial|quant|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|bankers?|accountant|accounts|regulatory reporting|trading (floor|desk|strategy|systems?)|(equities?|fx|commodit(y|ies)|quantitative|electronic|algo(rithmic)?|proprietary|derivatives?|credit|securities) trading|\btraders?\b|cost analysts?|\bkyc\b|\baml\b|payments? analysts?|transfer pricing|private bankers?|claims handlers?|asset (management|servicing)|asset custody|mid-?market funds?|\bfunds?\b)\b/, 'Finance'],
     // Healthcare (clinical/medical) — patient-facing care; before Healthcare & Social Care
     // Includes NHS "Consultant [Specialty]" clinical grade titles — without these,
     // titles like "Consultant Psychiatrist" fall through to the bare `consultant`
     // catch-all below and land in Business & Strategy (found via audit, ~400+ jobs).
-    [/\b(health|medical|clinical|nurse|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|clinical psycholog(?:y|ist))\b/, 'Healthcare'],
+    [/\b(health|medical|clinical|nurses?|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|physiologists?|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|clinical psycholog(?:y|ist)|echocardiograph(?:er|y)|audiolog(?:y|ist)|pathology|\ba\s*&\s*e\b|accident\s*&\s*emergency|home managers?|computed tomography|prescribers?)\b/, 'Healthcare'],
     // Healthcare & Social Care
     [/\b(dietitian|social worker|ward manager|carer|care worker|care home|social care|community care|matron|sonographer|podiatrist|care assistant|general practitioner|veterinary|practice manager|nursery|early years|after.?school|breakfast club|holiday club|childcare|childminder)\b/, 'Healthcare & Social Care'],
     // Legal
-    [/\b(legal|counsel|lawyer|attorney|solicitor|compliance|paralegal)\b/, 'Legal'],
+    [/\b(legal|counsel|lawyer|attorney|solicitor|compliance|paralegal|data protection|gdpr|privacy analysts?|\bprivacy\b)\b/, 'Legal'],
     // Marketing & PR
-    [/\b(marketing|brand|content|social media|communications|seo|growth|public relations|pr|copywriter|copywriting)\b/, 'Marketing & PR'],
-    // Design — include interior architecture
-    [/\b(interior architect|interior design|ui|ux|product designer|graphic|creative)\b/, 'Design'],
+    [/\b(marketing|brand|content|social media|communications|seo|search engine optimization|growth|public relations|pr|copywriter|copywriting)\b/, 'Marketing & PR'],
+    // Design — include interior architecture / art direction (merchandiser overridden earlier)
+    [/\b(interior architect|interior design|ui|ux|product designer|graphic|creative|art directors?)\b/, 'Design'],
     [/\b(design)\b/, 'Design'],
     // Product Management — \bproduct\b catches ATS depts named "Product"
     [/\b(product manager|product management|product owner|product lead|head of product|product)\b/, 'Product Management'],
     // Project Management
-    [/\b(project manager|programme|program manager|scrum|agile|delivery manager)\b/, 'Project Management'],
+    [/\b(project manager|programme|program manager|scrum|agile|delivery manager|project portfolio|portfolio (&|and) governance|client delivery)\b/, 'Project Management'],
     // Sales & Partnerships — include GTM / go-to-market ATS team labels
-    [/\b(sales|partnerships|business development|account executive|bdr|sdr|revenue|client advisor|account director|partner manager|partnership manager|go[\s-]*to[\s-]*market|goto\s*market|\bgtm\b)\b/, 'Sales & Partnerships'],
+    [/\b(sales|partnerships|business development|account executive|bdr|sdr|revenue|client advisor|account director|partner manager|partnership manager|alliance managers?|client partners?|commercial managers?|go[\s-]*to[\s-]*market|goto\s*market|\bgtm\b)\b/, 'Sales & Partnerships'],
     // Customer Success
-    [/\b(customer success|customer support|account manager|client success)\b/, 'Customer Success'],
+    [/\b(customer success|customer support|customer service|account manager|client success|call handlers?)\b/, 'Customer Success'],
     // HR / People — \bpeople\b catches ATS depts named "People"
-    [/\b(hr|human resources|people ops|talent|recruiter|recruiting|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people)\b/, 'HR / People'],
-    // Construction & Infrastructure — includes bare "Architect" without IT cues (handled in inferJobSector)
-    // bim/hydraulic/flood/highways/vertical transportation added from audit
-    // samples that were falling through to the Engineering (Other)/Other catch-alls.
-    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contract manager|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town planning|\bbim\b|hydraulic|flood (risk|model|modeller|modeler|forecast)|vertical transportation|highways?|hydrologist|wastewater|arborist)\b/, 'Construction & Infrastructure'],
+    [/\b(hr|human resources|people ops|talent|recruiter|recruiting|resourcer|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people|workday analysts?|training advisors?)\b/, 'HR / People'],
+    // Construction & Infrastructure
+    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contracts? managers?|contract management|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town plann(?:er|ers|ing)|site managers?|building inspectors?|groundworkers?|\bbim\b|bms|\bmep\b|hydraulic|flood (risk|model|modeller|modeler|forecast)|vertical transportation|highways?|hydrologist|hydrogeologists?|wastewater|arborist|ecologists?|ornithologists?|climate resilience)\b/, 'Construction & Infrastructure'],
     // Retail & Hospitality
-    [/\b(beauty|chef|retail|store manager|hospitality|barista|restaurant|hotel|catering|cook|merchandiser|buyer|nandoca|back of house|front of house|fitness coach|fitness manager|gym instructor|personal trainer|padel coach|online trading|trading assistant|trading manager|stores? operative|fashion assistant|customer service agent|customer care agent|deli assistant|\brunners?\b|receptionist|housekeeping|concierge|area manager)\b/, 'Retail & Hospitality'],
+    [/\b(beauty|chef|retail|store manager|hospitality|barista|restaurant|hotel|catering|cook|merchandisers?|buyer|nandoca|back of house|front of house|fitness coach|fitness manager|gym instructor|personal trainer|padel coach|online trading|trading assistant|trading manager|stores? operative|fashion assistant|customer service agent|customer care agent|deli assistant|\brunners?\b|receptionist|housekeeping|concierge|area manager|butchers?|\bcafe\b|kitchen (managers?|team leaders?|team)|skincare|sommeliers?|leisure|bar (&|and)? waiting|waiting staff|stock managers?|shift lead.{0,30}food|lounge managers?|breakfast (&|and) afternoon|visual.?commercial|\bgap\b.{0,20}team members?)\b/, 'Retail & Hospitality'],
     // Logistics & Transport — before Operations to claim warehouse/logistics/supply chain
-    [/\b(hgv|driver|warehouse|logistics|supply chain|transport|freight|courier|distribution)\b/, 'Logistics & Transport'],
+    [/\b(hgv|driver|warehouse|logistics|supply chain|transport|freight|courier|distribution|\bloaders?\b|material handlers?)\b/, 'Logistics & Transport'],
     // Operations — after Logistics to avoid overlap
-    [/\b(operations|facilities|admin|procurement|purchasing|executive assistant|branch manager|deputy manager|operational trainer)\b/, 'Operations'],
+    [/\b(operations|facilities|admin|procurement|purchasing|executive assistant|branch manager|deputy manager|assistant managers?|operational trainer|client processing|prisoner custody|production planners?|siam|workplace experience|events?.{0,20}operative|night painters?|\bpainters?\b|pick up and return|\behs\b|health and safety|workshop instructors?)\b/, 'Operations'],
     // Research (Non-technical) — specific phrases before generic research
     [/\b(market research|user research|insights analyst|ux research)\b/, 'Research (Non-technical)'],
     // Research (Technical)
-    [/\b(research|scientist|r&d|phd|investigator)\b/, 'Research (Technical)'],
+    [/\b(research|scientist|r&d|phd|investigator|physicists?|researchers?)\b/, 'Research (Technical)'],
     // Media & Journalism
     [/\b(media|journalism|writer|editor|reporter|news|broadcast)\b/, 'Media & Journalism'],
     // Engineering (Other) — generic catch-all after all specific engineering types
-    [/\b(engineer|engineering)\b/, 'Engineering (Other)'],
+    [/\b(engineers?|engineering|it technicians?)\b/, 'Engineering (Other)'],
     // Business & Strategy — broadest catch-all last
     // `pursuit` (bid/pursuit management — BD terminology at consultancies) added.
-    [/\b(business|strategy|consultant|analyst|corporate|planning|pursuit)\b/, 'Business & Strategy'],
+    [/\b(business|strategy|consultant|analyst|corporate|planning|pursuit|bid managers?|managing directors?)\b/, 'Business & Strategy'],
 ];
 
 function matchRules(text: string): string | null {
@@ -131,6 +131,16 @@ function isPharmaCompanySector(companySector: string | null | undefined): boolea
     if (!companySector) return false;
     return PHARMA_COMPANY_SECTOR.test(companySector.toLowerCase());
 }
+
+/** Company industry labels that must not become job.sector when the title is unclear. */
+const WEAK_COMPANY_SECTOR_FALLBACK = new Set([
+    'Engineering (Software)',
+    'Engineering (Hardware)',
+    'Engineering (Other)',
+    'Other',
+    'Data',
+    'Product Management',
+]);
 
 /** Ambiguous sectors that should yield to a clear pharma company context. */
 const COMPANY_PHARMA_OVERRIDE_FROM = new Set([
@@ -200,9 +210,75 @@ function inferJobSectorUnclamped(
     const d = (department || '').toLowerCase().trim();
     const combined = `${d} ${t}`.trim();
 
+    // Applied AI / ML / ERP systems titles (avoid bare "ERP" NHS band noise like "*ERP*").
+    if (
+        /\b(applied ai|ai\/ml|ai & ml|machine learning|mlops|erp (transformation|consultant|specialist|analyst|manager|developer|implement))\b/.test(t) ||
+        (/\b(ai|ml)\b/.test(t) && /\b(engineer|director|scientist|developer)\b/.test(t))
+    ) {
+        return 'Engineering (Software)';
+    }
+
+    // Common SWE abbreviations
+    if (/\b(sde|swe|sre)\b/.test(t)) {
+        return 'Engineering (Software)';
+    }
+
     // Unambiguous legal-practitioner titles stay Legal (even "Finance Lawyer").
     if (/\b(lawyer|solicitor|attorney)\b/.test(combined)) {
         return 'Legal';
+    }
+
+    // Privacy / GDPR roles — before bare "data" → Data.
+    if (/\b(data protection|gdpr|privacy (analyst|officer|manager|counsel))\b/.test(t)) {
+        return 'Legal';
+    }
+
+    // SWE titles beat financial-domain modifiers ("Equities Algo Trading").
+    if (
+        /\b(java|esoftware|e-?software|golang|typescript|kotlin)\b/.test(t) &&
+        /\b(engineers?|developers?|programmers?)\b/.test(t)
+    ) {
+        return 'Engineering (Software)';
+    }
+    if (/\b(software engineers?|software developers?)\b/.test(t)) {
+        return 'Engineering (Software)';
+    }
+
+    // Merchandising: brand/field "Sales Merchandiser" is Sales; shop-floor
+    // visual/creative merchandiser is Retail.
+    if (/\bmerchandisers?\b/.test(t)) {
+        if (/\bsales\b/.test(t)) return 'Sales & Partnerships';
+        return 'Retail & Hospitality';
+    }
+
+    // Glued ATS titles sometimes drop spaces ("Customer ServiceHaslingden").
+    {
+        const compact = t.replace(/[^a-z0-9]+/g, '');
+        if (compact.startsWith('customerservice')) {
+            return 'Customer Success';
+        }
+    }
+
+    // Store colleague titles often lack "retail" but are clearly shop-floor.
+    if (
+        /\b(team members?|shift leads?)\b/.test(t) &&
+        (/\b(outlet|simply food|store|retail|food|zara|gap|silverburn)\b/.test(t) ||
+            /\bteam members?\s*-/.test(t))
+    ) {
+        return 'Retail & Hospitality';
+    }
+    if (/^\s*shift leads?\s*$/i.test(title || '')) {
+        return 'Retail & Hospitality';
+    }
+
+    // Field regulatory affairs (ads/promo, pharma, medtech) — clinical-adjacent.
+    if (/\bregulatory affairs\b/.test(t)) {
+        return 'Healthcare';
+    }
+
+    // Installer/trainer product roles without a clearer function cue.
+    if (/\b(trainer and installer|installer and trainer)\b/.test(t)) {
+        return 'Engineering (Other)';
     }
 
     if (/\bmedical devices?\b.*\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b|\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b.*\bmedical devices?\b/.test(combined)) {
@@ -261,7 +337,9 @@ function inferJobSectorUnclamped(
         if (/\b(infrastructure|real estate|energy)\b/.test(d)) return 'Construction & Infrastructure';
     }
 
-    // P3: Company sector fallback
+    // P3: Company sector fallback — only for clear industry signals.
+    // Never copy Engineering/Data/Product from company_sector onto vague titles
+    // (LSEG/Molten were poisoning "Senior Auditor" / "Private Banker" → Software).
     if (companySector) {
         if (
             isPharmaCompanySector(companySector) &&
@@ -269,6 +347,12 @@ function inferJobSectorUnclamped(
             !NON_PHARMA_ROLE_OVERRIDE.test(combined)
         ) {
             return 'Pharmaceutical';
+        }
+        const raw = companySector.trim();
+        // If someone stuffed a job-function label into company_sector (LSEG/Molten),
+        // do not copy it onto unclear titles.
+        if (WEAK_COMPANY_SECTOR_FALLBACK.has(raw)) {
+            return null;
         }
         return normalizeCompanySectorLabel(companySector);
     }

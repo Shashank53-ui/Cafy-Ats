@@ -12,7 +12,9 @@
     "scrape:goldman": "tsx src/scripts/scrapeGoldmanSachs.ts",
     "scrape:google": "tsx src/scripts/scrapeGoogle.ts",
     "scrape:jpmc": "tsx src/scripts/scrapeJpmc.ts",
-    "improve:sector-embeddings": "tsx src/scripts/improveSectorEmbeddingsLoop.ts"
+    "improve:sector-embeddings": "tsx src/scripts/improveSectorEmbeddingsLoop.ts",
+    "golden:export": "tsx src/scripts/exportSectorGoldenSet.ts",
+    "golden:score": "tsx src/scripts/scoreSectorGoldenSet.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
