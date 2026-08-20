@@ -65,9 +65,9 @@ export const RULES: [RegExp, string][] = [
     // Construction & Infrastructure — includes bare "Architect" without IT cues (handled in inferJobSector)
     // bim/hydraulic/flood/highways/vertical transportation added from audit
     // samples that were falling through to the Engineering (Other)/Other catch-alls.
-    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contract manager|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town planning|\bbim\b|hydraulic|flood (risk|model|forecast)|vertical transportation|highways?|hydrologist|wastewater)\b/, 'Construction & Infrastructure'],
+    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contract manager|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town planning|\bbim\b|hydraulic|flood (risk|model|modeller|modeler|forecast)|vertical transportation|highways?|hydrologist|wastewater|arborist)\b/, 'Construction & Infrastructure'],
     // Retail & Hospitality
-    [/\b(beauty|chef|retail|store manager|hospitality|barista|restaurant|hotel|catering|cook|merchandiser|buyer|nandoca|back of house|front of house|fitness coach|fitness manager|gym instructor|personal trainer|padel coach)\b/, 'Retail & Hospitality'],
+    [/\b(beauty|chef|retail|store manager|hospitality|barista|restaurant|hotel|catering|cook|merchandiser|buyer|nandoca|back of house|front of house|fitness coach|fitness manager|gym instructor|personal trainer|padel coach|online trading|trading assistant|trading manager|stores? operative|fashion assistant|customer service agent|customer care agent|deli assistant|\brunners?\b|receptionist|housekeeping|concierge|area manager)\b/, 'Retail & Hospitality'],
     // Logistics & Transport — before Operations to claim warehouse/logistics/supply chain
     [/\b(hgv|driver|warehouse|logistics|supply chain|transport|freight|courier|distribution)\b/, 'Logistics & Transport'],
     // Operations — after Logistics to avoid overlap
@@ -155,6 +155,42 @@ export function inferJobSector(
     return ALLOWED_SECTOR_SET.has(result) ? result : 'Other';
 }
 
+/** ATS org labels that are NOT job functions — never use alone for sector. */
+const WEAK_DEPARTMENTS =
+    /^(digital|technology|technologies|tech|it|information technology|corporate|general|company|other|various|all|central|group|uk|emea|global|enterprise|innovation|transformation|platform|platforms|solutions|shared services|business unit|bu)$/i;
+
+function isWeakDepartment(department: string): boolean {
+    const d = department.toLowerCase().trim();
+    if (!d) return true;
+    if (WEAK_DEPARTMENTS.test(d)) return true;
+    // Multi-word weak buckets, e.g. "Digital, Data and Cloud", "Technology Services"
+    if (
+        /^(digital|technology|tech|it|corporate)\b/.test(d) &&
+        !/\b(legal|finance|pharmacy|marketing|sales|hr|people|engineering software|software engineering)\b/.test(d)
+    ) {
+        // "Digital Marketing" is strong → Marketing; "Digital" alone / "Digital Data Cloud" weak
+        if (/\b(marketing|sales|finance|legal|pharmacy|recruit|people|hr)\b/.test(d)) return false;
+        return true;
+    }
+    return false;
+}
+
+function applyPharmaCompanyOverride(
+    sector: string,
+    companySector: string | null | undefined,
+    combined: string,
+): string {
+    if (
+        isPharmaCompanySector(companySector) &&
+        COMPANY_PHARMA_OVERRIDE_FROM.has(sector) &&
+        !PATIENT_FACING_PHARMACY_OR_CARE.test(combined) &&
+        !NON_PHARMA_ROLE_OVERRIDE.test(combined)
+    ) {
+        return 'Pharmaceutical';
+    }
+    return sector;
+}
+
 function inferJobSectorUnclamped(
     title: string,
     department?: string | null,
@@ -164,37 +200,33 @@ function inferJobSectorUnclamped(
     const d = (department || '').toLowerCase().trim();
     const combined = `${d} ${t}`.trim();
 
-    // Unambiguous legal-practitioner titles ("Banking Lawyer", "Insurance
-    // Lawyer", "Structured Finance Lawyer") stay Legal even when a finance-
-    // domain modifier is present — Finance's broader word list (banking,
-    // insurance, trading, ...) would otherwise win first on title order.
-    // Deliberately narrow to lawyer/solicitor/attorney — bare "legal" is too
-    // ambiguous (e.g. "Legal Entity Risk" is a genuine Finance/risk term).
+    // Unambiguous legal-practitioner titles stay Legal (even "Finance Lawyer").
     if (/\b(lawyer|solicitor|attorney)\b/.test(combined)) {
         return 'Legal';
     }
 
-    // "Medical Device [regulatory/quality/engineering]" roles are medtech —
-    // stay Pharmaceutical even under a generic department like "Corporate"
-    // (which would otherwise win via the Business & Strategy catch-all).
-    // Narrower than bare "medical device" so it doesn't swallow roles where
-    // the device is just the product, not the job function (e.g. a cyber
-    // security specialist who happens to secure medical devices).
     if (/\bmedical devices?\b.*\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b|\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b.*\bmedical devices?\b/.test(combined)) {
         return 'Pharmaceutical';
     }
 
-    // "Product Designer" is a design discipline, not product management —
-    // must win even when filed under a bare "Product" department (a common
-    // ATS department name for cross-functional product orgs), which would
-    // otherwise match Product Management's department-priority step first.
-    // Checked against title only, deliberately — a department that says
-    // "Product Design" is already unambiguous via the normal P1 rule match.
     if (/\bproduct design(er|ers)?\b/.test(t)) {
         return 'Design';
     }
 
-    // Built-env architect titles (before department/title generic rules)
+    // Product Manager / Owner before bare "data"/"product" collisions in RULES
+    if (/\b(product manager|product owner|product lead|head of product|principal product manager)\b/.test(t)) {
+        return 'Product Management';
+    }
+
+    // Retail trading / shop-floor (before Finance / Software catch-alls)
+    if (
+        /\b(online trading manager|trading assistant|customer and trading|stores? operative|fashion assistant|materials operator|deli assistant|\brunners?\b|receptionist|soho house)\b/.test(
+            t,
+        )
+    ) {
+        return 'Retail & Hospitality';
+    }
+
     if (
         /\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\b.*architect|riba)\b/.test(
             combined
@@ -203,52 +235,33 @@ function inferJobSectorUnclamped(
         if (/\binterior\b/.test(combined)) return 'Design';
         return 'Construction & Infrastructure';
     }
-    // Bare "Architect" / "Senior Architect" without IT cues → built environment
     if (/\barchitects?\b/.test(combined) && !IT_ARCHITECT_CUES.test(combined)) {
         if (/\binterior\b/.test(combined)) return 'Design';
         return 'Construction & Infrastructure';
     }
 
-    // Strong pharma industry signals on title/dept — before department labels like "Healthcare"
     if (PHARMA_INDUSTRY_SIGNAL.test(combined) && !PATIENT_FACING_PHARMACY_OR_CARE.test(combined)) {
         return 'Pharmaceutical';
     }
 
-    // P1: Department matching
-    if (d) {
-        const fromDept = matchRules(d);
-        if (fromDept) {
-            if (
-                isPharmaCompanySector(companySector) &&
-                COMPANY_PHARMA_OVERRIDE_FROM.has(fromDept) &&
-                !PATIENT_FACING_PHARMACY_OR_CARE.test(combined) &&
-                !NON_PHARMA_ROLE_OVERRIDE.test(combined)
-            ) {
-                return 'Pharmaceutical';
-            }
-            return fromDept;
-        }
-        if (/\b(infrastructure|real estate|energy)\b/.test(d)) return 'Construction & Infrastructure';
-        if (/\bdigital\b/.test(d)) return 'Engineering (Software)';
-    }
-
-    // P2: Title matching
+    // P1: TITLE first (business-correct function from the job name)
     if (t) {
         const fromTitle = matchRules(t);
         if (fromTitle) {
-            if (
-                isPharmaCompanySector(companySector) &&
-                COMPANY_PHARMA_OVERRIDE_FROM.has(fromTitle) &&
-                !PATIENT_FACING_PHARMACY_OR_CARE.test(combined) &&
-                !NON_PHARMA_ROLE_OVERRIDE.test(combined)
-            ) {
-                return 'Pharmaceutical';
-            }
-            return fromTitle;
+            return applyPharmaCompanyOverride(fromTitle, companySector, combined);
         }
     }
 
-    // P3: Company sector fallback (normalize pharma + map leaked company_sector labels)
+    // P2: Strong department only (never Digital/Technology/IT/Corporate alone)
+    if (d && !isWeakDepartment(d)) {
+        const fromDept = matchRules(d);
+        if (fromDept) {
+            return applyPharmaCompanyOverride(fromDept, companySector, combined);
+        }
+        if (/\b(infrastructure|real estate|energy)\b/.test(d)) return 'Construction & Infrastructure';
+    }
+
+    // P3: Company sector fallback
     if (companySector) {
         if (
             isPharmaCompanySector(companySector) &&
@@ -260,6 +273,5 @@ function inferJobSectorUnclamped(
         return normalizeCompanySectorLabel(companySector);
     }
 
-    // P4: Unclassifiable
     return null;
 }

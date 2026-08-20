@@ -1,0 +1,432 @@
+/**
+ * Plain-text sector prototypes for embedding-based classification.
+ * Each sector has a short base doc + many short example titles
+ * (each example is embedded separately — MiniLM truncates long single docs).
+ */
+import { ALLOWED_SECTORS } from './constants';
+
+export type AllowedSector = (typeof ALLOWED_SECTORS)[number];
+
+export type SectorPrototype = {
+  /** Short sector description (one embedding). */
+  base: string;
+  /** Example job titles (each embedded separately; score = max similarity). */
+  examples: string[];
+};
+
+export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
+  'Business & Strategy': {
+    base: 'Business strategy consulting corporate planning bid pursuit transformation change management commercial analysis.',
+    examples: [
+      'Business Analyst',
+      'Management Consultant',
+      'Strategy Manager',
+      'Strategy Analyst',
+      'Corporate Planner',
+      'Bid Manager',
+      'Pursuit Manager',
+      'Change Manager',
+      'Transformation Consultant',
+      'Commercial Analyst',
+      'Business Support Analyst',
+      'Planning Analyst',
+      'SHE Analyst',
+      'Demand Planning Specialist',
+      'Business Support Administrator',
+      'Business Support Executive',
+    ],
+  },
+  'Construction & Infrastructure': {
+    base: 'Construction infrastructure built environment civil structural quantity surveying architecture RIBA BIM highways.',
+    examples: [
+      'Quantity Surveyor',
+      'Civil Engineer',
+      'Structural Engineer',
+      'Site Architect',
+      'Part 2 Architect',
+      'Landscape Architect',
+      'Architectural Technologist',
+      'Cost Manager',
+      'Estimator',
+      'Project Controls Engineer',
+      'Highways Engineer',
+      'Wastewater Engineer',
+      'Site Manager',
+      'Clerk of Works',
+      'Part 1 Architect',
+      'Part 3 Architect',
+    ],
+  },
+  'Customer Success': {
+    base: 'Customer success support client success customer experience technical account management.',
+    examples: [
+      'Customer Success Manager',
+      'Customer Support Specialist',
+      'Client Success Lead',
+      'Technical Account Manager',
+      'Customer Experience Manager',
+      'Client Services Manager',
+      'Customer Care Specialist',
+      'Customer Service Host',
+      'Customer Service Agent',
+      'Customer Service Officer',
+      'Support Specialist',
+    ],
+  },
+  Data: {
+    base: 'Data analytics business intelligence SQL python database administration data science engineering.',
+    examples: [
+      'Data Analyst',
+      'Business Intelligence Analyst',
+      'Data Engineer',
+      'Database Administrator',
+      'Data Scientist',
+      'Analytics Engineer',
+      'BI Developer',
+      'SQL Developer',
+      'Analytics Specialist',
+      'Principal Broadband Analytics Specialist',
+      'V.I.E Data Analyst',
+    ],
+  },
+  Design: {
+    base: 'Design UX UI product design graphic creative visual interior design.',
+    examples: [
+      'Product Designer',
+      'UX Designer',
+      'UI Designer',
+      'Graphic Designer',
+      'Interior Designer',
+      'Visual Designer',
+      'Interaction Designer',
+      'Mid-Weight Graphic Designer',
+      'Layout Artist',
+      'Creative Designer',
+    ],
+  },
+  'Engineering (Hardware)': {
+    base: 'Hardware electrical electronics mechanical manufacturing firmware embedded PCB robotics.',
+    examples: [
+      'Hardware Engineer',
+      'Mechanical Engineer',
+      'Electrical Engineer',
+      'Electronics Engineer',
+      'Embedded Firmware Engineer',
+      'Process Mechanical Engineer',
+      'Manufacturing Engineer',
+      'Robotics Engineer',
+      'PCB Design Engineer',
+      'Mechanical & Physical Engineer',
+    ],
+  },
+  'Engineering (Other)': {
+    base: 'General engineering process test quality validation verification engineering management.',
+    examples: [
+      'Process Engineer',
+      'Test Engineer',
+      'Senior Test Engineer',
+      'Quality Engineer',
+      'Validation Engineer',
+      'Verification Engineer',
+      'Engineering Manager',
+      'General Engineer',
+      'Security Engineer',
+      'Senior Security Engineer',
+      'Site Technical Manager',
+    ],
+  },
+  'Engineering (Software)': {
+    base: 'Software development frontend backend devops SRE cybersecurity cloud ML QA solutions architecture. Not retail trading manager not fashion store.',
+    examples: [
+      'Software Engineer',
+      'Senior Software Engineer',
+      'Intermediate Java Software Engineer',
+      'Frontend Developer',
+      'Backend Engineer',
+      'Full Stack Developer',
+      'DevOps Engineer',
+      'Site Reliability Engineer',
+      'Solutions Architect',
+      'Cloud Engineer',
+      'Cyber Security Engineer',
+      'QA Engineer',
+      'Platform Engineer',
+      'Trainee Oracle Cloud Consultant',
+      'Head of Product, Cloud & Security Portfolio',
+    ],
+  },
+  Finance: {
+    base: 'Finance accounting tax audit investment banking treasury actuarial insurance trading desk FP&A. Not retail online trading manager not sales account executive.',
+    examples: [
+      'Financial Analyst',
+      'Senior FP&A Analyst',
+      'Investment Banking Analyst',
+      'FX Trader',
+      'Equity Trader',
+      'Actuary',
+      'Underwriter',
+      'Accountant',
+      'Tax Manager',
+      'Treasury Analyst',
+      'Risk Analyst',
+      'Wealth Manager',
+      'Corporate Credit Analyst',
+      'Senior Manager Investment Governance',
+      'Manager, Research and Development Tax',
+      'Asset Manager',
+    ],
+  },
+  Healthcare: {
+    base: 'Clinical healthcare nurse doctor pharmacist physician medical patient care. Not corporate health and safety.',
+    examples: [
+      'Staff Nurse',
+      'Registered Nurse',
+      'Clinical Pharmacist',
+      'Consultant Psychiatrist',
+      'Physiotherapist',
+      'Midwife',
+      'Paramedic',
+      'Dentist',
+      'GP',
+      'Surgeon',
+      'Radiographer',
+      'Occupational Therapist',
+      'Staff Nurse- Northwood',
+      'Bank MRI Radiographer',
+    ],
+  },
+  'Healthcare & Social Care': {
+    base: 'Social care childcare nursery care home care worker community care veterinary practice.',
+    examples: [
+      'Social Worker',
+      'Care Assistant',
+      'Care Worker',
+      'Nursery Nurse',
+      'Ward Manager',
+      'Dietitian',
+      'Early Years Practitioner',
+      'Childminder',
+      'Veterinary Nurse',
+      'Practice Manager',
+      'Matron',
+      'Chaperone',
+    ],
+  },
+  'HR / People': {
+    base: 'Human resources talent recruitment people partner payroll compensation L&D.',
+    examples: [
+      'Recruiter',
+      'Talent Acquisition Specialist',
+      'HR Business Partner',
+      'People Partner',
+      'HR Manager',
+      'Payroll Specialist',
+      'Compensation Analyst',
+      'Learning and Development Manager',
+      'Employee Relations Adviser',
+    ],
+  },
+  Legal: {
+    base: 'Legal lawyer solicitor attorney counsel compliance paralegal. Not financial analyst.',
+    examples: [
+      'Solicitor',
+      'Lawyer',
+      'Attorney',
+      'Paralegal',
+      'Legal Counsel',
+      'General Counsel',
+      'Compliance Officer',
+      'Branch Compliance Manager UK',
+      'Compliance Manager',
+      'Finance Lawyer',
+      'Banking Lawyer',
+      'Structured Finance Lawyer',
+      'Financial Regulatory Lawyer',
+    ],
+  },
+  'Logistics & Transport': {
+    base: 'Logistics warehouse supply chain HGV transport freight distribution fulfilment.',
+    examples: [
+      'Warehouse Operative',
+      'Supply Chain Manager',
+      'HGV Driver',
+      'Logistics Coordinator',
+      'Distribution Manager',
+      'Freight Manager',
+      'Inventory Controller',
+      'Fulfilment Manager',
+      'Transport Manager',
+      'Supply Chain Manufacturing Engineer',
+    ],
+  },
+  'Marketing & PR': {
+    base: 'Marketing brand content SEO PR communications copywriting growth.',
+    examples: [
+      'Marketing Manager',
+      'Brand Manager',
+      'Content Marketing Manager',
+      'SEO Specialist',
+      'PR Manager',
+      'Communications Manager',
+      'Copywriter',
+      'Social Media Manager',
+      'Marketing Engagement Manager',
+      'Growth Marketing Manager',
+      'VodafoneThree - Marketing Engagement & Service Manager',
+    ],
+  },
+  'Media & Journalism': {
+    base: 'Journalism news media reporter editor broadcast.',
+    examples: [
+      'Journalist',
+      'News Editor',
+      'Reporter',
+      'Broadcast Producer',
+      'Content Editor',
+      'Features Writer',
+      'News Correspondent',
+    ],
+  },
+  Operations: {
+    base: 'Operations facilities administration branch management operational coordination.',
+    examples: [
+      'Operations Manager',
+      'Facilities Manager',
+      'Operations Coordinator',
+      'Branch Manager',
+      'Deputy Manager',
+      'Executive Assistant',
+      'Office Administrator',
+      'Operational Trainer',
+      'Aircraft Appearance Supervisor',
+      'Aircraft Appearance Team Leader',
+      'Area Dedicated Relief Security Officers',
+    ],
+  },
+  Other: {
+    base: 'Miscellaneous unclear general unspecified role.',
+    examples: ['General Assistant', 'Miscellaneous Role', 'Unspecified Position'],
+  },
+  Pharmaceutical: {
+    base: 'Pharmaceutical biotech drug discovery pharmacovigilance GMP CMC clinical research associate.',
+    examples: [
+      'Formulation Scientist',
+      'Clinical Research Associate',
+      'Pharmacovigilance Specialist',
+      'Biotech Scientist',
+      'Process Development Scientist',
+      'CMC Scientist',
+      'Medicinal Chemist',
+      'Medical Device Regulatory Specialist',
+    ],
+  },
+  'Product Management': {
+    base: 'Product management product owner product lead. Not product designer.',
+    examples: [
+      'Product Manager',
+      'Senior Product Manager',
+      'Principal Product Manager',
+      'Product Owner',
+      'Head of Product',
+      'Group Product Manager',
+      'Staff Product Manager',
+      'Technical Product Manager',
+      'Staff Product Engineer',
+    ],
+  },
+  'Project Management': {
+    base: 'Project programme delivery scrum agile PMO.',
+    examples: [
+      'Project Manager',
+      'Programme Manager',
+      'Program Manager',
+      'Delivery Manager',
+      'Scrum Master',
+      'Agile Coach',
+      'PMO Analyst',
+      'Senior Oracle ERP Service Delivery Manager',
+    ],
+  },
+  'Research (Non-technical)': {
+    base: 'Market research user research insights UX research consumer insights.',
+    examples: [
+      'Market Research Analyst',
+      'User Researcher',
+      'Insights Analyst',
+      'UX Researcher',
+      'Consumer Insights Manager',
+      'Research Executive',
+    ],
+  },
+  'Research (Technical)': {
+    base: 'Scientific research scientist laboratory R&D PhD investigator.',
+    examples: [
+      'Research Scientist',
+      'R&D Scientist',
+      'Research Investigator',
+      'Laboratory Scientist',
+      'Principal Scientist',
+      'Postdoctoral Researcher',
+    ],
+  },
+  'Retail & Hospitality': {
+    base: 'Retail hospitality store fashion food hotel restaurant. Not FX investment trader.',
+    examples: [
+      'Store Manager',
+      'Fashion Assistant',
+      'Online Trading Manager',
+      'Customer and Trading Manager',
+      'Trading Assistant',
+      'Merchandiser',
+      'Buyer',
+      'Barista',
+      'Chef',
+      'Restaurant Manager',
+      'Hotel Manager',
+      'Stores Operative',
+      'Beauty Consultant',
+      'Customer Care Agent',
+      'Front of House',
+      'Regional Sales Manager - Structural Heart',
+    ],
+  },
+  'Sales & Partnerships': {
+    base: 'Sales business development account executive partnerships revenue BDR SDR. Not retail shop assistant.',
+    examples: [
+      'Sales Executive',
+      'Account Executive',
+      'Senior Account Executive',
+      'Enterprise Account Executive',
+      'Sales Manager',
+      'Regional Sales Manager',
+      'Business Development Manager',
+      'Partnerships Manager',
+      'Partner Manager',
+      'SDR',
+      'BDR',
+      'Commercial Manager',
+      'Rapid Delivery Partnership Manager',
+      'Presales Solutions Engineer',
+    ],
+  },
+};
+
+/** Flat string for tests / legacy display. */
+export function prototypeToFlatText(p: SectorPrototype): string {
+  return `${p.base} ${p.examples.join('. ')}.`;
+}
+
+export function getSectorPrototypeEntries(): { sector: AllowedSector; texts: string[] }[] {
+  return (ALLOWED_SECTORS as readonly AllowedSector[]).map((sector) => {
+    const p = SECTOR_PROTOTYPES[sector];
+    return {
+      sector,
+      texts: [p.base, ...p.examples.map((t) => t.trim()).filter(Boolean)],
+    };
+  });
+}
+
+/** @deprecated use SECTOR_PROTOTYPES[s].base — kept for older tests */
+export function getLegacyPrototypeString(sector: AllowedSector): string {
+  return prototypeToFlatText(SECTOR_PROTOTYPES[sector]);
+}

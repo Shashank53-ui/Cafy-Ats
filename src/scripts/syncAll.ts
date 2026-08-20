@@ -29,6 +29,7 @@ import { fetchCustom } from './customScrapers';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { inferJobLevel } from '../lib/inferJobLevel';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { ensureSectorEmbeddingRuntime, resolveSectorEmbedding } from '../lib/sectorEmbeddingRuntime';
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
@@ -108,6 +109,8 @@ interface JobRow {
     department: string | null;
     level: string | null;
     sector: string | null;
+    /** MiniLM + title memory; compare with sector. Never replaces sector. */
+    sector_embedding: string | null;
     updated_at: string;
     last_seen_at: string;
     source?: 'ats' | 'linkedin';
@@ -429,10 +432,12 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
         // only allowlisted sector terms. Unknown/junk departments fall back
         // to the inferred sector so the UI never shows blank/null.
         const rawDept = j.department ? safeStr(j.department, 255) : '';
+        const sector_embedding = await resolveSectorEmbedding(safeStr(j.title));
         const { sector, department } = classifyJobTaxonomy(
             safeStr(j.title),
             rawDept || null,
             company.company_sector,
+            sector_embedding,
         );
         const nowIso = new Date().toISOString();
 
@@ -444,6 +449,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             department,
             level: inferJobLevel(safeStr(j.title)),
             sector,
+            sector_embedding,
             updated_at: nowIso,
             last_seen_at: nowIso,
         });
@@ -5424,6 +5430,12 @@ export async function syncAll() {
     console.log(`  stale_retention=${STALE_JOB_RETENTION_HOURS}h (soft-delete; no wipe-on-empty)`);
     console.log('════════════════════════════════════════════════════\n');
 
+    try {
+      await ensureSectorEmbeddingRuntime();
+    } catch (e) {
+      console.warn('[sector_embedding] Runtime init failed — sync continues; new rows may lack sector_embedding:', e);
+    }
+
     const args = process.argv.slice(2);
     const idIndex = args.indexOf('--ids');
     const specificIds = idIndex !== -1 ? args[idIndex + 1].split(',').map(id => parseInt(id.trim())) : null;
@@ -5855,10 +5867,13 @@ export async function syncAll() {
                 const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
                 if (jobErr) {
                     // Graceful degrade when optional columns are missing from the live schema.
-                    const stripSector = /sector|schema cache/i.test(jobErr.message);
+                    const stripSectorEmbedding = /sector_embedding/i.test(jobErr.message);
+                    const stripSector =
+                        /schema cache/i.test(jobErr.message) ||
+                        (/\bsector\b/i.test(jobErr.message) && !stripSectorEmbedding);
                     const stripSource = /source/i.test(jobErr.message);
                     const stripSeen = /last_seen_at/i.test(jobErr.message);
-                    if (stripSector || stripSource || stripSeen) {
+                    if (stripSector || stripSectorEmbedding || stripSource || stripSeen) {
                         const stripped = rows.map((row) => {
                             const next: Record<string, unknown> = {
                                 company_id: row.company_id,
@@ -5870,6 +5885,9 @@ export async function syncAll() {
                                 updated_at: row.updated_at,
                             };
                             if (!stripSector) next.sector = row.sector;
+                            if (!stripSectorEmbedding && row.sector_embedding) {
+                                next.sector_embedding = row.sector_embedding;
+                            }
                             if (!stripSource && row.source) next.source = row.source;
                             if (!stripSeen) next.last_seen_at = row.last_seen_at;
                             return next;
