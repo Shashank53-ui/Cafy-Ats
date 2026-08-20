@@ -73,6 +73,16 @@ docs/ats_providers_and_custom_scrapers.csv
 # local-only test fixtures
 data/excel/
 
+# embeddings: keep extras + golden set; ignore huge/generated caches & reports
+data/embeddings/sector_vector_bank.json
+data/embeddings/sector_vectors.json
+data/embeddings/*_sector_compare.json
+data/embeddings/*_reclassify.json
+data/embeddings/*_quality_report.*
+data/embeddings/sector_vs_embedding_compare.json
+data/embeddings/improve_loop_history.json
+data/embeddings/sector_golden_score.json
+
 # supabase CLI local cache
 supabase/.temp/
 

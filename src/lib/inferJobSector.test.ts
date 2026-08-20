@@ -83,12 +83,20 @@ const cases: Case[] = [
   { title: 'Breakfast Club & After School Club Manager', expect: 'Healthcare & Social Care' },
   { title: 'Afterschool Club Manager', expect: 'Healthcare & Social Care' },
 
-  // Bare "trading" false-positived on UK grocery retail job titles.
-  { title: 'Customer and Trading Manager - Nightshift', expect: null },
-  { title: 'Trading Assistant - Shift', expect: null },
+  // Bare "trading" false-positived Finance; retail trading titles → Retail.
+  { title: 'Customer and Trading Manager - Nightshift', expect: 'Retail & Hospitality' },
+  { title: 'Trading Assistant - Shift', expect: 'Retail & Hospitality' },
+  { title: 'Online Trading Manager', department: 'Digital', expect: 'Retail & Hospitality' },
+  { title: 'Fashion Assistant', department: 'Technology', expect: 'Retail & Hospitality' },
+  { title: 'Stores Operative', department: 'Digital, Data and Cloud', expect: 'Retail & Hospitality' },
+  { title: 'Senior Software Engineer', department: 'Digital', expect: 'Engineering (Software)' },
   { title: 'Trader', expect: 'Finance' },
   { title: 'Quantitative Trading & Research Analyst', expect: 'Finance' },
   { title: 'Trading Floor Support Engineer', expect: 'Finance' },
+
+  // Finance Lawyer stays Legal even under Finance dept
+  { title: 'Finance Lawyer - General Finance', department: 'Finance', expect: 'Legal' },
+  { title: 'Structured Finance Lawyer', department: 'Digital', expect: 'Legal' },
 
   // "Partner Manager" is a recognizable BD/sales title — should resolve via
   // title regardless of the posting company's own industry (e.g. a legal-tech
