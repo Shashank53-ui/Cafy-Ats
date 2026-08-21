@@ -31,7 +31,9 @@ export const RULES: [RegExp, string][] = [
     // Engineering (Software) — IT architects + developers (not building architects).
     // Bare "technology" deliberately excluded — IB/coverage titles like
     // "Investment Banking - EMEA Technology" are Finance, not SWE.
-    [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa|quality assurance|application analysts?|applications? analysts?|application support|service desk|it (onsite )?support)\b/, 'Engineering (Software)'],
+    // Bare "qa" / "quality assurance" excluded — NHS/ops QA is not software testing
+    // (handled in inferJobSectorUnclamped with software-context cues).
+    [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa engineers?|quality assurance engineers?|sdet|test automation|application analysts?|applications? analysts?|application support|service desk|it (onsite )?support)\b/, 'Engineering (Software)'],
     [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap)\s+architect\b/, 'Engineering (Software)'],
     // Pharmaceutical / life sciences industry — before Hardware "manufacturing" and Healthcare
     [PHARMA_INDUSTRY_SIGNAL, 'Pharmaceutical'],
@@ -235,6 +237,33 @@ function inferJobSectorUnclamped(
         /\b(engineers?|developers?|architects?|devops|sre|programmers?)\b/.test(t)
     ) {
         return 'Engineering (Software)';
+    }
+
+    // QA / Quality Assurance: software testing ≠ clinical or operational QA (NHS etc.).
+    // "QA Auditor" is assurance/audit — handled below, not this block.
+    if (
+        /\b(quality assurance|\bqa\b|quality governance|quality improvement)\b/.test(t) &&
+        !/\bauditors?\b/.test(t)
+    ) {
+        if (
+            /\b(software|sdet|test automation|automation test|cypress|selenium|playwright)\b/.test(t) ||
+            /\b(qa|quality assurance)\s+(engineers?|developers?|testers?|analysts?)\b/.test(t) ||
+            (/\b(engineers?|developers?|testers?)\b/.test(t) && /\b(qa|quality assurance)\b/.test(t))
+        ) {
+            return 'Engineering (Software)';
+        }
+        if (
+            /\b(clinical|patient|nursing|hospital|\bnhs\b|medical|care quality|\bcqc\b|medicines? quality)\b/.test(
+                t,
+            ) ||
+            /\boperational\b/.test(t)
+        ) {
+            return 'Healthcare';
+        }
+        // Factory / ops QA managers without software cues
+        if (/\b(managers?|leads?|directors?|officers?|specialists?|coordinators?)\b/.test(t)) {
+            return 'Operations';
+        }
     }
 
     // Data centres are built environment, not the Data job family.
