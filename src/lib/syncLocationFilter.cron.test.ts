@@ -37,8 +37,11 @@ test('cron UK: Remote USA blocked', () => {
   assert.equal(uk('Remote - United States', true), false);
 });
 
-test('cron UK: London accepted', () => {
-  assert.equal(uk('London'), true);
+test('cron UK: Durham NC blocked, Durham UK kept', () => {
+  assert.equal(uk('Durham, NC'), false);
+  assert.equal(uk('Durham, North Carolina'), false);
+  assert.equal(uk('East Durham'), false);
+  assert.equal(uk('Durham'), true);
 });
 
 test('cron UK: Remote UK accepted', () => {

@@ -36,6 +36,7 @@ import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import { sanitizeJobTitle } from '../lib/sanitizeJobTitle';
 import { getIngestRejectReason } from '../lib/jobIngestGuards';
+import { isForeignLocationLeak } from '../lib/foreignLocationLeak';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
 import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
@@ -406,6 +407,12 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
     for (const j of uniqueJobs) {
         const n = normalizedMap.get(j.url);
         const raw = safeStr(j.location, 255);
+        const targetCountry = market === 'ireland' ? 'Ireland' : 'United Kingdom';
+        // Python resolved a foreign country (Durham NC → United States). Never
+        // persist the UK/Ireland namesake city.
+        if (n?.country && n.country !== targetCountry) {
+            continue;
+        }
         let cleanedLocation = n
             ? (formatNormalizedLocation(n) ?? raw)
             : raw;
@@ -433,6 +440,16 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             // to a foreign city — never persist the vague "Multiple Locations" placeholder.
             cleanedLocation = raw;
             if (!locationPasses(cleanedLocation)) continue;
+        }
+
+        if (
+            isForeignLocationLeak(
+                { location: cleanedLocation, title: j.title, url: j.url },
+                market,
+            ) ||
+            isForeignLocationLeak({ location: raw, title: j.title, url: j.url }, market)
+        ) {
+            continue;
         }
 
         // Some ATS providers (Workday, Oracle Cloud, several custom scrapers)

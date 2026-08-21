@@ -3,6 +3,7 @@
  * Used by syncAll (and tests). Keep logic here so scrapers can't bypass it.
  */
 import { ALLOWED_SECTORS } from './constants';
+import { urlSignalsForeignWorkLocation } from './foreignLocationLeak';
 
 const ALLOWED = new Set<string>(ALLOWED_SECTORS as readonly string[]);
 
@@ -165,6 +166,7 @@ export function isForeignEmployerJobUrl(
 export type IngestRejectReason =
   | 'title_relocate_abroad'
   | 'foreign_employer_url'
+  | 'foreign_url_geo'
   | null;
 
 /** Single gate used by sync after title sanitize. */
@@ -179,5 +181,6 @@ export function getIngestRejectReason(
 ): IngestRejectReason {
   if (isRelocateAbroadTitle(job.title || '')) return 'title_relocate_abroad';
   if (job.url && isForeignEmployerJobUrl(job.url, company)) return 'foreign_employer_url';
+  if (urlSignalsForeignWorkLocation(job.url)) return 'foreign_url_geo';
   return null;
 }
