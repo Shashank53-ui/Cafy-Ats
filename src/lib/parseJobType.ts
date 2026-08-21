@@ -85,3 +85,31 @@ export function parseJobType(raw?: unknown): AllowedJobType | null {
   }
   return null;
 }
+
+/**
+ * Always returns an allowlisted type for catalog rows.
+ * Prefer ATS/parsed employment → title cues → Internship level → Full-time.
+ */
+export function resolveJobType(input: {
+  employment?: unknown;
+  title?: string | null;
+  level?: string | null;
+}): AllowedJobType {
+  const fromEmployment = parseJobType(input.employment);
+  const fromTitle = parseJobType(input.title ?? undefined);
+
+  // Title intern / part-time / placement beats a generic Full-time (catalog default
+  // or ATS "full-time" facet on an internship posting).
+  if (
+    fromTitle &&
+    fromTitle !== 'Full-time' &&
+    fromEmployment === 'Full-time'
+  ) {
+    return fromTitle;
+  }
+
+  if (fromEmployment) return fromEmployment;
+  if (fromTitle) return fromTitle;
+  if ((input.level || '').trim() === 'Internship') return 'Internship';
+  return 'Full-time';
+}

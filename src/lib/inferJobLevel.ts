@@ -23,21 +23,24 @@ export function inferJobLevel(title: string): AllowedJobLevel | null {
     else if (/\bvp\b|vice president/.test(t)) {
         level = 'VP';
     }
-    // Director
-    else if (/\bdirector\b/.test(t)) {
+    // Director — "Head of X" is director-tier in UK catalogs
+    else if (/\bdirector\b/.test(t) || /\bhead of\b/.test(t)) {
         level = 'Director';
     }
     // Principal
     else if (/\bprincipal\b/.test(t)) {
         level = 'Principal';
     }
-    // Lead
-    else if (/\blead\b/.test(t)) {
-        level = 'Lead';
-    }
-    // Senior / Sr
+    // Senior / Sr — before eng-manager→Lead so "Senior Engineering Manager" stays Senior
     else if (/\b(senior|sr\.?)\b/.test(t)) {
         level = 'Senior';
+    }
+    // Lead — engineering/software managers (not assistant managers)
+    else if (
+        /\blead\b/.test(t) ||
+        (/\b(software|engineering) managers?\b/.test(t) && !/\bassistant managers?\b/.test(t))
+    ) {
+        level = 'Lead';
     }
     // Shop-floor "X Staff" before IC "Staff Engineer" / NHS "Staff Nurse"
     else if (

@@ -33,12 +33,13 @@ export const RULES: [RegExp, string][] = [
     // "Investment Banking - EMEA Technology" are Finance, not SWE.
     // Bare "qa" / "quality assurance" excluded — NHS/ops QA is not software testing
     // (handled in inferJobSectorUnclamped with software-context cues).
-    [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa engineers?|quality assurance engineers?|sdet|test automation|application analysts?|applications? analysts?|application support|service desk|it (onsite )?support)\b/, 'Engineering (Software)'],
+    // IT service desk / app support / IT support are ops — not SWE (see overrides).
+    [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa engineers?|quality assurance engineers?|sdet|test automation)\b/, 'Engineering (Software)'],
     [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap)\s+architect\b/, 'Engineering (Software)'],
     // Pharmaceutical / life sciences industry — before Hardware "manufacturing" and Healthcare
     [PHARMA_INDUSTRY_SIGNAL, 'Pharmaceutical'],
-    // Engineering (Hardware)
-    [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded|machine operators?|factory automation|energy storage|shipbuild|packaging technicians?|maintenance technicians?|wind turbine|plant fitters?)\b|\bcomposite laminat\w*|\bpackaging technolog\w*/, 'Engineering (Hardware)'],
+    // Engineering (Hardware) — plant maintenance / reliability (not SRE)
+    [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded|machine operators?|factory automation|energy storage|shipbuild|packaging technicians?|maintenance technicians?|maintenance reliability|reliability managers?|plant (maintenance|reliability)|wind turbine|plant fitters?)\b|\bcomposite laminat\w*|\bpackaging technolog\w*/, 'Engineering (Hardware)'],
     // Data — after Legal "data protection" override in inferJobSectorUnclamped
     [/\b(data(?!\s*cent)|analytics|statistics|sql|python|bi|business intelligence|dba|database administrator|customer targeting)\b/, 'Data'],
     // Finance
@@ -79,7 +80,8 @@ export const RULES: [RegExp, string][] = [
     // Logistics & Transport — before Operations to claim warehouse/logistics/supply chain
     [/\b(hgv|driver|warehouse|logistics|supply chain|transport|freight|courier|distribution|\bloaders?\b|material handlers?)\b/, 'Logistics & Transport'],
     // Operations — after Logistics to avoid overlap
-    [/\b(operations|facilities|admin|procurement|purchasing|executive assistant|branch manager|deputy manager|assistant managers?|operational trainer|client processing|prisoner custody|production planners?|siam|workplace experience|events?.{0,20}operative|night painters?|\bpainters?\b|pick up and return|\behs\b|health and safety|workshop instructors?)\b/, 'Operations'],
+    // Service desk / IT support are workplace IT ops, not Engineering (Software).
+    [/\b(operations|facilities|admin|procurement|purchasing|executive assistant|branch manager|deputy manager|assistant managers?|operational trainer|client processing|prisoner custody|production planners?|siam|workplace experience|events?.{0,20}operative|night painters?|\bpainters?\b|pick up and return|\behs\b|health and safety|workshop instructors?|service desk|it (onsite )?support|application support|application analysts?|applications? analysts?)\b/, 'Operations'],
     // Research (Non-technical) — specific phrases before generic research
     [/\b(market research|user research|insights analyst|ux research)\b/, 'Research (Non-technical)'],
     // Research (Technical)
@@ -269,6 +271,37 @@ function inferJobSectorUnclamped(
     // Data centres are built environment, not the Data job family.
     if (/\bdata\s*cent(re|er)s?\b/.test(t)) {
         return 'Construction & Infrastructure';
+    }
+
+    // Tax / R&D tax advisory beats a trailing "(Software)" domain tag — not SWE.
+    if (
+        /\b(r&d tax|research and development tax|tax (assistant|manager|advisor|adviser|consultant|specialist)|transfer pricing|\btax\b|\bvat\b|accountants?)\b/.test(
+            t,
+        ) &&
+        !/\b(software engineers?|software developers?|developers?|devops|sre)\b/.test(t)
+    ) {
+        return 'Finance';
+    }
+
+    // Plant / maintenance reliability is Hardware — not Software (SRE).
+    if (
+        /\b(maintenance reliability|reliability managers?|plant (maintenance|reliability)|maintenance managers?)\b/.test(
+            t,
+        ) &&
+        !/\b(site reliability|software|devops|\bsre\b)\b/.test(t)
+    ) {
+        return 'Engineering (Hardware)';
+    }
+
+    // IT service desk / app support — ops, not Engineering (Software).
+    // Keep "Customer Service Desk" (retail) out — that is Customer Success.
+    if (
+        /\b(service desk|application support|applications? analysts?|application analysts?|it (onsite )?support|it support analysts?)\b/.test(
+            t,
+        ) &&
+        !/\b(software engineers?|developers?|devops|customer service)\b/.test(t)
+    ) {
+        return 'Operations';
     }
 
     // Job function beats technology-domain modifiers ("Senior Auditor – Cloud"

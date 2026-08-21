@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import * as cheerio from 'cheerio';
 import { isUKJob } from '../lib/ukFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { inferJobLevel } from '../lib/inferJobLevel';
+import { resolveJobType } from '../lib/parseJobType';
 import { sanitizeJobLocation } from '../lib/refineLocation';
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
@@ -119,6 +121,7 @@ async function scrapeGoldmanSachs() {
                 job.department,
                 company.company_sector,
             );
+            const level = inferJobLevel(job.title);
             return {
                 company_id: company.id,
                 title: job.title,
@@ -126,6 +129,8 @@ async function scrapeGoldmanSachs() {
                 url: job.url,
                 department,
                 sector,
+                level,
+                job_type: resolveJobType({ title: job.title, level }),
             };
         });
 
