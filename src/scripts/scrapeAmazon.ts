@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { sanitizeJobLocation } from '../lib/refineLocation';
+import { parseJobType } from '../lib/parseJobType';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
@@ -138,7 +139,8 @@ async function scrapeAmazon() {
                     title: truncate(job.title, 500),
                     department,
                     sector,
-                    location: truncate(sanitizeJobLocation(locationStr, 'uk', job.title, absoluteUrl), 500)
+                    location: truncate(sanitizeJobLocation(locationStr, 'uk', job.title, absoluteUrl), 500),
+                    job_type: parseJobType([job.title, department, job.job_schedule_type])
                 }, { onConflict: 'url' });
 
             if (upsertError) {
