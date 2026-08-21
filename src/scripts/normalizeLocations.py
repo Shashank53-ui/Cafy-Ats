@@ -425,6 +425,19 @@ def _find_geo(segment: str) -> dict:
         result["country"] = _UK
         return result
 
+    # US "City, ST" MUST run before the UK city list.
+    # Otherwise "Durham, NC" / "Cambridge, MA" match UK_CITIES and are stored as UK.
+    us_abbrev_match = re.search(r',\s*([A-Z]{2})\s*$', clean)
+    if us_abbrev_match:
+        abbrev = us_abbrev_match.group(1)
+        if abbrev in US_STATES:
+            result["state_province"] = abbrev
+            result["country"] = _US
+            city_part = clean[: us_abbrev_match.start()].strip(' ,')
+            if city_part:
+                result["city"] = city_part.title()
+            return result
+
     # 0. "City - GB" / "City - UK" / "Uxbridge - GB" ATS shorthand
     m_city_cc = re.match(
         r'^(.+?)\s*[-–]\s*(gb|uk|gbr|ie|irl|ireland)\s*$',
@@ -458,6 +471,14 @@ def _find_geo(segment: str) -> dict:
         if not re.search(pat, cl):
             continue
         country, state = CITY_COUNTRY_MAP[city_key]
+        # Shared UK/US names: do not stamp UK when a US state is in the same segment.
+        if country == _UK and re.search(
+            r'\b(east durham|north carolina|south carolina|new york|new jersey|new hampshire|'
+            r'north dakota|rhode island|west virginia|washington dc|'
+            r'\bn\.?c\.?\b)\b',
+            cl,
+        ):
+            continue
         result["city"] = city_key.title()
         result["country"] = country
         result["state_province"] = state
@@ -502,7 +523,7 @@ def _find_geo(segment: str) -> dict:
                         result["city"] = city_part.title()
             return result
 
-    # 8. "City, ST" US pattern
+    # 8. "City, ST" US pattern (also handled earlier so UK city names don't win)
     us_abbrev_match = re.search(r',\s*([A-Z]{2})\s*$', clean)
     if us_abbrev_match:
         abbrev = us_abbrev_match.group(1)
