@@ -39,7 +39,7 @@ import { getIngestRejectReason } from '../lib/jobIngestGuards';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
 import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
-import { parseJobType } from '../lib/parseJobType';
+import { parseJobType, resolveJobType } from '../lib/parseJobType';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -115,7 +115,7 @@ interface JobRow {
     sector: string | null;
     /** MiniLM + title memory; compare with sector. Never replaces sector. */
     sector_embedding: string | null;
-    job_type: string | null;
+    job_type: string;
     updated_at: string;
     last_seen_at: string;
     source?: 'ats' | 'linkedin';
@@ -450,6 +450,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             sector_embedding,
         );
         const nowIso = new Date().toISOString();
+        const level = inferJobLevel(safeStr(j.title));
 
         rows.push({
             company_id: companyId,
@@ -457,10 +458,14 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             location: safeStr(cleanedLocation, 255),
             url: j.url,
             department,
-            level: inferJobLevel(safeStr(j.title)),
+            level,
             sector,
             sector_embedding,
-            job_type: j.job_type || null,
+            job_type: resolveJobType({
+                employment: j.job_type,
+                title: cleanTitle,
+                level,
+            }),
             updated_at: nowIso,
             last_seen_at: nowIso,
         });

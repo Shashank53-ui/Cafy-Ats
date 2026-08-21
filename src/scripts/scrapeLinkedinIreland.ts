@@ -10,6 +10,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { isIrelandJob } from '../lib/irelandFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { inferJobLevel } from '../lib/inferJobLevel';
+import { resolveJobType } from '../lib/parseJobType';
 import { sanitizeJobLocation } from '../lib/refineLocation';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -227,13 +229,6 @@ async function scrapeLinkedin() {
     }
 
     const timestamp = new Date().toISOString();
-    const getLevel = (t: string) => {
-        const lower = t.toLowerCase();
-        if (/\b(senior|sr\.?|lead|principal)\b/.test(lower)) return 'Senior';
-        if (/\b(junior|jr\.?|graduate|intern)\b/.test(lower)) return 'Junior';
-        if (/\b(manager|head|director|vp)\b/.test(lower)) return 'Manager';
-        return 'Mid';
-    };
 
     log.info('Upserting jobs into jobs_IR (source=linkedin)...');
     let upserted = 0;
@@ -244,14 +239,16 @@ async function scrapeLinkedin() {
             .slice(i, i + 500)
             .map((j) => {
                 const { sector, department } = classifyJobTaxonomy(j.title, null);
+                const level = inferJobLevel(j.title);
                 return {
                     company_id: companyMap.get(j.company),
                     title: j.title.substring(0, 255),
                     location: sanitizeJobLocation(j.location, 'ireland', j.title, j.url).substring(0, 255),
                     url: j.url,
                     department,
-                    level: getLevel(j.title),
+                    level,
                     sector,
+                    job_type: resolveJobType({ title: j.title, level }),
                     updated_at: timestamp,
                     last_seen_at: timestamp,
                     source: 'linkedin',

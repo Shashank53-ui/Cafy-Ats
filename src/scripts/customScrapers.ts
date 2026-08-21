@@ -1456,7 +1456,7 @@ async function fetchFromGreenhouse(boardToken: string, label: string): Promise<J
                         title: item.title,
                         location: item.location?.name || '',
                         url: item.absolute_url,
-                        job_type: parseJobType([item.title, jobTypeMeta, item.employment_type, item.type, item.employmentType]),
+                        job_type: parseJobType(jobTypeMeta || item.employment_type || item.type || item.employmentType) ?? undefined,
                         salary,
                         atsProvider: 'greenhouse',
                     });

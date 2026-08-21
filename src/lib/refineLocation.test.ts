@@ -54,4 +54,9 @@ test('inferJobLevel maps frontline roles to Junior', () => {
     assert.strictEqual(inferJobLevel('Staff Project Engineer'), 'Staff');
     assert.strictEqual(inferJobLevel('Staff Nurse - CT'), 'Staff');
     assert.strictEqual(inferJobLevel('Operations Associate'), 'Mid-level');
+    assert.strictEqual(inferJobLevel('Head of Software Engineering'), 'Director');
+    assert.strictEqual(inferJobLevel('Head of Engineering'), 'Director');
+    assert.strictEqual(inferJobLevel('Software Engineering Manager'), 'Lead');
+    assert.strictEqual(inferJobLevel('Senior Software Engineering Manager'), 'Senior');
+    assert.strictEqual(inferJobLevel('R&D Tax Assistant Manager'), 'Mid-level');
 });
