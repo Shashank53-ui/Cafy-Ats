@@ -38,3 +38,15 @@ test('software engineer rules path', () => {
   const r = mergeJobSector('Engineering (Software)', 'Data', 'Senior Software Engineer');
   assert.equal(r.sector, 'Engineering (Software)');
 });
+
+test('thin titles do not take embedding Construction guesses', () => {
+  const r = mergeJobSector('Other', 'Construction & Infrastructure', 'Lateral');
+  assert.equal(r.sector, 'Other');
+  assert.equal(r.source, 'other');
+});
+
+test('rules Team Manager beats company/embedding noise', () => {
+  const r = mergeJobSector('Operations', 'Engineering (Other)', 'TEAM MANAGER');
+  assert.equal(r.sector, 'Operations');
+  assert.equal(r.source, 'rules');
+});

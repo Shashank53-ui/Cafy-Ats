@@ -16,7 +16,7 @@ export type SectorPrototype = {
 
 export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
   'Business & Strategy': {
-    base: 'Business strategy consulting corporate planning bid pursuit transformation change management commercial analysis.',
+    base: 'Business strategy consulting corporate planning bid pursuit transformation change management commercial analysis. Includes cloud IT audit and technology risk assurance. Not software engineers.',
     examples: [
       'Business Analyst',
       'Management Consultant',
@@ -34,10 +34,14 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Demand Planning Specialist',
       'Business Support Administrator',
       'Business Support Executive',
+      'Senior Auditor – Cloud',
+      'IT Auditor',
+      'Technology Risk Auditor',
+      'Cloud Consultant',
     ],
   },
   'Construction & Infrastructure': {
-    base: 'Construction infrastructure built environment civil structural quantity surveying architecture RIBA BIM highways ecology town planning site manager.',
+    base: 'Construction infrastructure built environment civil structural quantity surveying architecture RIBA BIM highways ecology town planning transportation infrastructure site manager.',
     examples: [
       'Quantity Surveyor',
       'Civil Engineer',
@@ -50,6 +54,8 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Estimator',
       'Project Controls Engineer',
       'Highways Engineer',
+      'Transportation Planner',
+      'Transportation Team Lead',
       'Wastewater Engineer',
       'Site Manager',
       'Clerk of Works',
@@ -141,7 +147,7 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
     ],
   },
   'Engineering (Software)': {
-    base: 'Software development frontend backend devops SRE cybersecurity cloud ML QA solutions architecture. Not retail trading manager not fashion store.',
+    base: 'Software development frontend backend devops SRE cybersecurity cloud ML QA solutions architecture investment banking technology engineers. Not retail trading manager not fashion store. Not investment banking coverage bankers. Not cloud auditor tax or sales.',
     examples: [
       'Software Engineer',
       'Senior Software Engineer',
@@ -156,12 +162,14 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Cyber Security Engineer',
       'QA Engineer',
       'Platform Engineer',
+      'Investment Banking Technology Senior Analyst',
+      'IB Technology Analyst',
       'Trainee Oracle Cloud Consultant',
       'Head of Product, Cloud & Security Portfolio',
     ],
   },
   Finance: {
-    base: 'Finance accounting tax audit investment banking treasury actuarial insurance trading desk FP&A. Not retail online trading manager not sales account executive.',
+    base: 'Finance accounting tax audit investment banking coverage treasury actuarial insurance trading desk FP&A. Not retail online trading manager. Not internal investment banking technology engineers.',
     examples: [
       'Financial Analyst',
       'Senior FP&A Analyst',
@@ -204,6 +212,8 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Pathology Administrator',
       'A&E Nurses',
       'Home Manager',
+      'Unit Manager',
+      'Clinical Unit Manager',
     ],
   },
   'Healthcare & Social Care': {
@@ -312,11 +322,13 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Aircraft Appearance Supervisor',
       'Aircraft Appearance Team Leader',
       'Area Dedicated Relief Security Officers',
+      'Team Manager',
+      'Register Your Interest - New Site Start Up',
     ],
   },
   Other: {
     base: 'Miscellaneous unclear general unspecified role.',
-    examples: ['General Assistant', 'Miscellaneous Role', 'Unspecified Position'],
+    examples: ['General Assistant', 'Miscellaneous Role', 'Unspecified Position', 'Lateral'],
   },
   Pharmaceutical: {
     base: 'Pharmaceutical biotech drug discovery pharmacovigilance GMP CMC clinical research associate.',
@@ -390,6 +402,8 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Trading Assistant',
       'Merchandiser',
       'Visual Merchandiser',
+      'Visual Commercial Manager',
+      'ZARA Visual Commercial Manager',
       'Buyer',
       'Barista',
       'Chef',
@@ -425,6 +439,8 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'BDR',
       'Commercial Manager',
       'Rapid Delivery Partnership Manager',
+      'Cloud Sales Executive',
+      'Google Cloud Sales Director',
       'Presales Solutions Engineer',
     ],
   },
