@@ -11,8 +11,13 @@ const PATIENT_FACING_PHARMACY_OR_CARE =
 const NON_PHARMA_ROLE_OVERRIDE =
     /\b(chef|commis|barista|food service|catering|cleaner|housekeeping|security guard|software|developer|frontend|backend|fullstack|devops|sre)\b/;
 
-const PHARMA_INDUSTRY_SIGNAL =
-    /\b(pharmaceuticals?|pharma|biotech|biotechnology|biopharma|biopharmaceutical|life\s*sciences?|pharmacovigilance|drug discovery|drug development|medicinal chemistry|bioprocess|biomanufacturing|biotechnician|formulation scientist|process development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
+/** Job *functions* that are pharmaceutical (lab / GMP / drug development). */
+const PHARMA_ROLE_SIGNAL =
+    /\b(pharmacovigilance|drug discovery|drug development|medicinal chemistry|bioprocess|biomanufacturing|biotechnician|formulation scientists?|process development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
+
+/** Industry domain tags — must not beat sales/engineering/finance job functions. */
+const PHARMA_DOMAIN_TAG =
+    /\b(pharmaceuticals?|pharma|biotech|biotechnology|biopharma|biopharmaceutical|life\s*sciences?)\b/;
 
 const TECH_DOMAIN =
     /\b(cloud|digital|cyber|cybersecurity|infosec|aws|azure|saas|technology|technologies|information systems?|soc)\b|\bit\b/;
@@ -36,8 +41,8 @@ export const RULES: [RegExp, string][] = [
     // IT service desk / app support / IT support are ops — not SWE (see overrides).
     [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa engineers?|quality assurance engineers?|sdet|test automation)\b/, 'Engineering (Software)'],
     [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap)\s+architect\b/, 'Engineering (Software)'],
-    // Pharmaceutical / life sciences industry — before Hardware "manufacturing" and Healthcare
-    [PHARMA_INDUSTRY_SIGNAL, 'Pharmaceutical'],
+    // Pharmaceutical — specific lab/GMP/drug-development *roles* only (not "Life Sciences" BD tags).
+    [PHARMA_ROLE_SIGNAL, 'Pharmaceutical'],
     // Engineering (Hardware) — plant maintenance / reliability (not SRE)
     [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded|machine operators?|factory automation|energy storage|shipbuild|packaging technicians?|maintenance technicians?|maintenance reliability|reliability managers?|plant (maintenance|reliability)|wind turbine|plant fitters?)\b|\bcomposite laminat\w*|\bpackaging technolog\w*/, 'Engineering (Hardware)'],
     // Data — after Legal "data protection" override in inferJobSectorUnclamped
@@ -89,10 +94,12 @@ export const RULES: [RegExp, string][] = [
     // Media & Journalism
     [/\b(media|journalism|writer|editor|reporter|news|broadcast)\b/, 'Media & Journalism'],
     // Engineering (Other) — generic catch-all after all specific engineering types
+    // C&Q / CQV = commissioning & qualification (plant/process engineers, not pharma-industry copy).
+    [/\b(c&q|cqv|commissioning (and|&) qualification|commissioning qualification)\b/, 'Engineering (Other)'],
     [/\b(engineers?|engineering|it technicians?)\b/, 'Engineering (Other)'],
     // Business & Strategy — broadest catch-all last
     // `pursuit` (bid/pursuit management — BD terminology at consultancies) added.
-    [/\b(business|strategy|consultant|analyst|corporate|planning|pursuit|bid managers?|managing directors?)\b/, 'Business & Strategy'],
+    [/\b(business|strategy|consultant|consulting|analyst|corporate|planning|pursuit|bid managers?|managing directors?)\b/, 'Business & Strategy'],
 ];
 
 function matchRules(text: string): string | null {
@@ -122,7 +129,6 @@ const COMPANY_SECTOR_MAP: Record<string, string> = {
     'software / it management': 'Engineering (Software)',
     'financial services / banking': 'Finance',
     'engineering / architecture': 'Construction & Infrastructure',
-    'medical devices / healthcare': 'Pharmaceutical',
     'semiconductors / manufacturing': 'Engineering (Hardware)',
 };
 
@@ -152,18 +158,11 @@ const WEAK_COMPANY_SECTOR_FALLBACK = new Set([
     'Product Management',
 ]);
 
-/** Ambiguous sectors that should yield to a clear pharma company context. */
-const COMPANY_PHARMA_OVERRIDE_FROM = new Set([
-    'Healthcare',
-    'Healthcare & Social Care',
-    'Business & Strategy',
-    'Engineering (Other)',
-    'Engineering (Hardware)',
-    'Research (Technical)',
-    'Operations',
-    'Project Management',
-    'Other',
-]);
+/**
+ * Only untitled / Other leftovers may inherit company Pharmaceutical.
+ * Never remap a job-function sector (engineer, nurse, PM, …) from the employer.
+ */
+const COMPANY_PHARMA_OVERRIDE_FROM = new Set(['Other']);
 
 export function inferJobSector(
     title: string,
@@ -422,6 +421,11 @@ function inferJobSectorUnclamped(
         return 'Engineering (Other)';
     }
 
+    // C&Q / CQV engineers — job is engineering even at a pharma CQV consultancy.
+    if (/\b(c&q|cqv|commissioning (and|&) qualification)\b/.test(t)) {
+        return 'Engineering (Other)';
+    }
+
     if (/\bmedical devices?\b.*\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b|\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b.*\bmedical devices?\b/.test(combined)) {
         return 'Pharmaceutical';
     }
@@ -457,7 +461,11 @@ function inferJobSectorUnclamped(
         return 'Construction & Infrastructure';
     }
 
-    if (PHARMA_INDUSTRY_SIGNAL.test(combined) && !PATIENT_FACING_PHARMACY_OR_CARE.test(combined)) {
+    if (/\b(anti-?doping|sports anti-?doping)\b/.test(combined)) {
+        return 'Research (Technical)';
+    }
+
+    if (PHARMA_ROLE_SIGNAL.test(combined) && !PATIENT_FACING_PHARMACY_OR_CARE.test(combined)) {
         return 'Pharmaceutical';
     }
 
@@ -466,6 +474,15 @@ function inferJobSectorUnclamped(
         const fromTitle = matchRules(t);
         if (fromTitle) {
             return applyPharmaCompanyOverride(fromTitle, companySector, combined);
+        }
+        // Domain-only tags ("Life Sciences Graduate") with no job function.
+        // Skip when the title is a generic manager/consultant/sales role.
+        if (
+            PHARMA_DOMAIN_TAG.test(t) &&
+            !PATIENT_FACING_PHARMACY_OR_CARE.test(t) &&
+            !/\b(managers?|consultants?|directors?|partners?|principals?|sales|account executives?|cost managers?|custodians?)\b/.test(t)
+        ) {
+            return 'Pharmaceutical';
         }
     }
 
@@ -486,14 +503,12 @@ function inferJobSectorUnclamped(
         return null;
     }
     if (companySector) {
-        if (
-            isPharmaCompanySector(companySector) &&
-            !PATIENT_FACING_PHARMACY_OR_CARE.test(combined) &&
-            !NON_PHARMA_ROLE_OVERRIDE.test(combined)
-        ) {
-            return 'Pharmaceutical';
-        }
         const raw = companySector.trim();
+        // Pharma/life-sciences *company* industry is not the job function
+        // ("Inventory Coordinator" at a lab-equipment firm is not Pharmaceutical).
+        if (isPharmaCompanySector(raw) || /\bmedical devices?\b/i.test(raw)) {
+            return null;
+        }
         // If someone stuffed a job-function label into company_sector (LSEG/Molten),
         // do not copy it onto unclear titles.
         if (WEAK_COMPANY_SECTOR_FALLBACK.has(raw)) {

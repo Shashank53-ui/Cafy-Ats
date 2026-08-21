@@ -25,7 +25,6 @@ const TRUST_EMB_WITHOUT_SUPPORT = new Set([
   'Logistics & Transport',
   'Operations',
   'Retail & Hospitality',
-  'Pharmaceutical',
   'Media & Journalism',
   'Research (Technical)',
   'Research (Non-technical)',
