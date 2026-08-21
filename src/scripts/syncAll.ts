@@ -36,6 +36,7 @@ import { isUKJob } from '../lib/ukFilter';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
 import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
+import { parseJobType } from '../lib/parseJobType';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -80,6 +81,7 @@ export interface Job {
     url: string;
     department?: string;
     salary?: string;
+    job_type?: string;
     verified?: boolean;
     needs_review?: boolean;
     rejection_reason?: string;
@@ -108,6 +110,7 @@ interface JobRow {
     department: string | null;
     level: string | null;
     sector: string | null;
+    job_type: string | null;
     updated_at: string;
     last_seen_at: string;
     source?: 'ats' | 'linkedin';
@@ -444,6 +447,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             department,
             level: inferJobLevel(safeStr(j.title)),
             sector,
+            job_type: j.job_type || null,
             updated_at: nowIso,
             last_seen_at: nowIso,
         });
@@ -958,6 +962,7 @@ async function fetchGenericCareersPage(url: string): Promise<Job[]> {
                         url: String(entry.url || target).trim(),
                         department: '',
                         salary: undefined,
+                        job_type: parseJobType(entry.employmentType || entry.jobLocationType)
                     });
                 }
             } catch {
@@ -990,12 +995,19 @@ async function fetchGenericCareersPage(url: string): Promise<Job[]> {
                     url: jobUrl,
                     department: '',
                     salary: undefined,
+                    job_type: parseJobType([title, cardText])
                 });
             });
         }
 
-        const deduped = Array.from(new Map(jobs.filter(j => j.title && j.url).map(j => [j.url, j])).values());
-        return deduped.slice(0, 500);
+        const dedupedMap = new Map<string, Job>();
+        for (const j of jobs) {
+            if (!j.title || !j.url) continue;
+            if (!dedupedMap.has(j.url)) {
+                dedupedMap.set(j.url, j);
+            }
+        }
+        return Array.from(dedupedMap.values()).slice(0, 500);
     } catch {
         return [];
     }
@@ -1350,12 +1362,16 @@ async function fetchJibe(domain: string): Promise<Job[]> {
                     let dept = j.category || j.data?.category || '';
                     if (Array.isArray(dept)) dept = dept.join(', ');
                     
+                    let jobTypeField = j.job_type || j.employment_type || j.type || j.data?.job_type || j.data?.employment_type || j.data?.type || '';
+                    if (Array.isArray(jobTypeField)) jobTypeField = jobTypeField.join(' ');
+
                     allJobs.push({
                         title,
                         location,
                         url: `https://${domain}/jobs/${slug}`,
                         department: dept,
                         salary: undefined,
+                        job_type: parseJobType([title, dept, jobTypeField]),
                         verified: false,
                         atsProvider: 'jibe'
                     });
@@ -1406,12 +1422,14 @@ async function fetchGreenhouse(token: string): Promise<Job[]> {
                         location = allOffices.join(' | ');
                     }
                 }
+                const jobTypeMeta = j.metadata?.find((m: any) => m.name && /employment|job.*type/i.test(m.name))?.value || '';
                 return {
                     title: j.title || '',
                     location: location,
                     url: j.absolute_url || j.url || '',
                     department: j.departments?.[0]?.name || '',
                     salary: undefined,
+                    job_type: parseJobType(jobTypeMeta || j.employment_type || j.type || j.employmentType),
                     atsProvider: 'greenhouse',
                 };
             });
@@ -1440,6 +1458,7 @@ async function fetchAshby(token: string): Promise<Job[]> {
                     department: j.department || '',
                     salary: undefined,
                     atsProvider: 'ashby',
+                    job_type: parseJobType(j.employmentType),
                 };
             });
         }
@@ -1471,6 +1490,7 @@ async function fetchAshby(token: string): Promise<Job[]> {
                         department: teamMap.get(j.teamId) || '',
                         salary: undefined,
                         atsProvider: 'ashby',
+                        job_type: parseJobType(j.employmentType),
                     };
                 });
             }
@@ -1502,6 +1522,7 @@ async function fetchLever(token: string): Promise<Job[]> {
                                 location: loc,
                                 url: p.hostedUrl || '',
                                 department: team,
+                                job_type: parseJobType([p.text, p.categories?.department, p.categories?.team, p.categories?.commitment, p.workplaceType]),
                                 salary: undefined,
                                 atsProvider: 'lever',
                             });
@@ -1524,6 +1545,7 @@ async function fetchLever(token: string): Promise<Job[]> {
                             location: loc,
                             url: p.hostedUrl || '',
                             department: team,
+                            job_type: parseJobType([p.text, p.categories?.department, p.categories?.team, p.categories?.commitment, p.workplaceType]),
                             salary: undefined,
                             atsProvider: 'lever',
                         };
@@ -1566,7 +1588,8 @@ async function fetchWorkable(token: string): Promise<Job[]> {
                 location: [j.city, j.state, j.country].filter(Boolean).join(', ') || (j.telecommuting ? 'Remote' : ''),
                 url: j.url || j.shortlink || `https://apply.workable.com/j/${j.shortcode}`,
                 department: j.department || '',
-                salary: undefined
+                salary: undefined,
+                job_type: parseJobType(j.employment_type)
             }));
         }
     }
@@ -1585,7 +1608,8 @@ async function fetchWorkable(token: string): Promise<Job[]> {
             location: [j.location?.city, j.location?.region, j.location?.country].filter(Boolean).join(', ') || (j.remote ? 'Remote' : ''),
             url: `https://apply.workable.com/${token}/j/${j.shortcode}/`,
             department: j.department || '',
-            salary: undefined
+            salary: undefined,
+            job_type: parseJobType(j.type)
         }));
     }
 
@@ -1627,7 +1651,8 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
                         location: j.attributes?.['human-location'] || '',
                         url: j.links?.['careersite-job-url'] || '',
                         department: '',
-                        salary: undefined
+                        salary: undefined,
+                        job_type: parseJobType(j.attributes?.['employment-type'] || j.attributes?.['pitch'] || j.attributes?.['body'])
                     }));
                 }
                 if (d.items?.length > 0) {
@@ -1640,7 +1665,8 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
                             location: loc,
                             url: j.url || '',
                             department: '',
-                            salary: undefined
+                            salary: undefined,
+                            job_type: parseJobType(j._jobposting?.employmentType || j.content_html)
                         };
                     });
                 }
@@ -1667,7 +1693,8 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
                         location: ttLoc || item.find('description').text().split('·')[1]?.trim() || '',
                         url: item.find('link').text().trim(),
                         department: item.find('category').first().text().trim(),
-                        salary: undefined
+                        salary: undefined,
+                        job_type: parseJobType(item.find('tt\\:role').text() || item.find('description').text())
                     });
                 });
                 if (jobs.length > 0) return jobs;
@@ -1693,10 +1720,10 @@ export async function fetchBambooHR(token: string): Promise<Job[]> {
                 url: `https://${token}.bamboohr.com/careers/${j.id}`,
                 // The /careers/list endpoint returns a flat departmentLabel field
                 // (confirmed live) — this used to be hardcoded to '', which is
-                // why every BambooHR job had a null department despite the data
                 // being right there in the response.
                 department: j.departmentLabel || '',
-                salary: undefined
+                salary: undefined,
+                job_type: parseJobType(j.employmentType || j.jobType || j.type || j.employmentStatusLabel)
             }));
         }
         // Fallback: applicant tracking API
@@ -1711,7 +1738,8 @@ export async function fetchBambooHR(token: string): Promise<Job[]> {
             location: j.location?.label || '',
             url: `https://${token}.bamboohr.com/jobs/${j.id}/`,
             department: j.department?.label || '',
-            salary: undefined
+            salary: undefined,
+            job_type: parseJobType(j.jobType?.label || j.employmentStatus?.label)
         }));
     } catch { return []; }
 }
@@ -1736,7 +1764,16 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
                 location: j.location?.fullLocation || `${j.location?.city || ''} ${j.location?.country || ''}`.trim(),
                 url: `https://jobs.smartrecruiters.com/${token}/${j.id}`,
                 department: j.department?.label || '',
-                salary: undefined
+                job_type: parseJobType([
+                    j.name, 
+                    j.department?.label, 
+                    j.typeOfEmployment?.label, 
+                    j.typeOfEmployment?.id,
+                    j.employmentType,
+                    j.type
+                ]),
+                salary: undefined,
+                atsProvider: 'smartrecruiters'
             })));
 
             if (content.length < 100) break;
@@ -1768,7 +1805,8 @@ async function fetchPinpoint(token: string): Promise<Job[]> {
                 location,
                 url: j.url || `https://${token}.pinpointhq.com${j.path || ''}`,
                 department: j.job_function || j.department || '',
-                salary: undefined
+                salary: undefined,
+                job_type: parseJobType(j.employment_type || j.employment_type_text)
             };
         });
     } catch { return []; }
@@ -1788,7 +1826,8 @@ export async function fetchBreezy(token: string): Promise<Job[]> {
             // `.name` accessor here only matched a nested-object shape that
             // doesn't actually occur, so every job silently fell through to ''.
             department: (typeof j.department === 'string' ? j.department : j.department?.name) || '',
-            salary: undefined
+            salary: undefined,
+            job_type: parseJobType(j.type?.name || j.type || j.employmentType || j.jobType)
         }));
     } catch { return []; }
 }
@@ -1807,6 +1846,7 @@ async function fetchRecruitee(token: string): Promise<Job[]> {
             location: [j.city, j.country].filter(Boolean).join(', ') || j.location || '',
             url: j.careers_url || '',
             department: j.department || '',
+            job_type: parseJobType([j.title, j.department, j.employment_type_code]),
             salary: undefined,
             country: j.country || '',
         }));
@@ -1827,6 +1867,7 @@ async function fetchJobvite(token: string): Promise<Job[]> {
                     location: j.location || '',
                     url: j.applyUrl || j.url || `https://jobs.jobvite.com/${token}/job/${j.id || ''}`,
                     department: j.category || j.department || '',
+                    job_type: parseJobType([j.title, j.jobTitle, j.category, j.department, j.jobType]),
                     salary: undefined
                 }));
                 if (apiJobs.length > 0) return apiJobs;
@@ -1850,11 +1891,13 @@ async function fetchJobvite(token: string): Promise<Job[]> {
 
             const row = $(el).closest('li, tr, div');
             const location = row.find('[class*="location"], [data-qa*="location"]').first().text().trim();
+            const rowText = row.text();
             jobs.push({
                 title,
                 location,
                 url: href.startsWith('http') ? href : `https://jobs.jobvite.com${href}`,
                 department: '',
+                job_type: parseJobType([title, rowText]),
                 salary: undefined,
             });
         });
@@ -1902,6 +1945,7 @@ async function fetchAvature(token: string): Promise<Job[]> {
             url: j.detailUrl || j.url || `https://${subdomain}.avature.net/`,
             department: j.category || j.department || '',
             salary: undefined,
+            job_type: parseJobType([j.jobTitle, j.title, j.category, j.department]),
             atsProvider: 'avature',
         }));
     } catch {
@@ -1982,6 +2026,7 @@ async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
                     url: abs,
                     department: '',
                     salary: undefined,
+                    job_type: parseJobType(title), // Default, will override later
                     atsProvider: 'avature',
                     verified: true,
                 });
@@ -1993,7 +2038,47 @@ async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
         await sleep(200);
     }
 
-    return Array.from(byUrl.values());
+    const jobs = Array.from(byUrl.values());
+    const limit = pLimit(10);
+    await Promise.all(
+        jobs.map((job) =>
+            limit(async () => {
+                try {
+                    const detailRes = await fetchWithTimeout(job.url, {
+                        headers: { 'User-Agent': 'Mozilla/5.0' },
+                    });
+                    if (!detailRes.ok) return;
+                    const detailHtml = await detailRes.text();
+                    const $d = cheerio.load(detailHtml);
+
+                    // Search for standard Avature labels
+                    let foundType = '';
+                    $d('.article__content__view__field__label').each((_, el) => {
+                        const labelText = $d(el).text().toLowerCase().trim();
+                        if (labelText.includes('job type') || labelText.includes('employment type') || labelText.includes('schedule')) {
+                            foundType = $d(el).next('.article__content__view__field__value').text().trim();
+                        }
+                    });
+
+                    // Update job type if found in metadata, else try parsing the full text
+                    if (foundType) {
+                        job.job_type = parseJobType(foundType);
+                    } else {
+                        // Fallback: parse the whole body text as a last resort
+                        const bodyText = $d('body').text().replace(/\s+/g, ' ');
+                        const bodyType = parseJobType(bodyText);
+                        if (bodyType !== 'Others') {
+                            job.job_type = bodyType;
+                        }
+                    }
+                } catch (e) {
+                    // Ignore and keep the default title-based job_type
+                }
+            })
+        )
+    );
+
+    return jobs;
 }
 
 async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
@@ -2056,7 +2141,8 @@ async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
                 location: j.location || '',
                 url: j.url,
                 department: '',
-                salary: undefined
+                salary: undefined,
+                job_type: parseJobType(undefined)
             }));
     } catch {
         if (context) await context.close().catch(() => {});
@@ -2080,7 +2166,8 @@ async function fetchPersonio(token: string): Promise<Job[]> {
                 location: get('office') || get('location'),
                 url: get('jobUrl') || `https://${token}.jobs.personio.de/job/${get('id')}?display=en`,
                 department: get('department'),
-                salary: undefined
+                salary: undefined,
+                job_type: parseJobType(get('schedule') || get('employmentType') || get('recruitingCategory'))
             };
         });
     } catch { return []; }
@@ -2320,12 +2407,32 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                     }
 
                     if (currentPosts.length === 0) break;
-                    allJobs.push(...currentPosts.map((j: any) => ({
+                    
+                    const limitDetails = pLimit(10);
+                    const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
+                        let job_type_val = j.timeType || j.bulletFields;
+                        if (!job_type_val || parseJobType(job_type_val) === 'Others') {
+                            try {
+                                const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
+                                const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                                if (dRes.ok) {
+                                    const dData = await dRes.json();
+                                    if (dData.jobPostingInfo?.timeType) {
+                                        job_type_val = dData.jobPostingInfo.timeType;
+                                    }
+                                }
+                            } catch { /* ignore */ }
+                        }
+                        return { ...j, resolvedJobType: job_type_val };
+                    })));
+
+                    allJobs.push(...enrichedPosts.map((j: any) => ({
                         title: j.title || '',
                         location: j.locationsText || j.bulletFields?.[0] || '',
                         url: `${publicBase}${j.externalPath}`,
                         department: '',
                         salary: undefined,
+                        job_type: parseJobType(j.resolvedJobType),
                         verified: facetIsTrusted,
                         atsProvider: 'workday',
                         locationsText: j.locationsText || j.bulletFields?.[0] || ''
@@ -2354,7 +2461,25 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                         const irPosts: any[] = irData.jobPostings || [];
                         if (!irPosts.length) break;
                         irTotal = Math.min(irData.total || irTotal, 200); // cap at 200 safety limit
-                        for (const j of irPosts) {
+                        const limitDetails = pLimit(10);
+                        const enrichedIrPosts = await Promise.all(irPosts.map((j: any) => limitDetails(async () => {
+                            let job_type_val = j.timeType || j.bulletFields;
+                            if (!job_type_val || parseJobType(job_type_val) === 'Others') {
+                                try {
+                                    const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
+                                    const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                                    if (dRes.ok) {
+                                        const dData = await dRes.json();
+                                        if (dData.jobPostingInfo?.timeType) {
+                                            job_type_val = dData.jobPostingInfo.timeType;
+                                        }
+                                    }
+                                } catch { /* ignore */ }
+                            }
+                            return { ...j, resolvedJobType: job_type_val };
+                        })));
+
+                        for (const j of enrichedIrPosts) {
                             const jobUrl = `${publicBase}${j.externalPath}`;
                             if (!seenUrls.has(jobUrl)) {
                                 seenUrls.add(jobUrl);
@@ -2364,6 +2489,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                                     url: jobUrl,
                                     department: '',
                                     salary: undefined,
+                                    job_type: parseJobType(j.resolvedJobType),
                                     verified: false,
                                     atsProvider: 'workday',
                                 });
@@ -2432,12 +2558,27 @@ export async function fetchOracleCloud(token: string): Promise<Job[]> {
 
             const reqList = payload.requisitionList || [];
             for (const j of reqList) {
+                let job_type_val = j.JobSchedule || j.JobType || j.WorkerType || j.employmentType;
+                
+                if (!job_type_val) {
+                    try {
+                        const detUrl = `https://${domain}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?finder=ById;Id=%22${j.Id}%22,siteNumber=%22${site}%22`;
+                        const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                        if (dRes.ok) {
+                            const dData = (await dRes.json()) as any;
+                            job_type_val = dData.items?.[0]?.JobSchedule || dData.items?.[0]?.JobType || dData.items?.[0]?.WorkerType;
+                        }
+                    } catch { /* ignore */ }
+                    await sleep(50);
+                }
+
                 allJobs.push({
                     title: j.Title || '',
                     location: j.PrimaryLocation || j.workLocation?.Region || '',
                     url: `https://${domain}/hcmUI/CandidateExperience/en/sites/${site}/job/${j.Id}`,
                     department: j.Organization || '',
-                    salary: undefined
+                    salary: undefined,
+                    job_type: parseJobType(job_type_val)
                 });
             }
 
@@ -2614,6 +2755,7 @@ async function fetchSuccessFactorsJsonApi(csbBaseUrl: string): Promise<Job[]> {
                         location,
                         url: jobUrl,
                         department: '',
+                        job_type: parseJobType([title, j.response.department, j.response.jobType, j.response.employmentType]),
                         salary: undefined,
                         verified: false,
                         atsProvider: 'successfactors'
@@ -2686,6 +2828,7 @@ async function fetchSuccessFactorsHtmlSearch(
                         location: location || (opts?.preferUk ? 'United Kingdom' : ''),
                         url: abs.split('?')[0],
                         department: row.find('span.jobDepartment, span.jobFacility').first().text().replace(/\s+/g, ' ').trim(),
+                        job_type: parseJobType([title, row.text()]),
                         salary: undefined,
                         verified: false,
                         atsProvider: 'successfactors',
@@ -2743,7 +2886,8 @@ async function fetchHibob(token: string): Promise<Job[]> {
             location: `${j.site || ''} ${j.country || ''}`.trim(),
             url: `https://${domain}/jobs/${j.id}`,
             department: typeof j.department === 'string' ? j.department : (j.department?.name || ''),
-            salary: undefined
+            salary: undefined,
+            job_type: parseJobType(j.employmentType || j.type),
         }));
     } catch { return []; }
 }
@@ -2803,6 +2947,7 @@ export async function fetchEightfold(token: string): Promise<Job[]> {
                 location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
                 url: `https://${host}${p.positionUrl}${apiDomain !== host.split('.')[0] + '.com' && apiDomain !== host ? '?domain=' + apiDomain : ''}`,
                 department: p.department || '',
+                job_type: parseJobType([p.name, p.department, p.employmentType, p.workType, p.type]),
                 salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
             })));
 
@@ -2847,6 +2992,7 @@ async function fetchICIMS(token: string): Promise<Job[]> {
                 const jobUrl = $(el).find('a.iCIMS_Anchor').attr('href') || '';
                 const location = $(el).find('.header span').not('.sr-only').text().replace(/\s+/g, ' ').trim();
                 const department = $(el).find('dt:contains("Category")').next('dd').text().replace(/\s+/g, ' ').trim();
+                const jobTypeRaw = $(el).find('dt:contains("Position Type"), dt:contains("Job Type"), dt:contains("Employment Type")').next('dd').text().replace(/\s+/g, ' ').trim();
 
                 if (title && jobUrl) {
                     allJobs.push({
@@ -2854,7 +3000,8 @@ async function fetchICIMS(token: string): Promise<Job[]> {
                         location,
                         url: jobUrl.split('?')[0],
                         department,
-                        salary: undefined
+                        salary: undefined,
+                        job_type: parseJobType(jobTypeRaw)
                     });
                 }
             });
@@ -2918,7 +3065,8 @@ async function fetchRippling(token: string): Promise<Job[]> {
             location: (j.locations || []).map((l: any) => l.name || l.city || '').join(', '),
             url: j.url || `https://ats.rippling.com/${token}/jobs/${j.id}`,
             department: j.department?.name || '',
-            salary: undefined
+            salary: undefined,
+            job_type: parseJobType(j.workType || j.employmentType || j.type)
         }));
     } catch { return []; }
 }
@@ -2942,7 +3090,9 @@ async function fetchAmazon(token: string): Promise<Job[]> {
                     location: locParts.join(', ') || 'United Kingdom',
                     url: `https://www.amazon.jobs${job.job_path}`,
                     department: job.job_category || job.job_family_name || 'Various',
-                    salary: undefined
+                    job_type: parseJobType([job.title, job.job_category, job.job_family_name, job.job_schedule_type]),
+                    salary: undefined,
+                    atsProvider: 'amazon'
                 });
             }
             if (offset >= data.hits) break;
@@ -3418,9 +3568,37 @@ async function fetchJazzHR(token: string): Promise<Job[]> {
             // First li = location (has map-marker icon), second = department/type
             const location = listItems.eq(0).text().replace(/^\s*\S+\s*/, '').trim(); // strip icon char
             const department = listItems.eq(1).text().trim();
+            const rowText = $(el).text().replace(/\s+/g, ' ').trim();
 
-            jobs.push({ title, location, url: jobUrl, department, salary: undefined });
+            jobs.push({ 
+                title, 
+                location, 
+                url: jobUrl, 
+                department, 
+                job_type: parseJobType([title, rowText]), // fallback from list
+                salary: undefined,
+                atsProvider: 'jazzhr'
+            });
         });
+
+        const limit = pLimit(10);
+        await Promise.all(
+            jobs.map(job =>
+                limit(async () => {
+                    if (job.job_type === 'Others' || !job.job_type) {
+                        try {
+                            const detailRes = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                            if (detailRes.ok) {
+                                const detailHtml = await detailRes.text();
+                                const $d = cheerio.load(detailHtml);
+                                const detailText = $d('body').text().replace(/\s+/g, ' ').trim();
+                                job.job_type = parseJobType([job.title, detailText]);
+                            }
+                        } catch {}
+                    }
+                })
+            )
+        );
 
         return jobs;
     } catch { return []; }
@@ -3463,6 +3641,7 @@ async function fetchOracleTaleo(token: string): Promise<Job[]> {
                 : (j.jobDetailUrl || ''),
             department: j.department || '',
             salary: undefined,
+            job_type: parseJobType(j.schedule || j.jobType || j.employmentType || j.employeeStatus)
         })).filter((j: Job) => j.title && j.url);
     } catch { return []; }
 }
@@ -3599,7 +3778,9 @@ async function fetchTalentTrack(token: string): Promise<Job[]> {
                     location: location || 'United Kingdom',
                     url: jobUrl,
                     department: String(j?.type || j?.hours || '').trim(),
+                    job_type: parseJobType([title, String(j?.type || ''), String(j?.hours || ''), String(j?.jobType || '')]),
                     salary: payRaw || undefined,
+                    atsProvider: 'talenttrack'
                 });
             }
 
@@ -3679,13 +3860,18 @@ async function fetchSoftscape(token: string): Promise<Job[]> {
                 .join(', ');
 
             const salary = content.match(/£[\d,\.]+(?:\s*[-–]\s*£[\d,\.]+)?(?:\s*(?:per\s*(?:hour|annum|year)|p\.?h\.?|p\.?a\.?))?/i)?.[0];
+            const dept = content.match(/Job Family:<\/span><\/div><div class='content'>([^<]+)/i)?.[1]?.trim() || '';
+            const pattern = content.match(/Working Pattern:<\/span><\/div><div class='content'>([^<]+)/i)?.[1]?.trim() || '';
+            const empType = content.match(/Employment Type:<\/span><\/div><div class='content'>([^<]+)/i)?.[1]?.trim() || '';
 
             jobs.push({
                 title,
                 location: location || 'United Kingdom',
                 url: jobUrl,
-                department: content.match(/Job Family:<\/span><\/div><div class='content'>([^<]+)/i)?.[1]?.trim() || '',
+                department: dept,
+                job_type: parseJobType([title, dept, pattern, empType, content]),
                 salary: salary || undefined,
+                atsProvider: 'softscape'
             });
         }
 
@@ -4790,6 +4976,7 @@ async function fetchCornerstone(token: string): Promise<Job[]> {
             url: `https://${token}.csod.com/ux/ats/careersite/1/job/${j.requisitionId}?c=${token}`,
             location: Array.isArray(j.locations) ? j.locations.map((loc: any) => loc.city || loc.name || '').join(', ') : '',
             department: j.department || j.category || '',
+            job_type: parseJobType([j.displayJobTitle, j.externalDescription, j.schedule, j.workerType]),
             atsProvider: 'cornerstone'
         })).filter(j => j.title && j.url);
     } catch { return []; }
@@ -4801,7 +4988,7 @@ async function fetchGem(token: string): Promise<Job[]> {
         const payload = [{
             operationName: "JobBoardList",
             variables: { boardId: token },
-            query: "query JobBoardList($boardId: String!) { oatsExternalJobPostings(boardId: $boardId) { jobPostings { id extId title locations { name city isoCountry isRemote } job { department { name } } } } }"
+            query: "query JobBoardList($boardId: String!) { oatsExternalJobPostings(boardId: $boardId) { jobPostings { id extId title locations { name city isoCountry isRemote } job { employmentType department { name } } } } }"
         }];
         const res = await fetchWithTimeout('https://jobs.gem.com/api/public/graphql/batch', {
             method: 'POST',
@@ -4818,6 +5005,7 @@ async function fetchGem(token: string): Promise<Job[]> {
             url: `https://jobs.gem.com/${token}/${j.extId || j.id}`,
             location: Array.isArray(j.locations) && j.locations.length > 0 ? (j.locations[0].city || j.locations[0].name || '') : '',
             department: j.job?.department?.name || '',
+            job_type: parseJobType([j.title, j.job?.department?.name, j.job?.employmentType]),
             atsProvider: 'gem'
         })).filter((j: any) => j.title && j.url);
     } catch { return []; }
@@ -4842,7 +5030,6 @@ async function fetchJoinCom(token: string): Promise<Job[]> {
             const data = await apiRes.json();
             const items = data.items || [];
             if (!items.length) break;
-            console.log(JSON.stringify(items.slice(0, 2), null, 2));
             
             allJobs.push(...items);
             if (page >= (data.pagination?.totalPages || page)) break;
@@ -4863,6 +5050,7 @@ async function fetchJoinCom(token: string): Promise<Job[]> {
                 url: j.url || `https://join.com/companies/${token}/jobs/${j.idParam || j.id}`,
                 location: locParts.join(', ') || '',
                 department: typeof j.department === 'string' ? j.department : (j.department?.name || ''),
+                job_type: parseJobType([j.title, typeof j.department === 'string' ? j.department : j.department?.name, j.employmentType, j.workingTime, j.jobType, j.type]),
                 atsProvider: 'join_com'
             };
         }).filter((j: any) => j.title && j.url);
@@ -5854,11 +6042,13 @@ export async function syncAll() {
 
                 const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
                 if (jobErr) {
+                    console.error(`[${displayProvider}] Initial upsert failed for ${trading_name}: ${jobErr.message}`);
                     // Graceful degrade when optional columns are missing from the live schema.
                     const stripSector = /sector|schema cache/i.test(jobErr.message);
                     const stripSource = /source/i.test(jobErr.message);
                     const stripSeen = /last_seen_at/i.test(jobErr.message);
-                    if (stripSector || stripSource || stripSeen) {
+                    const stripJobType = /job_type/i.test(jobErr.message);
+                    if (stripSector || stripSource || stripSeen || stripJobType) {
                         const stripped = rows.map((row) => {
                             const next: Record<string, unknown> = {
                                 company_id: row.company_id,
@@ -5872,6 +6062,7 @@ export async function syncAll() {
                             if (!stripSector) next.sector = row.sector;
                             if (!stripSource && row.source) next.source = row.source;
                             if (!stripSeen) next.last_seen_at = row.last_seen_at;
+                            if (!stripJobType) next.job_type = row.job_type;
                             return next;
                         });
                         const { error: fallbackErr } = await supabase
