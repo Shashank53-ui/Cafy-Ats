@@ -14,6 +14,12 @@ const NON_PHARMA_ROLE_OVERRIDE =
 const PHARMA_INDUSTRY_SIGNAL =
     /\b(pharmaceuticals?|pharma|biotech|biotechnology|biopharma|biopharmaceutical|life\s*sciences?|pharmacovigilance|drug discovery|drug development|medicinal chemistry|bioprocess|biomanufacturing|biotechnician|formulation scientist|process development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
 
+const TECH_DOMAIN =
+    /\b(cloud|digital|cyber|cybersecurity|infosec|aws|azure|saas|technology|technologies|information systems?|soc)\b|\bit\b/;
+
+const BUILD_ROLE =
+    /\b(software|esoftware|developers?|engineers?|devops|sre|programmers?|architects?|scientists?|mlops|frontend|backend|fullstack)\b/;
+
 const PHARMA_COMPANY_SECTOR =
     /\b(pharmaceuticals?|pharma|biotech|biotechnology|biopharma|life\s*sciences?)\b/;
 
@@ -25,26 +31,26 @@ export const RULES: [RegExp, string][] = [
     // Engineering (Software) — IT architects + developers (not building architects).
     // Bare "technology" deliberately excluded — IB/coverage titles like
     // "Investment Banking - EMEA Technology" are Finance, not SWE.
-    [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|cloud|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa|quality assurance|application analysts?|applications? analysts?|application support|service desk|it (onsite )?support)\b/, 'Engineering (Software)'],
+    [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa|quality assurance|application analysts?|applications? analysts?|application support|service desk|it (onsite )?support)\b/, 'Engineering (Software)'],
     [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap)\s+architect\b/, 'Engineering (Software)'],
     // Pharmaceutical / life sciences industry — before Hardware "manufacturing" and Healthcare
     [PHARMA_INDUSTRY_SIGNAL, 'Pharmaceutical'],
     // Engineering (Hardware)
     [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded|machine operators?|factory automation|energy storage|shipbuild|packaging technicians?|maintenance technicians?|wind turbine|plant fitters?)\b|\bcomposite laminat\w*|\bpackaging technolog\w*/, 'Engineering (Hardware)'],
     // Data — after Legal "data protection" override in inferJobSectorUnclamped
-    [/\b(data|analytics|statistics|sql|python|bi|business intelligence|dba|database administrator|customer targeting)\b/, 'Data'],
+    [/\b(data(?!\s*cent)|analytics|statistics|sql|python|bi|business intelligence|dba|database administrator|customer targeting)\b/, 'Data'],
     // Finance
     // `trader`/`traders` added — \btrading\b didn't match "Index Trader" etc.
     // Bare "trading"/"trader" deliberately excluded — UK grocery retail uses
     // "Trading Assistant" / "Customer and Trading Manager" for shop-floor
     // staff (found via audit, 155 jobs), which isn't financial trading at
     // all. Require a specific financial-trading phrase instead.
-    [/\b(finance|accounting|tax|audit(?:or|ors|ing)?|financial|quant|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|bankers?|accountant|accounts|regulatory reporting|trading (floor|desk|strategy|systems?)|(equities?|fx|commodit(y|ies)|quantitative|electronic|algo(rithmic)?|proprietary|derivatives?|credit|securities) trading|\btraders?\b|cost analysts?|\bkyc\b|\baml\b|payments? analysts?|transfer pricing|private bankers?|claims handlers?|asset (management|servicing)|asset custody|mid-?market funds?|\bfunds?\b)\b/, 'Finance'],
+    [/\b(finance|accounting|tax|\bvat\b|audit(?:or|ors|ing)?|financial|quant|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|bankers?|accountant|accounts|regulatory reporting|trading (floor|desk|strategy|systems?)|(equities?|fx|commodit(y|ies)|quantitative|electronic|algo(rithmic)?|proprietary|derivatives?|credit|securities) trading|\btraders?\b|cost analysts?|\bkyc\b|\baml\b|payments? analysts?|transfer pricing|private bankers?|claims handlers?|asset (management|servicing)|asset custody|mid-?market funds?|\bfunds?\b)\b/, 'Finance'],
     // Healthcare (clinical/medical) — patient-facing care; before Healthcare & Social Care
     // Includes NHS "Consultant [Specialty]" clinical grade titles — without these,
     // titles like "Consultant Psychiatrist" fall through to the bare `consultant`
     // catch-all below and land in Business & Strategy (found via audit, ~400+ jobs).
-    [/\b(health|medical|clinical|nurses?|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|physiologists?|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|clinical psycholog(?:y|ist)|echocardiograph(?:er|y)|audiolog(?:y|ist)|pathology|\ba\s*&\s*e\b|accident\s*&\s*emergency|home managers?|computed tomography|prescribers?)\b/, 'Healthcare'],
+    [/\b(health|medical|clinical|nurses?|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|physiologists?|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|clinical psycholog(?:y|ist)|echocardiograph(?:er|y)|audiolog(?:y|ist)|pathology|\ba\s*&\s*e\b|accident\s*&\s*emergency|home managers?|computed tomography|prescribers?|theatre practitioners?|scrub practitioners?|clinicians?)\b/, 'Healthcare'],
     // Healthcare & Social Care
     [/\b(dietitian|social worker|ward manager|carer|care worker|care home|social care|community care|matron|sonographer|podiatrist|care assistant|general practitioner|veterinary|practice manager|nursery|early years|after.?school|breakfast club|holiday club|childcare|childminder)\b/, 'Healthcare & Social Care'],
     // Legal
@@ -223,6 +229,41 @@ function inferJobSectorUnclamped(
         return 'Engineering (Software)';
     }
 
+    // Cloud/AWS as a domain only counts as Software when the function is building it.
+    if (
+        /\b(cloud|aws|azure|gcp|oracle cloud)\b/.test(t) &&
+        /\b(engineers?|developers?|architects?|devops|sre|programmers?)\b/.test(t)
+    ) {
+        return 'Engineering (Software)';
+    }
+
+    // Data centres are built environment, not the Data job family.
+    if (/\bdata\s*cent(re|er)s?\b/.test(t)) {
+        return 'Construction & Infrastructure';
+    }
+
+    // Job function beats technology-domain modifiers ("Senior Auditor – Cloud"
+    // is IT assurance advisory, not Engineering (Software)).
+    if (!BUILD_ROLE.test(t)) {
+        if (/\b(auditors?|it audit|technology (audit|risk)|cyber audit|cloud audit)\b/.test(t)) {
+            // Cloud/IT/cyber audit = advisory assurance. Statutory audit = Finance.
+            // Either way it is not Engineering (Software) (`qa` / `cloud` used to steal it).
+            return TECH_DOMAIN.test(t) ? 'Business & Strategy' : 'Finance';
+        }
+        if (/\b(sales|account executives?|\bbdr\b|\bsdr\b)\b/.test(t)) {
+            return 'Sales & Partnerships';
+        }
+        if (/\b(recruiters?|talent acquisition)\b/.test(t)) {
+            return 'HR / People';
+        }
+        if (/\b(tax|accountants?)\b/.test(t)) {
+            return 'Finance';
+        }
+        if (/\b(marketing|seo|brand managers?)\b/.test(t) && !/\bdata\s*cent/.test(t)) {
+            return 'Marketing & PR';
+        }
+    }
+
     // Unambiguous legal-practitioner titles stay Legal (even "Finance Lawyer").
     if (/\b(lawyer|solicitor|attorney)\b/.test(combined)) {
         return 'Legal';
@@ -269,6 +310,44 @@ function inferJobSectorUnclamped(
     }
     if (/^\s*shift leads?\s*$/i.test(title || '')) {
         return 'Retail & Hospitality';
+    }
+
+    // IB internal technology function ("Investment Banking Technology, Senior Analyst")
+    // vs coverage bankers ("Investment Banking - EMEA Technology - VP") which stay Finance.
+    if (
+        /\binvestment banking technology\b/.test(t) &&
+        !/\binvestment banking\s*[-–—]/.test(t)
+    ) {
+        return 'Engineering (Software)';
+    }
+
+    // Visual/commercial shop-floor (Zara etc.) before Sales "commercial manager".
+    if (
+        /\bvisual\s*[\/&-]?\s*commercial\b/.test(t) ||
+        (/\bzara\b/.test(t) && /\b(manager|assistant|advisor|associate)\b/.test(t))
+    ) {
+        return 'Retail & Hospitality';
+    }
+
+    // AECOM-style infrastructure transportation teams (not warehouse logistics).
+    if (/\btransportation (team|engineer|planner|planning)\b/.test(t)) {
+        return 'Construction & Infrastructure';
+    }
+
+    // Talent-pool / new-site opening headlines.
+    if (
+        /\bregister (your )?interest\b/.test(t) &&
+        /\b(new site|site start|start.?up)\b/.test(t)
+    ) {
+        return 'Operations';
+    }
+
+    // Bare people-manager titles — too thin for Business catch-all / company fallback.
+    if (/^\s*team managers?\s*$/i.test(title || '')) {
+        return 'Operations';
+    }
+    if (/^\s*unit managers?\s*$/i.test(title || '')) {
+        return 'Healthcare';
     }
 
     // Field regulatory affairs (ads/promo, pharma, medtech) — clinical-adjacent.
@@ -340,6 +419,10 @@ function inferJobSectorUnclamped(
     // P3: Company sector fallback — only for clear industry signals.
     // Never copy Engineering/Data/Product from company_sector onto vague titles
     // (LSEG/Molten were poisoning "Senior Auditor" / "Private Banker" → Software).
+    // Talent-pool / one-word titles also must not inherit company industry.
+    if (/^(lateral|mtm|tbc|tba)$/i.test(t)) {
+        return null;
+    }
     if (companySector) {
         if (
             isPharmaCompanySector(companySector) &&

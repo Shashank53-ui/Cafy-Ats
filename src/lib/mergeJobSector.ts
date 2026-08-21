@@ -10,6 +10,7 @@
  *   4. Else → Other
  */
 import { ALLOWED_SECTORS } from './constants';
+import { contentTokensForEmbedding, titleHasEmbeddingSignal } from './embeddingTitleSignal';
 import { SECTOR_PROTOTYPES, type AllowedSector } from './sectorPrototypes';
 
 const ALLOWED = new Set<string>(ALLOWED_SECTORS);
@@ -20,7 +21,7 @@ const TRUST_EMB_WITHOUT_SUPPORT = new Set([
   'Legal',
   'HR / People',
   'Construction & Infrastructure',
-  'Sales & Partnerships',
+  // Sales/Marketing omitted — MiniLM often maps vague clinical/ops titles here.
   'Logistics & Transport',
   'Operations',
   'Retail & Hospitality',
@@ -31,48 +32,8 @@ const TRUST_EMB_WITHOUT_SUPPORT = new Set([
   'Healthcare & Social Care',
 ]);
 
-const STOP = new Set([
-  'senior',
-  'junior',
-  'lead',
-  'principal',
-  'staff',
-  'manager',
-  'assistant',
-  'officer',
-  'executive',
-  'specialist',
-  'associate',
-  'director',
-  'head',
-  'chief',
-  'intern',
-  'graduate',
-  'contract',
-  'contractor',
-  'temporary',
-  'permanent',
-  'full',
-  'part',
-  'time',
-  'london',
-  'dublin',
-  'remote',
-  'hybrid',
-  'uk',
-  'emea',
-  'with',
-  'and',
-  'the',
-  'for',
-  'from',
-]);
-
 function tokens(text: string): string[] {
-  return String(text || '')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= 3 && !STOP.has(w));
+  return contentTokensForEmbedding(text);
 }
 
 /** True if the title shares enough substance with the sector prototype. */
@@ -102,7 +63,9 @@ export function mergeJobSector(
     return { sector: rules, source: 'rules' };
   }
 
-  const embAllowed = ALLOWED.has(emb) && emb !== 'Other';
+  // One-word / grade-only titles ("Lateral") — MiniLM guesses Construction etc.
+  const embAllowed =
+    ALLOWED.has(emb) && emb !== 'Other' && titleHasEmbeddingSignal(title);
   if (embAllowed && embeddingSupportedByTitle(title, emb)) {
     return { sector: emb, source: 'embedding' };
   }

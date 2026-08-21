@@ -1,0 +1,275 @@
+id,table,bucket,title,department,sector,sector_embedding,expected_sector
+1924345,jobs,clear_finance,Analyst Real Estate Investment Banking / SCS,Finance,Finance,Finance,Finance
+481081,jobs,clear_finance,CIB – Investment Banking – Infrastructure Finance and Advisory (EMEA - Emerging Markets) – London - VP,Finance,Finance,Finance,Finance
+1518240,jobs,clear_finance,Financial Analyst,Finance,Finance,Finance,Finance
+1269136,jobs,clear_finance,Financial Analyst - Senior,Finance,Finance,Finance,Finance
+56036,jobs_IR,clear_finance,Financial Analyst II - Business Partnering,Finance,Finance,Finance,Finance
+1221400,jobs,clear_finance,"Financial Analyst, Amazon Freight EU",Finance,Finance,Finance,Finance
+1516190,jobs,clear_finance,"Global Banking & Markets, Investment Banking, Classic, Consumer Retail, London, Associate",Finance,Finance,Finance,Finance
+1582109,jobs,clear_finance,Global Investment Banking - EMEA A&A Lead –  Executive Director,Finance,Finance,Finance,Finance
+1321815,jobs,clear_finance,Investment Banking - EMEA Business Services - Analyst / Associate - London,Finance,Finance,Finance,Finance
+480980,jobs,clear_finance,Investment Banking - EMEA Consumer & Retail - Associate - London,Finance,Finance,Finance,Finance
+481363,jobs,clear_finance,Investment Banking - EMEA Diversified Industries (Mid-Market Aerospace & Defence) - Vice President,Finance,Finance,Engineering (Software),Finance
+481420,jobs,clear_finance,Investment Banking - EMEA FIG - Insurance - Senior Associate / Vice President - London,Finance,Finance,Finance,Finance
+1631671,jobs,clear_finance,Investment Banking - EMEA Real Estate - Analyst / Associate - London,Finance,Finance,Finance,Finance
+481476,jobs,clear_finance,Investment Banking - EMEA Technology - Vice President - London,Engineering (Software),Engineering (Software),Engineering (Software),Finance
+1876240,jobs,clear_finance,Investment Banking - Executive Director - EMEA Mergers & Acquisitions - London,Finance,Finance,Finance,Finance
+481345,jobs,clear_finance,Investment Banking - Media & Communications - Vice President - London,Finance,Finance,Finance,Finance
+481192,jobs,clear_finance,Investment Banking – UK&I Diversified Industries – Associate – London,Finance,Finance,Finance,Finance
+1869308,jobs,clear_finance,"Investment Banking Director, Real Estate, Hospitality and Gaming",Finance,Finance,Finance,Finance
+1269019,jobs,clear_finance,"Investment Banking Senior Analyst, M&A",Finance,Finance,Finance,Finance
+1724484,jobs,clear_finance,"Investment Banking Technology, Senior Analyst",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1516102,jobs,clear_finance,"Legal, Global Banking & Markets  - Investment Banking Lawyer, Executive Director, London",Legal,Legal,Legal,Legal
+1669389,jobs,clear_finance,"Senior Financial Analyst , UK Customer Fulfilment Finance",Finance,Finance,Finance,Finance
+1517107,jobs,clear_finance,Senior Financial Analyst (Costing and SLR),Finance,Finance,Finance,Finance
+1669358,jobs,clear_finance,"Senior Financial Analyst, Amazon Freight EU",Finance,Finance,Finance,Finance
+1669708,jobs,clear_finance,"Senior Financial Analyst, Amazon Shipping",Finance,Finance,Finance,Finance
+1518329,jobs,clear_healthcare,Band 5 Community Staff Nurse,Healthcare,Healthcare,Healthcare,Healthcare
+1518800,jobs,clear_healthcare,CAMHS Consultant Psychiatrist,Healthcare,Healthcare,Healthcare,Healthcare
+1130080,jobs,clear_healthcare,CAMHS Consultant Psychiatrist ,Healthcare,Healthcare,Healthcare,Healthcare
+1520165,jobs,clear_healthcare,Clinical Pharmacist with on Call,Healthcare,Healthcare,Healthcare,Healthcare
+1517907,jobs,clear_healthcare,Community Staff Nurse - Marlow ACHT,Healthcare,Healthcare,Healthcare,Healthcare
+1518062,jobs,clear_healthcare,Community Staff Nurse Carlisle & District (Carlisle Network),Healthcare,Healthcare,Healthcare,Healthcare
+1122996,jobs,clear_healthcare,Consultant Psychiatrist,Healthcare,Healthcare,Healthcare,Healthcare
+1172946,jobs,clear_healthcare,Consultant Psychiatrist,Healthcare,Healthcare,Healthcare,Healthcare
+1376351,jobs,clear_healthcare,Consultant Psychiatrist - Adult Acute Ward ,Healthcare,Healthcare,Healthcare,Healthcare
+1518751,jobs,clear_healthcare,Consultant Psychiatrist - General Adult - CMHT,Healthcare,Healthcare,Healthcare,Healthcare
+1518871,jobs,clear_healthcare,"Consultant Psychiatrist - General Adult CMHT, South Ribble Preston",Healthcare,Healthcare,Healthcare,Healthcare
+1130299,jobs,clear_healthcare,Consultant Psychiatrist - Male PICU Ward,Healthcare,Healthcare,Healthcare,Healthcare
+1518888,jobs,clear_healthcare,Consultant Psychiatrist - Trafford - Medlock Ward,Healthcare,Healthcare,Healthcare,Healthcare
+1519011,jobs,clear_healthcare,Consultant Psychiatrist (CAMHS Eating Disorder),Healthcare,Healthcare,Healthcare,Healthcare
+80118,jobs_IR,clear_healthcare,"Consultant Psychiatrist (Remote, Ireland)",Healthcare,Healthcare,Healthcare,Healthcare
+1519031,jobs,clear_healthcare,Consultant Psychiatrist & Medical Director,Healthcare,Healthcare,Healthcare,Healthcare
+1518646,jobs,clear_healthcare,Consultant Psychiatrist in General Adult (CRHTT - Southwest),Healthcare,Healthcare,Healthcare,Healthcare
+1518894,jobs,clear_healthcare,Consultant Psychiatrist in General Adult Psychiatry *ERP*,Healthcare,Healthcare,Healthcare,Healthcare
+1518929,jobs,clear_healthcare,Consultant Psychiatrist in Old Age Psychiatry,Healthcare,Healthcare,Healthcare,Healthcare
+1518228,jobs,clear_healthcare,Paediatric Staff Nurse,Healthcare,Healthcare,Healthcare,Healthcare
+1122938,jobs,clear_healthcare,Private Practice - Visiting Consultant Psychiatrist,Healthcare,Healthcare,Healthcare,Healthcare
+1518265,jobs,clear_healthcare,RMN Staff Nurse,Healthcare,Healthcare,Healthcare,Healthcare
+1519787,jobs,clear_healthcare,Senior Staff Nurse - Oncology Outpatient Clinics,Healthcare,Healthcare,Healthcare,Healthcare
+10990,jobs_IR,clear_healthcare,Staff Nurse - CT,Healthcare,Healthcare,Healthcare,Healthcare
+1517081,jobs,clear_healthcare,Staff Nurse - Specialist Respiratory Weaning and Rehab,Healthcare,Healthcare,Healthcare,Healthcare
+1516724,jobs,clear_legal,Clinical Negligence Lawyer,Legal,Legal,Legal,Legal
+1116015,jobs,clear_legal,Court of Protection Solicitor,Legal,Legal,Legal,Legal
+1172491,jobs,clear_legal,Group Structuring Lawyer,Legal,Legal,Legal,Legal
+1116064,jobs,clear_legal,Large Loss Solicitor,Legal,Legal,Legal,Legal
+1029771,jobs,clear_legal,Legal Insights Associate (Private Funds Lawyer),Legal,Legal,Legal,Legal
+1516185,jobs,clear_legal,"Legal, Fixed Income, Currency and Commodities (FICC) Lawyer, Vice President, London",Legal,Legal,Legal,Legal
+802088,jobs,clear_legal,Pensions Lawyer,Legal,Legal,Legal,Legal
+14060,jobs_IR,clear_legal,Professional Support Lawyer - Corporate ,Legal,Legal,Legal,Legal
+10772,jobs_IR,clear_legal,Public Procurement Lawyer,Legal,Legal,Legal,Legal
+1972984,jobs,clear_legal,Regulatory Lawyer – Vice President,Legal,Legal,Legal,Legal
+1076468,jobs,clear_legal,Senior Associate Litigation Solicitor (5+PQE) - Scottish qualified,Legal,Legal,Legal,Legal
+1867104,jobs,clear_legal,Senior Commercial Lawyer - Public Sector,Legal,Legal,Legal,Legal
+1641774,jobs,clear_legal,Senior Lawyer (Regulatory and Contentious),Legal,Legal,Legal,Legal
+915438,jobs,clear_legal,Senior Real Estate Lawyer (Developers & Investors),Legal,Legal,Legal,Legal
+1679594,jobs,clear_legal,Senior Solicitor (Digital Finance) - Belfast,Legal,Legal,Legal,Legal
+1378418,jobs,clear_legal,Simmons Adaptive – Interim Junior DCM Lawyer/Paralegal,Legal,Legal,Legal,Legal
+1174906,jobs,clear_legal,Simmons Adaptive – Interim Structured Products/Finance Lawyer,Legal,Legal,Legal,Legal
+987430,jobs,clear_legal,Simmons Adaptive – Interim Transaction Management Lawyer,Legal,Legal,Legal,Legal
+1116027,jobs,clear_legal,Solicitor - Commercial Litigation,Legal,Legal,Legal,Legal
+1076479,jobs,clear_legal,Solicitor - Data Law,Legal,Legal,Legal,Legal
+1116040,jobs,clear_legal,Solicitor - Litigation,Legal,Legal,Legal,Legal
+1931040,jobs,clear_legal,Solicitor – Litigation (Commercial & Construction Disputes),Legal,Legal,Legal,Legal
+1679593,jobs,clear_legal,Solicitor (Digital Finance) - Belfast,Legal,Legal,Legal,Legal
+1046108,jobs,clear_legal,"Solicitor, Corporate Structuring, London",Legal,Legal,Legal,Legal
+10779,jobs_IR,clear_legal,Technology Lawyer,Legal,Legal,Legal,Legal
+1741626,jobs,clear_retail,Assistant Branch Merchandiser,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1975981,jobs,clear_retail,Assistant Merchandiser,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1139372,jobs,clear_retail,Bershka Oxford City Visual Merchandiser,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1871817,jobs,clear_retail,Fashion Assistant Intern,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+117040,jobs_IR,clear_retail,Festive Retail Merchandiser,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+207802,jobs_IR,clear_retail,Freelance Visual Merchandiser,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1734613,jobs,clear_retail,In Store Visual Merchandiser- Birmingham & Dudley,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1633011,jobs,clear_retail,Junior Merchandiser Beauty,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1633022,jobs,clear_retail,Junior Merchandiser Womenswear,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+204018,jobs_IR,clear_retail,Merchandiser,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1368360,jobs,clear_retail,Merchandiser,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1742275,jobs,clear_retail,Merchandiser,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1329174,jobs,clear_retail,Merchandiser - Fragrance & Market Leaders,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1688522,jobs,clear_retail,"Merchandiser, Soho Home",Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+30978,jobs_IR,clear_retail,Part Time Merchandiser - North Dublin -  Car with full license required,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+141990,jobs_IR,clear_retail,"Part-Time Merchandiser - Childers Road, Limerick",Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+23342,jobs_IR,clear_retail,Retail Sales Merchandiser,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships
+228138,jobs_IR,clear_retail,Sales Merchandiser - Suntory,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships
+1734615,jobs,clear_retail,Visual & Creative Merchandiser- Home,Design,Design,Design,Retail & Hospitality
+1134046,jobs,clear_retail,VISUAL MERCHANDISER,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1134056,jobs,clear_retail,VISUAL MERCHANDISER,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1139339,jobs,clear_retail,Visual Merchandiser - Bershka Oxford Street,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1139368,jobs,clear_retail,Visual Merchandiser - Massimo Dutti,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1139384,jobs,clear_retail,Visual Merchandiser Lefties Lakeside NEW OPENING,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1139365,jobs,clear_retail,Visual Merchandiser Stradivarius,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+4566,jobs_IR,clear_software,"Backend Engineer/API, Payments and Risk",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1633475,jobs,clear_software,"Cervest Junior DevOps Engineer Barcelona, Spain added 30-07-2026 View job",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1136560,jobs,clear_software,DevOps Engineer ,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1101178,jobs,clear_software,Full Stack Software Engineer II - Java,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1633480,jobs,clear_software,"Graphcore Senior DevOps Engineer Gdańsk, Poland added 28-07-2026 View job",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+480985,jobs,clear_software,"Java Sr Lead Software Engineer - OMS, Equities",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+794844,jobs,clear_software,Lead Software Engineer - Platform Engineering - Chase UK,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+962997,jobs,clear_software,"Lead Software Engineer (Java, AWS) - Contract Role - Inside IR35",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+143498,jobs_IR,clear_software,Principal Software Engineer,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1323455,jobs,clear_software,Principal Software Engineer SC&L,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1129020,jobs,clear_software,Senior Backend Engineer,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+102209,jobs_IR,clear_software,"Senior C++ Software Engineer - Ireland, Greece, Spain, Hungary or Romania",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1322849,jobs,clear_software,Senior Cheat Software Engineer,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+153909,jobs_IR,clear_software,Senior Full-Stack Software Engineer (VP),Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+11005,jobs,clear_software,"Senior Machine Learning Software Engineer, Research",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+53667,jobs_IR,clear_software,Senior Software Engineer,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1639144,jobs,clear_software,Senior Software Engineer,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+621182,jobs,clear_software,Senior Software Engineer ,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1047580,jobs,clear_software,Senior Software Engineer - Confluent Cloud Platform,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+15036,jobs_IR,clear_software,"Senior Software Engineer, Reliability ",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1413,jobs,clear_software,Software Engineer - Platform,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+481495,jobs,clear_software,Software Engineer III- React,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1252809,jobs,clear_software,Sr Lead Software Engineer (C++ / Etrading),Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+3307,jobs_IR,clear_software,Staff Software Engineer,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1032,jobs,clear_software,Staff Software Engineer - Code Foundations,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1327878,jobs,hard_trading,Customer and Trading Manager - Convenience,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1882469,jobs,hard_trading,Customer and Trading Manager - Convenience,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1737680,jobs,hard_trading,Customer and Trading Manager - Convenience,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1737672,jobs,hard_trading,Customer and Trading Manager - Nightshift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1053740,jobs,hard_trading,Customer and Trading Manager - Nightshift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1979040,jobs,hard_trading,Customer and Trading Manager - Nightshift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1053610,jobs,hard_trading,Customer and Trading Manager - Nightshift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1053840,jobs,hard_trading,Customer and Trading Manager - Nightshift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1327871,jobs,hard_trading,Customer and Trading Manager - Nightshift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1124004,jobs,hard_trading,Customer and Trading Manager - Nightshift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1882463,jobs,hard_trading,Customer and Trading Manager - Nightshift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1930803,jobs,hard_trading,Customer and Trading Manager - Online,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1784241,jobs,hard_trading,Customer and Trading Manager - Online,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1053811,jobs,hard_trading,Customer and Trading Manager - Online,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1588289,jobs,hard_trading,Customer and Trading Manager - Online,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+952657,jobs,hard_trading,"Full Stack Developer, Aladdin Trading Engineering, Associate",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+481098,jobs,hard_trading,Java Sr Lead eSoftware Engineer - Equities Algo Trading - VP,Finance,Finance,Finance,Engineering (Software)
+1139156,jobs,hard_trading,Manager Engineering Software- FBG-Trading,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+23707,jobs_IR,hard_trading,Manager Engineering Software- FBG-Trading,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+237933,jobs,hard_trading,Power & Gas Trading Risk Manager,Finance,Finance,Finance,Finance
+1525725,jobs,hard_trading,Quantitative Analyst -Cash Equity Algorithmic Trading - Director,Finance,Finance,Finance,Finance
+481427,jobs,hard_trading,Quantitative Trading & Research - Market Microstructure & High Frequency Trading Specialist - Vice President,Finance,Finance,Finance,Finance
+1101199,jobs,hard_trading,Quantitative Trading & Research - Portfolio - Associate or Vice President,Finance,Finance,Engineering (Software),Finance
+945643,jobs,hard_trading,"Senior eFX Developer High Frequency Trading, Vice President",Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1169928,jobs,hard_trading,Staff Software Engineer - Commercial Trading,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+1930817,jobs,hard_trading,Trading Assistant,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1930921,jobs,hard_trading,Trading Assistant,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1930821,jobs,hard_trading,Trading Assistant - Local,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1979070,jobs,hard_trading,Trading Assistant - Shift,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+35501,jobs_IR,hard_trading,"Trading Manager (3-6 Months) - Limerick, Dublin  or Belfast",Retail & Hospitality,Retail & Hospitality,HR / People,Retail & Hospitality
+1284058,jobs,sector_other,"Associate, Client Processing I",Other,Other,Operations,Operations
+932052,jobs,sector_other,Band 7 Locum Echocardiographer - Preston,Other,Other,Healthcare,Healthcare
+1176943,jobs,sector_other,Bar & Waiting Staff,Other,Other,Healthcare,Retail & Hospitality
+1968776,jobs,sector_other,Bar & Waiting Staff,Other,Other,Healthcare,Retail & Hospitality
+67213,jobs_IR,sector_other,BMS Service Technician,Other,Other,Construction & Infrastructure,Construction & Infrastructure
+1959791,jobs,sector_other,Butcher,Other,Other,Retail & Hospitality,Retail & Hospitality
+1877858,jobs,sector_other,Composite Laminating Technician - Contract (2027 Build),Other,Other,Design,Engineering (Hardware)
+1516722,jobs,sector_other,Deputy Head of Audiology Services B8a,Other,Other,Healthcare,Healthcare
+1920703,jobs,sector_other,Device and Packaging Technologist,Other,Other,Engineering (Other),Engineering (Hardware)
+1210346,jobs,sector_other,Events and MAC Operative/technican,Other,Other,Healthcare,Operations
+10879,jobs_IR,sector_other,Join AECOM's growing Transportation Team in Ireland,Other,Other,Project Management,Construction & Infrastructure
+1638545,jobs,sector_other,Leisure Supervisor,Other,Other,Sales & Partnerships,Retail & Hospitality
+1329225,jobs,sector_other,Luxury Skincare Advisor Oxford Street (37.5 hours),Other,Other,Retail & Hospitality,Retail & Hospitality
+1371881,jobs,sector_other,Machine Operator,Other,Other,Construction & Infrastructure,Engineering (Hardware)
+1118289,jobs,sector_other,Night Painter,Other,Other,Retail & Hospitality,Operations
+1961005,jobs,sector_other,Online Training Advisor - 12 month FTC,Other,Other,HR / People,HR / People
+1132386,jobs,sector_other,Principal Ecologist,Other,Other,Research (Technical),Construction & Infrastructure
+1132785,jobs,sector_other,Principal Town Planner,Other,Other,Construction & Infrastructure,Construction & Infrastructure
+1328694,jobs,sector_other,Prisoner Custody Officer,Other,Other,Operations,Operations
+1371883,jobs,sector_other,Production Planner,Other,Other,Engineering (Hardware),Operations
+215554,jobs_IR,sector_other,Project Portfolio & Governance Manager,Other,Other,Business & Strategy,Project Management
+1520188,jobs,sector_other,Radiation Safety Physicist,Other,Other,Research (Technical),Research (Technical)
+1965921,jobs,sector_other,Register Your Interest - New Site Start Up Derby   ,Other,Other,Sales & Partnerships,Operations
+1912057,jobs,sector_other,Regulatory Affairs Manager Advertising and Promotion,Other,Other,Finance,Healthcare
+1242347,jobs,sector_other,Resourcer - London,Other,Other,HR / People,HR / People
+935075,jobs,sector_other,Senior/Principal Hydrogeologist ,Other,Other,Construction & Infrastructure,Construction & Infrastructure
+934555,jobs,sector_other,Senior/Principal/Associate Ornithologist,Other,Other,Construction & Infrastructure,Construction & Infrastructure
+1317788,jobs,sector_other,Sr. Technician - Factory Automation (N1 Night Shift),Other,Other,Engineering (Hardware),Engineering (Hardware)
+1166943,jobs,sector_other,The Braywood - Junior Sommelier,Other,Other,Marketing & PR,Retail & Hospitality
+960820,jobs,sector_other,"Transfer Pricing Senior Manager, 6-Month FTC",Other,Other,Finance,Finance
+931025,jobs,sector_vs_embedding_disagree,"A&E (Accident & Emergency) Nurses, Merseyside ",Other,Other,Healthcare,Healthcare
+948881,jobs,sector_vs_embedding_disagree,Associate Director Climate Resilience and Adaptation,Other,Other,Project Management,Construction & Infrastructure
+932060,jobs,sector_vs_embedding_disagree,Band 7 Locum Echocardiographer - Whittington,Other,Other,Healthcare,Healthcare
+170009,jobs_IR,sector_vs_embedding_disagree,Breakfast & Afternoon Lounge Manager,Other,Other,Healthcare & Social Care,Retail & Hospitality
+1861458,jobs,sector_vs_embedding_disagree,Cafe Team Leader,Other,Other,Retail & Hospitality,Retail & Hospitality
+1043510,jobs,sector_vs_embedding_disagree,Client Delivery Lead (Consumer Products),Other,Other,Data,Project Management
+802268,jobs,sector_vs_embedding_disagree,Contracts Manager,Other,Other,Construction & Infrastructure,Construction & Infrastructure
+790676,jobs,sector_vs_embedding_disagree,"Customer ServiceHaslingden, Great BritainFull-TimePermanentOnsiteApply now",Other,Other,Design,Customer Success
+25699,jobs_IR,sector_vs_embedding_disagree,"Deli Assistant (Full Time), Roscommon",Retail & Hospitality,Retail & Hospitality,Sales & Partnerships,Retail & Hospitality
+166431,jobs_IR,sector_vs_embedding_disagree,Field Service - Early Career Engineers,Other,Other,Engineering (Other),Engineering (Other)
+1879401,jobs,sector_vs_embedding_disagree,GAP Team Member - Wembley Outlet (N122895),Other,Other,Operations,Retail & Hospitality
+1517522,jobs,sector_vs_embedding_disagree,Highly Specialised Cardiac Physiologist (Echocardiography),Other,Other,Research (Technical),Healthcare
+1405733,jobs,sector_vs_embedding_disagree,Home Manager,Other,Other,Retail & Hospitality,Healthcare
+1177362,jobs,sector_vs_embedding_disagree,Kitchen Team Leader,Other,Other,Engineering (Hardware),Retail & Hospitality
+930241,jobs,sector_vs_embedding_disagree,Lateral ,Other,Other,Construction & Infrastructure,Other
+1328780,jobs,sector_vs_embedding_disagree,Loader,Other,Other,Construction & Infrastructure,Logistics & Transport
+1067669,jobs,sector_vs_embedding_disagree,Managing Director - EMEA,Other,Other,Finance,Business & Strategy
+1517929,jobs,sector_vs_embedding_disagree,Pathology Administrator,Other,Other,Healthcare,Healthcare
+934920,jobs,sector_vs_embedding_disagree,Principal Ecologist - BNG Specialist,Other,Other,Business & Strategy,Construction & Infrastructure
+1328701,jobs,sector_vs_embedding_disagree,Prisoner Custody Officer,Other,Other,Operations,Operations
+1916582,jobs,sector_vs_embedding_disagree,Senior Art Director,Other,Other,Marketing & PR,Design
+1373531,jobs,sector_vs_embedding_disagree,Senior IT Technician,Other,Other,Engineering (Other),Engineering (Other)
+1975532,jobs,sector_vs_embedding_disagree,Shift Lead,Other,Other,Engineering (Other),Retail & Hospitality
+1169938,jobs,sector_vs_embedding_disagree,Shift Lead - Food - Selly Oak Simply Food,Other,Other,Logistics & Transport,Retail & Hospitality
+907799,jobs,sector_vs_embedding_disagree,Site Manager,Other,Other,Construction & Infrastructure,Construction & Infrastructure
+1669478,jobs,sector_vs_embedding_disagree,"Snr Quality Manager, Amazon Pick up and Return Point",Other,Other,Project Management,Operations
+1059409,jobs,sector_vs_embedding_disagree,Team Lead Energy Storage,Other,Other,Engineering (Hardware),Engineering (Hardware)
+1975991,jobs,sector_vs_embedding_disagree,Team Member - Glasgow Silverburn (N125080),Other,Other,Operations,Retail & Hospitality
+23997,jobs_IR,sector_vs_embedding_disagree,Trainer and Installer – HotSoft,Other,Other,Logistics & Transport,Engineering (Other)
+1139383,jobs,sector_vs_embedding_disagree,ZARA READING VISUAL/COMMERCIAL MANAGER,Other,Other,Operations,Retail & Hospitality
+69681,jobs_IR,vague_analyst, Senior Business Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Business & Strategy
+153313,jobs_IR,vague_analyst,Application Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Engineering (Software)
+1222933,jobs,vague_analyst,Business Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Business & Strategy
+1118125,jobs,vague_analyst,Business Solutions Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Business & Strategy
+1518635,jobs,vague_analyst,Cost Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Finance
+1671796,jobs,vague_analyst,Customer Targeting Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Data
+1134910,jobs,vague_analyst,Cyber Security Analyst,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+850691,jobs,vague_analyst,Data Operations Analyst,Data,Data,Data,Data
+1173031,jobs,vague_analyst,Data Protection Analyst,Data,Data,Data,Legal
+1871714,jobs,vague_analyst,ESG Reporting Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Business & Strategy
+1866471,jobs,vague_analyst,GenAI Business Analyst.,Business & Strategy,Business & Strategy,Business & Strategy,Business & Strategy
+1052285,jobs,vague_analyst,Geospatial Data Analyst ,Data,Data,Data,Data
+1978281,jobs,vague_analyst,Graduate KYC Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Finance
+57324,jobs_IR,vague_analyst,KYC Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Finance
+1979293,jobs,vague_analyst,Lead Finance Analyst,Finance,Finance,Finance,Finance
+158480,jobs_IR,vague_analyst,Operations Analyst (Trade Support),Operations,Operations,Operations,Operations
+792582,jobs,vague_analyst,Payments Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Finance
+1583450,jobs,vague_analyst,Payroll Reporting Analyst,HR / People,HR / People,HR / People,HR / People
+133632,jobs_IR,vague_analyst,Purchasing Analyst,Operations,Operations,Operations,Operations
+1042262,jobs,vague_analyst,RevOps Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Business & Strategy
+1919305,jobs,vague_analyst,Search Engine Optimization Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Marketing & PR
+1519645,jobs,vague_analyst,Senior Business Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Business & Strategy
+887215,jobs,vague_analyst,Senior Business Intelligence Analyst,Data,Data,Engineering (Software),Data
+20268,jobs_IR,vague_analyst,Senior Data Analyst,Data,Data,Data,Data
+841457,jobs,vague_analyst,Senior Data Analyst ,Data,Data,Data,Data
+55727,jobs_IR,vague_analyst,Senior Finance EPM Analyst,Finance,Finance,Finance,Finance
+1259897,jobs,vague_analyst,Senior Product Analyst,Product Management,Product Management,Product Management,Product Management
+1368362,jobs,vague_analyst,Senior Workday Analyst,Business & Strategy,Business & Strategy,Business & Strategy,HR / People
+1672569,jobs,vague_analyst,SIAM Change Analyst,Business & Strategy,Business & Strategy,Business & Strategy,Operations
+1366458,jobs,vague_manager, Area Kitchen Manager ,Other,Other,Retail & Hospitality,Retail & Hospitality
+1334490,jobs,vague_manager,Admin Manager,Operations,Operations,Operations,Operations
+1406431,jobs,vague_manager,Assistant Commercial Manager,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships
+1042130,jobs,vague_manager,Assistant Design Manager,Design,Design,Design,Design
+4750,jobs_IR,vague_manager,Backend Engineering Manager,Engineering (Software),Engineering (Software),Engineering (Software),Engineering (Software)
+767508,jobs,vague_manager,Bid Manager,Other,Other,Business & Strategy,Business & Strategy
+1377869,jobs,vague_manager,Brand General Manager,Marketing & PR,Marketing & PR,Marketing & PR,Marketing & PR
+1134196,jobs,vague_manager,Business Development Manager,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships
+1134392,jobs,vague_manager,Business Development Manager ,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships
+594707,jobs,vague_manager,Cost Manager (NRM1),Construction & Infrastructure,Construction & Infrastructure,Construction & Infrastructure,Construction & Infrastructure
+1740313,jobs,vague_manager,CX Project Manager,Project Management,Project Management,Project Management,Project Management
+4752,jobs_IR,vague_manager,Data Engineering Manager,Data,Data,Data,Data
+1080021,jobs,vague_manager,Finance Manager,Finance,Finance,Finance,Finance
+1532688,jobs,vague_manager,Growth Manager,Marketing & PR,Marketing & PR,Marketing & PR,Marketing & PR
+1623476,jobs,vague_manager,GTM Program Manager,Project Management,Project Management,Project Management,Project Management
+1536783,jobs,vague_manager,Market Development Manager,Marketing & PR,Marketing & PR,Marketing & PR,Marketing & PR
+1670007,jobs,vague_manager,Online Trading Manager,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality,Retail & Hospitality
+1028666,jobs,vague_manager,Operations Manager,Operations,Operations,Operations,Operations
+1078171,jobs,vague_manager,Partner Manager,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships,Sales & Partnerships
+165297,jobs_IR,vague_manager,Program Manager,Project Management,Project Management,Project Management,Project Management
+1359963,jobs,vague_manager,Programme Manager,Project Management,Project Management,Project Management,Project Management
+988617,jobs,vague_manager,Project Controls Manager,Construction & Infrastructure,Construction & Infrastructure,Construction & Infrastructure,Construction & Infrastructure
+988670,jobs,vague_manager,Senior Cost Manager,Construction & Infrastructure,Construction & Infrastructure,Construction & Infrastructure,Construction & Infrastructure
+1581845,jobs,vague_manager,Senior Product Manager,Product Management,Product Management,Product Management,Product Management
+13420,jobs,vague_manager,Senior Project Manager,Project Management,Project Management,Project Management,Project Management
+1141717,jobs,vague_manager,Stock Manager,Other,Other,Finance,Retail & Hospitality
+219373,jobs_IR,vague_manager,TEAM MANAGER,Other,Other,Engineering (Other),Operations
+1530770,jobs,vague_manager,Unit Manager,Other,Other,Healthcare,Healthcare
+1118240,jobs,vague_manager,Workplace Experience Manager,Other,Other,Project Management,Operations
+1370273,jobs,vague_manager,WtX Account Manager,Customer Success,Customer Success,Customer Success,Customer Success
