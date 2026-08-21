@@ -2095,7 +2095,7 @@ async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
                         // Fallback: parse the whole body text as a last resort
                         const bodyText = $d('body').text().replace(/\s+/g, ' ');
                         const bodyType = parseJobType(bodyText);
-                        if (bodyType !== 'Others') {
+                        if (bodyType) {
                             job.job_type = bodyType;
                         }
                     }
@@ -2439,7 +2439,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                     const limitDetails = pLimit(10);
                     const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
                         let job_type_val = j.timeType || j.bulletFields;
-                        if (!job_type_val || parseJobType(job_type_val) === 'Others') {
+                        if (!job_type_val || !parseJobType(job_type_val)) {
                             try {
                                 const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
                                 const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -2492,7 +2492,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                         const limitDetails = pLimit(10);
                         const enrichedIrPosts = await Promise.all(irPosts.map((j: any) => limitDetails(async () => {
                             let job_type_val = j.timeType || j.bulletFields;
-                            if (!job_type_val || parseJobType(job_type_val) === 'Others') {
+                            if (!job_type_val || !parseJobType(job_type_val)) {
                                 try {
                                     const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
                                     const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -3613,7 +3613,7 @@ async function fetchJazzHR(token: string): Promise<Job[]> {
         await Promise.all(
             jobs.map(job =>
                 limit(async () => {
-                    if (job.job_type === 'Others' || !job.job_type) {
+                    if (!job.job_type) {
                         try {
                             const detailRes = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
                             if (detailRes.ok) {

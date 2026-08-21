@@ -1,11 +1,28 @@
 // Shared allowlists for preferences validation
 // Used in both PreferencesForm.tsx (UI) and preferences/actions.ts (server validation)
 
+/** Employment type (Full-time / Contract / …) — not seniority. */
 export const ALLOWED_JOB_TYPES = [
     'Full-time',
     'Part-time',
+    'Contract',
     'Internship',
     'Placement scheme',
+] as const;
+
+/** Seniority / catalog level — same values as preferences + jobs.level. */
+export const ALLOWED_JOB_LEVELS = [
+    'Internship',
+    'Graduate',
+    'Junior',
+    'Mid-level',
+    'Senior',
+    'Staff',
+    'Lead',
+    'Principal',
+    'Director',
+    'VP',
+    'Executive',
 ] as const;
 
 export const ALLOWED_LOCATIONS = [
