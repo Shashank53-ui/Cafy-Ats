@@ -1,5 +1,7 @@
 import { ALLOWED_SECTORS } from './constants';
 import { inferJobSector } from './inferJobSector';
+import { sanitizeCompanySectorForInference } from './jobIngestGuards';
+import { mergeJobSector, type SectorMergeSource } from './mergeJobSector';
 import { canonicalJobDepartment } from './sanitizeJobDepartment';
 
 const ALLOWED_SECTOR_SET = new Set<string>(ALLOWED_SECTORS);
@@ -12,18 +14,23 @@ export function clampAllowedSector(sector: string | null | undefined): string {
 
 /**
  * Single persist gate for `jobs.sector` and `jobs.department`.
- * Both fields are always an ALLOWED_SECTORS value (never junk, never blank).
+ * Rules (title-first) win when clear; model embedding only fills Other
+ * when the title supports that sector.
  */
 export function classifyJobTaxonomy(
     title: string,
     rawDepartment?: string | null,
     companySector?: string | null,
-): { sector: string; department: string } {
-    const sector = clampAllowedSector(
-        inferJobSector(title, rawDepartment, companySector),
+    embeddingSector?: string | null,
+): { sector: string; department: string; source: SectorMergeSource } {
+    const safeCompanySector = sanitizeCompanySectorForInference(companySector);
+    const rulesSector = clampAllowedSector(
+        inferJobSector(title, rawDepartment, safeCompanySector),
     );
+    const { sector, source } = mergeJobSector(rulesSector, embeddingSector, title);
     return {
         sector,
         department: canonicalJobDepartment(rawDepartment, sector),
+        source,
     };
 }
