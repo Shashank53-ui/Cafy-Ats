@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { Job, CompanyRow, fetchWithTimeout, fetchPhenom, fetchOracleCloud } from './syncAll';
+import { parseJobType } from '../lib/parseJobType';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
@@ -1450,11 +1451,14 @@ async function fetchFromGreenhouse(boardToken: string, label: string): Promise<J
                         const salaryField = item.metadata.find((m: any) => m.name === 'Salary');
                         if (salaryField?.value) salary = salaryField.value;
                     }
+                    const jobTypeMeta = item.metadata?.find((m: any) => m.name && /employment|job.*type/i.test(m.name))?.value || '';
                     jobs.push({
                         title: item.title,
                         location: item.location?.name || '',
                         url: item.absolute_url,
+                        job_type: parseJobType([item.title, jobTypeMeta, item.employment_type, item.type, item.employmentType]),
                         salary,
+                        atsProvider: 'greenhouse',
                     });
                 }
             }
