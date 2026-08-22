@@ -700,7 +700,8 @@ async function fetchBaeSystems(url: string): Promise<Job[]> {
                         title: title,
                         location: loc,
                         url: jobUrl,
-                        department: ''
+                        department: '',
+                        job_type: parseJobType([link.text()])
                     });
                 }
             });
