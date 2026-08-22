@@ -36,10 +36,11 @@ import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import { sanitizeJobTitle } from '../lib/sanitizeJobTitle';
 import { getIngestRejectReason } from '../lib/jobIngestGuards';
+import { isForeignLocationLeak } from '../lib/foreignLocationLeak';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
 import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
-import { parseJobType } from '../lib/parseJobType';
+import { parseJobType, resolveJobType } from '../lib/parseJobType';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -115,7 +116,7 @@ interface JobRow {
     sector: string | null;
     /** MiniLM + title memory; compare with sector. Never replaces sector. */
     sector_embedding: string | null;
-    job_type: string | null;
+    job_type: string;
     updated_at: string;
     last_seen_at: string;
     source?: 'ats' | 'linkedin';
@@ -406,6 +407,12 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
     for (const j of uniqueJobs) {
         const n = normalizedMap.get(j.url);
         const raw = safeStr(j.location, 255);
+        const targetCountry = market === 'ireland' ? 'Ireland' : 'United Kingdom';
+        // Python resolved a foreign country (Durham NC → United States). Never
+        // persist the UK/Ireland namesake city.
+        if (n?.country && n.country !== targetCountry) {
+            continue;
+        }
         let cleanedLocation = n
             ? (formatNormalizedLocation(n) ?? raw)
             : raw;
@@ -435,6 +442,16 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             if (!locationPasses(cleanedLocation)) continue;
         }
 
+        if (
+            isForeignLocationLeak(
+                { location: cleanedLocation, title: j.title, url: j.url },
+                market,
+            ) ||
+            isForeignLocationLeak({ location: raw, title: j.title, url: j.url }, market)
+        ) {
+            continue;
+        }
+
         // Some ATS providers (Workday, Oracle Cloud, several custom scrapers)
         // structurally don't expose a department field in their feed at all.
         // Classify from the raw ATS department (so GTM → Sales), then persist
@@ -450,6 +467,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             sector_embedding,
         );
         const nowIso = new Date().toISOString();
+        const level = inferJobLevel(safeStr(j.title));
 
         rows.push({
             company_id: companyId,
@@ -457,10 +475,14 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             location: safeStr(cleanedLocation, 255),
             url: j.url,
             department,
-            level: inferJobLevel(safeStr(j.title)),
+            level,
             sector,
             sector_embedding,
-            job_type: j.job_type || null,
+            job_type: resolveJobType({
+                employment: j.job_type,
+                title: cleanTitle,
+                level,
+            }),
             updated_at: nowIso,
             last_seen_at: nowIso,
         });
@@ -2095,7 +2117,7 @@ async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
                         // Fallback: parse the whole body text as a last resort
                         const bodyText = $d('body').text().replace(/\s+/g, ' ');
                         const bodyType = parseJobType(bodyText);
-                        if (bodyType !== 'Others') {
+                        if (bodyType) {
                             job.job_type = bodyType;
                         }
                     }
@@ -2439,7 +2461,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                     const limitDetails = pLimit(10);
                     const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
                         let job_type_val = j.timeType || j.bulletFields;
-                        if (!job_type_val || parseJobType(job_type_val) === 'Others') {
+                        if (!job_type_val || !parseJobType(job_type_val)) {
                             try {
                                 const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
                                 const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -2492,7 +2514,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                         const limitDetails = pLimit(10);
                         const enrichedIrPosts = await Promise.all(irPosts.map((j: any) => limitDetails(async () => {
                             let job_type_val = j.timeType || j.bulletFields;
-                            if (!job_type_val || parseJobType(job_type_val) === 'Others') {
+                            if (!job_type_val || !parseJobType(job_type_val)) {
                                 try {
                                     const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
                                     const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -3613,7 +3635,7 @@ async function fetchJazzHR(token: string): Promise<Job[]> {
         await Promise.all(
             jobs.map(job =>
                 limit(async () => {
-                    if (job.job_type === 'Others' || !job.job_type) {
+                    if (!job.job_type) {
                         try {
                             const detailRes = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
                             if (detailRes.ok) {

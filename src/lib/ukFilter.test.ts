@@ -162,6 +162,38 @@ test('UK Filter: Remote UK string', () => {
     assert.strictEqual(isUKJob(input), true, 'Remote UK string should return true');
 });
 
+test('UK Filter: Durham UK accepted', () => {
+    const input: JobLocationInput = {
+        isTrustedSource: false,
+        locations: ['Durham'],
+        isRemote: false,
+    };
+    assert.strictEqual(isUKJob(input), true, 'Bare Durham (County Durham) should return true');
+});
+
+test('UK Filter: Durham NC blocked', () => {
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['Durham, NC'], isRemote: false }),
+        false,
+        'Durham, NC should be blocked',
+    );
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['Durham NC'], isRemote: false }),
+        false,
+        'Durham NC should be blocked',
+    );
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['Durham, North Carolina'], isRemote: false }),
+        false,
+        'Durham, North Carolina should be blocked',
+    );
+    assert.strictEqual(
+        isUKJob({ isTrustedSource: false, locations: ['East Durham'], isRemote: false }),
+        false,
+        'East Durham NY should be blocked',
+    );
+});
+
 test('UK Filter: Dublin hard block', () => {
     const input: JobLocationInput = {
         isTrustedSource: false,
@@ -234,6 +266,7 @@ test('UK Filter: UK city namesake in US blocked (Bedford MA etc)', () => {
         'Bedford, MA',
         'Birmingham, AL, United States',
         'Manchester, NH, United States',
+        'New Bedford, MA',
     ]) {
         const input: JobLocationInput = { isTrustedSource: false, locations: [loc], isRemote: false };
         assert.strictEqual(isUKJob(input), false, `${loc} must be blocked`);

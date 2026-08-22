@@ -82,6 +82,20 @@ check(
     { trading_name: 'Molten Ventures', url: 'https://www.moltenventures.com' },
   ) === 'foreign_employer_url',
 );
+check(
+  'ingest gate rejects Durham-NC workday path',
+  getIngestRejectReason(
+    { title: 'GMP Technician', url: 'https://sbm.wd1.myworkdayjobs.com/en-US/job/Durham-NC/x' },
+    { trading_name: 'SBM', url: 'https://www.sbmmanagement.com' },
+  ) === 'foreign_url_geo',
+);
+check(
+  'ingest gate keeps Workday en-US + London',
+  getIngestRejectReason(
+    { title: 'Engineer', url: 'https://acme.wd1.myworkdayjobs.com/en-US/External/job/London/x' },
+    { trading_name: 'Acme', url: 'https://www.acme.com', ats_board_token: 'acme' },
+  ) === null,
+);
 
 // company_sector poison
 check(

@@ -10,6 +10,7 @@ import {
   embedTexts,
   normalizeTitleForEmbedding,
 } from './embedText';
+import { titleHasEmbeddingSignal } from './embeddingTitleSignal';
 import {
   getSectorPrototypeEntries,
   type AllowedSector,
@@ -146,7 +147,7 @@ export async function classifyTitleByEmbedding(
   },
 ): Promise<EmbeddingClassifyResult> {
   const norm = normalizeTitleForEmbedding(title);
-  if (!norm) {
+  if (!norm || !titleHasEmbeddingSignal(title)) {
     return {
       sector: 'Other',
       score: 0,

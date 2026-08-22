@@ -7,19 +7,18 @@ import { pipeline } from '@huggingface/transformers';
 export const EMBEDDING_MODEL = 'Xenova/all-MiniLM-L6-v2';
 export const EMBEDDING_DIMS = 384;
 
+export {
+  contentTokensForEmbedding,
+  normalizeTitleForEmbedding,
+  titleHasEmbeddingSignal,
+} from './embeddingTitleSignal';
+
 type FeatureExtractor = (
   text: string | string[],
   options: { pooling: 'mean'; normalize: boolean },
 ) => Promise<{ data: Float32Array; dims: number[]; tolist?: () => number[][] }>;
 
 let extractorPromise: Promise<FeatureExtractor> | null = null;
-
-export function normalizeTitleForEmbedding(title: string): string {
-  return String(title || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 async function getExtractor(): Promise<FeatureExtractor> {
   if (!extractorPromise) {

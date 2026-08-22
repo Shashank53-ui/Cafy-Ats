@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import dotenv from 'dotenv';
 import { isUKJob } from '../lib/ukFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { inferJobLevel } from '../lib/inferJobLevel';
+import { resolveJobType } from '../lib/parseJobType';
 import { sanitizeJobLocation } from '../lib/refineLocation';
 
 dotenv.config({ path: '.env.local' });
@@ -86,6 +88,7 @@ async function scrapeJPMorgan() {
         if (company) {
             const jobsToInsert = ukJobs.map(j => {
                 const { sector, department } = classifyJobTaxonomy(j.title, null, company.company_sector);
+                const level = inferJobLevel(j.title);
                 return {
                     company_id: company.id,
                     title: j.title,
@@ -93,6 +96,8 @@ async function scrapeJPMorgan() {
                     url: j.url,
                     department,
                     sector,
+                    level,
+                    job_type: resolveJobType({ title: j.title, level }),
                 };
             });
             await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });

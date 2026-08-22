@@ -201,6 +201,7 @@ function isUKTerm(loc: string): boolean {
         const re = new RegExp(`\\b${term.replace(/\./g, '\\.')}\\b`);
         // Special case: "york" must not match "new york"
         if (term === 'york' && /\bnew\s+york\b/.test(l)) return false;
+        if (term === 'bedford' && /\bnew\s+bedford\b/.test(l)) return false;
         // Bare / US Washington must not pass via UK_CITIES membership
         if (term === 'washington') {
             if (/\b(d\.?c\.?|united states|usa|u\.s|washington state)\b/.test(l)) return false;
@@ -217,6 +218,12 @@ function isUKTerm(loc: string): boolean {
         if (term === 'wales' && /\bnew\s+south\s+wales\b/.test(l)) return false;
         // "england" must not match the US "New England" region
         if (term === 'england' && /\bnew\s+england\b/.test(l)) return false;
+        // Durham, England vs Durham NC / East Durham NY
+        if (term === 'durham') {
+            if (/\b(east durham|durham\s*,?\s*n\.?c\.?|north carolina|research triangle|\brtp\b)\b/.test(l)) {
+                return false;
+            }
+        }
         return re.test(l);
     });
 }
@@ -258,6 +265,8 @@ function hasUsGeoSignal(loc: string): boolean {
     if (/\b(united states|usa|u\.s\.a\.?|u\.s\.?)\b/.test(l)) return true;
     // Comma-qualified state codes — avoids matching "in"/"or"/"me" inside prose.
     if (new RegExp(`,\\s*(${US_STATE_CODES})\\b`).test(l)) return true;
+    // State code without a comma ("Durham NC") and East Durham, NY
+    if (/\bdurham\s+n\.?c\.?\b/.test(l) || /\beast\s+durham\b/.test(l)) return true;
     return false;
 }
 

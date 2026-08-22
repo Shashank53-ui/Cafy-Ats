@@ -19,6 +19,7 @@ import {
 } from './classifyByEmbedding';
 import { ALLOWED_SECTORS } from './constants';
 import { embedText, normalizeTitleForEmbedding } from './embedText';
+import { titleHasEmbeddingSignal } from './embeddingTitleSignal';
 import { inferJobSector } from './inferJobSector';
 import type { AllowedSector } from './sectorPrototypes';
 
@@ -86,6 +87,8 @@ export async function resolveSectorEmbedding(title: string): Promise<string> {
 
   const memorized = exactMemory.get(norm);
   if (memorized) return memorized;
+
+  if (!titleHasEmbeddingSignal(title)) return 'Other';
 
   try {
     const titleVector = await embedText(norm);
