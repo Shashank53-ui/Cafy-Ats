@@ -47,7 +47,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 3. **AlphaSights** -> Implemented
 4. **Amazon** -> Implemented
 5. **Ampa**
-6. **Apple**
+6. **Apple** -> Implemented
 7. **Arup**
 8. **AstraZeneca**
 9. **Babcock**

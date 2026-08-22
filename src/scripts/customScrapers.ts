@@ -1035,7 +1035,7 @@ async function fetchDCC(url: string): Promise<Job[]> {
                 
                 if (title && jobUrl && !seenUrls.has(jobUrl)) {
                     seenUrls.add(jobUrl);
-                    jobs.push({ title, url: jobUrl, location });
+                    jobs.push({ title, url: jobUrl, location, job_type: parseJobType([item.postingTitle, item.transformedPostingTitle]) });
                     jobsOnPage++;
                 }
             }
