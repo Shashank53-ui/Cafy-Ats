@@ -11,6 +11,7 @@ const cases: Array<[unknown, string | null]> = [
   ['part time', 'Part-time'],
   ['Internship', 'Internship'],
   ['Summer Intern', 'Internship'],
+  ['Software Apprentice', 'Internship'],
   ['Industrial Placement', 'Placement scheme'],
   ['Fixed-term', 'Contract'],
   ['Temporary', 'Contract'],
@@ -49,6 +50,8 @@ const resolveCases: Array<[{ employment?: unknown; title?: string; level?: strin
   [{ title: 'Contract Manager' }, 'Full-time'], // role title, not employment Contract
   [{ employment: 'Full-time', title: 'Software Engineer - Intern' }, 'Internship'],
   [{ employment: 'Full-time', title: 'Part Time Care Assistant' }, 'Part-time'],
+  [{ employment: 'Full-time', title: 'Care Assistant - Bank - Care Home' }, 'Part-time'],
+  [{ title: 'Registered Nurse (RGN) - Bank' }, 'Part-time'],
   [{ employment: 'Full-time', title: 'Software Engineer' }, 'Full-time'],
 ];
 

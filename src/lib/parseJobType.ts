@@ -44,8 +44,13 @@ function classifyOne(raw: string): AllowedJobType | null {
     return 'Placement scheme';
   }
 
-  if (/\b(internships?|\bintern\b|co-?op|graduate (scheme|program|programme)|student placement)\b/.test(l)) {
+  if (/\b(internships?|\bintern\b|co-?op|apprentice|apprenticeship|graduate (scheme|program|programme)|student placement)\b/.test(l)) {
     return 'Internship';
+  }
+
+  // UK "bank" care/nursing = as-needed shifts (not Full-time).
+  if (/\bbank\b/.test(l) && /\b(care|nurse|nursing|rgn|rmn|\bhca\b|carer)\b/.test(l)) {
+    return 'Part-time';
   }
 
   // Contract / temp — skip title-like false positives ("Contract Manager").
