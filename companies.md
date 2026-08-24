@@ -86,7 +86,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 42. **Jacobs**
 43. **Jaguar Land Rover (JLR)**
 44. **JPMorgan**
-45. **KPMG**
+45. **KPMG** -> Implemented
 46. **LEVC**
 47. **LinkedIn**
 48. **Logically**

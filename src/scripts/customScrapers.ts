@@ -363,6 +363,7 @@ async function fetchKPMG(url: string): Promise<Job[]> {
                         location,
                         url: jobUrl,
                         department,
+                        job_type: parseJobType([title, $(el).text()]) || undefined
                     });
                 }
             });
