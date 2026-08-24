@@ -71,7 +71,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 27. **Dojo**
 28. **EasyJet**
 29. **Elastic**
-30. **EY**
+30. **EY** -> Implemented
 31. **Fastly**
 32. **Fisher**
 33. **Fitch Group**

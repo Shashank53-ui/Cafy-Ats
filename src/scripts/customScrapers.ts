@@ -1689,7 +1689,7 @@ async function fetchEY(url: string): Promise<Job[]> {
                         if (title.substring(0, half) === title.substring(half)) title = title.substring(0, half);
                     }
                     
-                    jobs.push({ title, url: jobUrl, location, department: '' });
+                    jobs.push({ title, url: jobUrl, location, department: '', job_type: parseJobType([title, $(el).text()]) });
                     jobsOnPage++;
                 }
                 
