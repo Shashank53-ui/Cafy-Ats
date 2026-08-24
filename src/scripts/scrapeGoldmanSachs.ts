@@ -78,7 +78,8 @@ async function scrapeGoldmanSachs() {
                         title: title,
                         location: location,
                         url: `https://higher.gs.com${link}`,
-                        department: departmentStr || 'General Opportunities'
+                        department: departmentStr || 'General Opportunities',
+                        tileText: $(el).text()
                     });
                 }
             });
@@ -130,7 +131,7 @@ async function scrapeGoldmanSachs() {
                 department,
                 sector,
                 level,
-                job_type: resolveJobType({ title: job.title, level }),
+                job_type: resolveJobType({ employment: job.tileText, title: job.title, level }) || undefined,
             };
         });
 

@@ -76,7 +76,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 32. **Fisher**
 33. **Fitch Group**
 34. **Gates**
-35. **Goldman Sachs**
+35. **Goldman Sachs** -> Implemented
 36. **Google**
 37. **GXO**
 38. **Helsing**
