@@ -63,7 +63,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 19. **Clue**
 20. **Cognism**
 21. **Collinson**
-22. **Cynergy**
+22. **Cynergy** -> recheck
 23. **Datadog**
 24. **DCC**
 25. **Depop**
@@ -101,7 +101,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 57. **NetJets**
 58. **Network Rail**
 59. **Next**
-60. **NHS**
+60. **NHS** -> Implemented
 61. **Nothing**
 62. **Nottingham**
 63. **Otrium**

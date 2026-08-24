@@ -3550,6 +3550,7 @@ async function fetchNHS(token: string): Promise<Job[]> {
                     url: link.url,
                     location: locationLine,
                     department: agency,
+                    job_type: resolveJobType({ title: link.title, employment: link.containerText }),
                     verified: true,
                 });
             }
