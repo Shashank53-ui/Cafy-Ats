@@ -1756,7 +1756,8 @@ async function fetchCapgemini(url: string): Promise<Job[]> {
                     title: job.title,
                     location: job.location || job.city || 'United Kingdom',
                     url: job.apply_job_url || job.wp_url,
-                    department: job.sbu || job.professional_communities || ''
+                    department: job.sbu || job.professional_communities || '',
+                    job_type: parseJobType([job.title, job.contract_type]) || undefined
                 });
             }
         }

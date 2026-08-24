@@ -59,7 +59,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 15. **Booking.com**
 16. **Bromcom**
 17. **BT Group**
-18. **Capgemini**
+18. **Capgemini** -> Implemented
 19. **Clue**
 20. **Cognism**
 21. **Collinson**
@@ -77,15 +77,15 @@ We have bespoke scrapers built for the following specific companies (some have t
 33. **Fitch Group**
 34. **Gates**
 35. **Goldman Sachs** -> Implemented
-36. **Google**
+36. **Google** -> recheck
 37. **GXO**
 38. **Helsing**
 39. **Hikma**
 40. **IBM**
 41. **Infobric**
-42. **Jacobs**
+42. **Jacobs** -> recheck
 43. **Jaguar Land Rover (JLR)**
-44. **JPMorgan**
+44. **JPMorgan** -> recheck
 45. **KPMG** -> Implemented
 46. **LEVC**
 47. **LinkedIn**
