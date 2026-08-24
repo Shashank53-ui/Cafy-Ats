@@ -74,16 +74,16 @@ function classifyOne(raw: string): AllowedJobType | null {
  * Prefer short employment fields; when given an array, try shorter parts first
  * so titles do not drown out `employmentType: "Full-time"`.
  */
-export function parseJobType(raw?: unknown): AllowedJobType | null {
+export function parseJobType(raw?: unknown): AllowedJobType | undefined {
   const parts = partsFrom(raw);
-  if (!parts.length) return null;
+  if (!parts.length) return undefined;
 
   const ordered = [...parts].sort((a, b) => a.length - b.length);
   for (const part of ordered) {
     const hit = classifyOne(part);
     if (hit && ALLOWED.has(hit)) return hit;
   }
-  return null;
+  return undefined;
 }
 
 /**
