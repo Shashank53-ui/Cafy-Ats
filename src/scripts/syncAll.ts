@@ -2610,6 +2610,15 @@ export async function fetchOracleCloud(token: string): Promise<Job[]> {
             for (const j of reqList) {
                 let job_type_val = j.JobSchedule || j.JobType || j.WorkerType || j.employmentType;
                 
+                // Next specific parsing for hours per week
+                if (!job_type_val && j.ShortDescriptionStr) {
+                    const match = j.ShortDescriptionStr.match(/(\d+(?:\.\d+)?)\s*hrs\s*p\/w/i);
+                    if (match) {
+                        const hrs = parseFloat(match[1]);
+                        job_type_val = hrs >= 30 ? 'Full-time' : 'Part-time';
+                    }
+                }
+
                 if (!job_type_val) {
                     try {
                         const detUrl = `https://${domain}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?finder=ById;Id=%22${j.Id}%22,siteNumber=%22${site}%22`;

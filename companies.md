@@ -100,7 +100,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 56. **Mind Foundry**
 57. **NetJets**
 58. **Network Rail**
-59. **Next**
+59. **Next** -> Implemented
 60. **NHS** -> Implemented
 61. **Nothing**
 62. **Nottingham**
