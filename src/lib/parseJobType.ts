@@ -103,6 +103,7 @@ export function resolveJobType(input: {
   if (
     fromTitle &&
     fromTitle !== 'Full-time' &&
+    fromTitle !== 'Contract' &&
     fromEmployment === 'Full-time'
   ) {
     return fromTitle;

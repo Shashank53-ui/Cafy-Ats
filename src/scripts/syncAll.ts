@@ -3524,12 +3524,15 @@ async function fetchNHS(token: string): Promise<Job[]> {
 
         // Extract all job links
         const jobLinks = await page.$$eval('a[href*="/candidate/jobadvert/"]', links => {
-            return links.map(a => ({
-                title: a.textContent?.trim() || '',
-                url: (a as HTMLAnchorElement).href,
-                // The location and agency are usually in the same container
-                containerText: a.parentElement?.parentElement?.innerText || ''
-            }));
+            return links.map(a => {
+                const li = a.closest('li');
+                return {
+                    title: a.textContent?.trim() || '',
+                    url: (a as HTMLAnchorElement).href,
+                    // The location and agency are usually in the same container
+                    containerText: li ? (li as HTMLElement).innerText : (a.parentElement?.parentElement?.innerText || '')
+                };
+            });
         });
 
         const pushJobs = (links: any[]) => {
@@ -3568,11 +3571,14 @@ async function fetchNHS(token: string): Promise<Job[]> {
             await page.waitForTimeout(2000);
 
             const pageLinks = await page.$$eval('a[href*="/candidate/jobadvert/"]', links => {
-                return links.map(a => ({
-                    title: a.textContent?.trim() || '',
-                    url: (a as HTMLAnchorElement).href,
-                    containerText: a.parentElement?.parentElement?.innerText || ''
-                }));
+                return links.map(a => {
+                    const li = a.closest('li');
+                    return {
+                        title: a.textContent?.trim() || '',
+                        url: (a as HTMLAnchorElement).href,
+                        containerText: li ? (li as HTMLElement).innerText : (a.parentElement?.parentElement?.innerText || '')
+                    };
+                });
             });
 
             if (pageLinks.length === 0) break;
