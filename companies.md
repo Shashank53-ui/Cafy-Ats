@@ -50,7 +50,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 6. **Apple** -> Implemented
 7. **Arup**
 8. **AstraZeneca**
-9. **Babcock**
+9. **Babcock** -> Implemented
 10. **BAE Systems** -> Implemented
 11. **BBC**
 12. **BIC**

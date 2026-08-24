@@ -2208,7 +2208,7 @@ async function fetchBabcock(url: string): Promise<Job[]> {
                 const location = rawLoc || 'United Kingdom';
                 
                 if (title && jobUrl) {
-                    jobs.push({ title, url: jobUrl, location });
+                    jobs.push({ title, url: jobUrl, location, job_type: parseJobType([title, $(el).text()]) || undefined });
                 }
             }
             
