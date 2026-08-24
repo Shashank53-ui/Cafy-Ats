@@ -701,7 +701,7 @@ async function fetchBaeSystems(url: string): Promise<Job[]> {
                         location: loc,
                         url: jobUrl,
                         department: '',
-                        job_type: parseJobType([link.text()])
+                        job_type: parseJobType([link.text()]) || undefined
                     });
                 }
             });
@@ -1036,7 +1036,7 @@ async function fetchDCC(url: string): Promise<Job[]> {
                 
                 if (title && jobUrl && !seenUrls.has(jobUrl)) {
                     seenUrls.add(jobUrl);
-                    jobs.push({ title, url: jobUrl, location, job_type: parseJobType([item.postingTitle, item.transformedPostingTitle]) });
+                    jobs.push({ title, url: jobUrl, location });
                     jobsOnPage++;
                 }
             }
@@ -1689,7 +1689,7 @@ async function fetchEY(url: string): Promise<Job[]> {
                         if (title.substring(0, half) === title.substring(half)) title = title.substring(0, half);
                     }
                     
-                    jobs.push({ title, url: jobUrl, location, department: '', job_type: parseJobType([title, $(el).text()]) });
+                    jobs.push({ title, url: jobUrl, location, department: '', job_type: parseJobType([title, $(el).text()]) || undefined });
                     jobsOnPage++;
                 }
                 
