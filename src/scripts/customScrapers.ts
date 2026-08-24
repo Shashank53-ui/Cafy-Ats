@@ -1736,14 +1736,15 @@ async function fetchCapgemini(url: string): Promise<Job[]> {
     try {
         const targetUrl = `https://cg-jobstream-api.azurewebsites.net/api/job-search?country_code=en-gb%2Cgb-en%2Cen-gb%2Cgb-en&page=1&size=500`;
         
-        const res = await fetchWithTimeout(targetUrl, {
+        const res = await fetch(targetUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'application/json'
             }
-        }, 30000);
+        });
         
         if (!res.ok) {
+            console.error(`[Custom: Capgemini] API failed with status ${res.status}: ${res.statusText}`);
             return jobs;
         }
         
