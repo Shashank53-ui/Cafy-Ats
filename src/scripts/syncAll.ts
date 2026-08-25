@@ -40,7 +40,7 @@ import { isForeignLocationLeak } from '../lib/foreignLocationLeak';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
 import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
-import { parseJobType, resolveJobType } from '../lib/parseJobType';
+import { inferJobTypeFromListing, parseJobType, resolveJobType } from '../lib/parseJobType';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -2609,17 +2609,24 @@ export async function fetchOracleCloud(token: string): Promise<Job[]> {
             const reqList = payload.requisitionList || [];
             for (const j of reqList) {
                 let job_type_val = j.JobSchedule || j.JobType || j.WorkerType || j.employmentType;
-                
-                if (!job_type_val) {
+
+                if (!parseJobType(job_type_val)) {
                     try {
                         const detUrl = `https://${domain}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?finder=ById;Id=%22${j.Id}%22,siteNumber=%22${site}%22`;
                         const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
                         if (dRes.ok) {
                             const dData = (await dRes.json()) as any;
-                            job_type_val = dData.items?.[0]?.JobSchedule || dData.items?.[0]?.JobType || dData.items?.[0]?.WorkerType;
+                            job_type_val = dData.items?.[0]?.JobSchedule || dData.items?.[0]?.JobType || dData.items?.[0]?.WorkerType || job_type_val;
                         }
                     } catch { /* ignore */ }
                     await sleep(50);
+                }
+
+                // Next (and similar Oracle boards) often omit JobSchedule and only
+                // publish hours in the short description, e.g. "36 hrs p/w".
+                if (!parseJobType(job_type_val) && j.ShortDescriptionStr) {
+                    const fromHours = inferJobTypeFromListing({ cardText: j.ShortDescriptionStr });
+                    if (fromHours) job_type_val = fromHours;
                 }
 
                 allJobs.push({
@@ -2878,7 +2885,9 @@ async function fetchSuccessFactorsHtmlSearch(
                         location: location || (opts?.preferUk ? 'United Kingdom' : ''),
                         url: abs.split('?')[0],
                         department: row.find('span.jobDepartment, span.jobFacility').first().text().replace(/\s+/g, ' ').trim(),
-                        job_type: parseJobType([title, row.text()]),
+                        job_type: inferJobTypeFromListing({
+                            employmentField: row.find('.jobShifttype, .colShifttype, span.jobShifttype').first().text(),
+                        }),
                         salary: undefined,
                         verified: false,
                         atsProvider: 'successfactors',
@@ -3524,12 +3533,16 @@ async function fetchNHS(token: string): Promise<Job[]> {
 
         // Extract all job links
         const jobLinks = await page.$$eval('a[href*="/candidate/jobadvert/"]', links => {
-            return links.map(a => ({
-                title: a.textContent?.trim() || '',
-                url: (a as HTMLAnchorElement).href,
-                // The location and agency are usually in the same container
-                containerText: a.parentElement?.parentElement?.innerText || ''
-            }));
+            return links.map(a => {
+                const li = a.closest('li');
+                return {
+                    title: a.textContent?.trim() || '',
+                    url: (a as HTMLAnchorElement).href,
+                    containerText: li
+                        ? (li as HTMLElement).innerText
+                        : (a.parentElement?.parentElement?.innerText || ''),
+                };
+            });
         });
 
         const pushJobs = (links: any[]) => {
@@ -3545,11 +3558,13 @@ async function fetchNHS(token: string): Promise<Job[]> {
                     ) ||
                     lines[2] ||
                     'United Kingdom';
+                const jobType = inferJobTypeFromListing({ cardText: link.containerText });
                 allJobs.push({
                     title: link.title,
                     url: link.url,
                     location: locationLine,
                     department: agency,
+                    ...(jobType ? { job_type: jobType } : {}),
                     verified: true,
                 });
             }
@@ -3567,11 +3582,16 @@ async function fetchNHS(token: string): Promise<Job[]> {
             await page.waitForTimeout(2000);
 
             const pageLinks = await page.$$eval('a[href*="/candidate/jobadvert/"]', links => {
-                return links.map(a => ({
-                    title: a.textContent?.trim() || '',
-                    url: (a as HTMLAnchorElement).href,
-                    containerText: a.parentElement?.parentElement?.innerText || ''
-                }));
+                return links.map(a => {
+                    const li = a.closest('li');
+                    return {
+                        title: a.textContent?.trim() || '',
+                        url: (a as HTMLAnchorElement).href,
+                        containerText: li
+                            ? (li as HTMLElement).innerText
+                            : (a.parentElement?.parentElement?.innerText || ''),
+                    };
+                });
             });
 
             if (pageLinks.length === 0) break;

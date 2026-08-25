@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { Job, CompanyRow, fetchWithTimeout, fetchPhenom, fetchOracleCloud } from './syncAll';
-import { parseJobType } from '../lib/parseJobType';
+import { inferJobTypeFromListing, parseJobType } from '../lib/parseJobType';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
@@ -156,7 +156,8 @@ export async function fetchCustom(url: string, company?: CompanyRow): Promise<Jo
     if (url.includes('reading.ac.uk')) { return fetchReading(url); }
     // ID 1552 = Mind Foundry (greenhouse in DB) — route only by URL domain
     if (url.includes('mindfoundry.ai')) { return fetchMindFoundry(url); }
-    if (url.includes('next.co.uk') || url.includes('oraclecloud.com')) { return fetchNext(url); }
+    if (url.includes('next.co.uk')) { return fetchNext(url); }
+    if (url.includes('oraclecloud.com')) { return fetchOracleCloud(url); }
     if (url.includes('aize.io')) { return fetchAize(url); }
     if (url.includes('helloclue.com')) { return fetchClue(url); }
     if (url.includes('blackwall')) { return fetchBlackwall(url); }
@@ -356,6 +357,16 @@ async function fetchKPMG(url: string): Promise<Job[]> {
                 const href = $(el).find('a.view-job-description').attr('href');
                 
                 const jobUrl = href?.startsWith('/') ? `${baseUrl}${href}` : (href || '');
+                const vacancyId = $(el).attr('data-vacancy-id') || '';
+                const details = vacancyId
+                    ? $(`.vacancy-description[data-vacancy-id="${vacancyId}"]`)
+                    : $(el);
+                const employmentField = details
+                    .find('.vacancy-details-fields')
+                    .toArray()
+                    .map((n) => $(n).text().replace(/\s+/g, ' ').trim())
+                    .filter((t) => /employment type|contract type/i.test(t));
+                const jobType = inferJobTypeFromListing({ employmentField });
                 
                 if (title && jobUrl) {
                     jobs.push({
@@ -363,6 +374,7 @@ async function fetchKPMG(url: string): Promise<Job[]> {
                         location,
                         url: jobUrl,
                         department,
+                        ...(jobType ? { job_type: jobType } : {}),
                     });
                 }
             });
@@ -696,11 +708,20 @@ async function fetchBaeSystems(url: string): Promise<Job[]> {
                 const jobUrl = href.startsWith('http') ? href : `https://jobsearch.baesystems.com${href}`;
                 
                 if (title && href) {
+                    const card = link.closest('.job-card').length ? link.closest('.job-card') : link;
+                    const employmentField = card
+                        .find('.job-card__employment, .job-card__type, .job-type, .employment-type')
+                        .first()
+                        .text()
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    const jobType = inferJobTypeFromListing({ employmentField });
                     jobs.push({
                         title: title,
                         location: loc,
                         url: jobUrl,
-                        department: ''
+                        department: '',
+                        ...(jobType ? { job_type: jobType } : {}),
                     });
                 }
             });
@@ -905,10 +926,10 @@ async function fetchReading(url: string): Promise<Job[]> {
     return jobs;
 }
 
-async function fetchNext(url: string): Promise<Job[]> {
-    const jobs: Job[] = [];
-    console.log('[Custom: Next] Fetching...');
-    return jobs;
+async function fetchNext(_url: string): Promise<Job[]> {
+    console.log('[Custom: Next] Fetching Oracle Cloud HCM...');
+    // Next retail careers sit on Oracle HCM; careers.next.co.uk is a vanity host.
+    return fetchOracleCloud('ekeq.fa.em2.oraclecloud.com|CX_3001');
 }
 
 async function fetchAize(url: string): Promise<Job[]> {
@@ -1688,7 +1709,20 @@ async function fetchEY(url: string): Promise<Job[]> {
                         if (title.substring(0, half) === title.substring(half)) title = title.substring(0, half);
                     }
                     
-                    jobs.push({ title, url: jobUrl, location, department: '' });
+                    const employmentField = $(el)
+                        .find('.jobShifttype, .colShifttype, span.jobShifttype, .job-tile__shift')
+                        .first()
+                        .text()
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    const jobType = inferJobTypeFromListing({ employmentField });
+                    jobs.push({
+                        title,
+                        url: jobUrl,
+                        location,
+                        department: '',
+                        ...(jobType ? { job_type: jobType } : {}),
+                    });
                     jobsOnPage++;
                 }
                 
@@ -1739,9 +1773,10 @@ async function fetchCapgemini(url: string): Promise<Job[]> {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'application/json'
             }
-        }, 30000);
+        }, 60000);
         
         if (!res.ok) {
+            console.error(`[Custom: Capgemini] API failed with status ${res.status}: ${res.statusText}`);
             return jobs;
         }
         
@@ -1750,11 +1785,15 @@ async function fetchCapgemini(url: string): Promise<Job[]> {
         
         for (const job of items) {
             if (job.title && (job.apply_job_url || job.wp_url)) {
+                const jobType = inferJobTypeFromListing({
+                    employmentField: job.contract_type || job.employment_type,
+                });
                 jobs.push({
                     title: job.title,
                     location: job.location || job.city || 'United Kingdom',
                     url: job.apply_job_url || job.wp_url,
-                    department: job.sbu || job.professional_communities || ''
+                    department: job.sbu || job.professional_communities || '',
+                    ...(jobType ? { job_type: jobType } : {}),
                 });
             }
         }
@@ -1969,7 +2008,22 @@ async function fetchApple(url: string): Promise<Job[]> {
                                     const location = item.locations?.[0]?.name || (locCode === 'ireland-IRL' ? 'Ireland' : 'United Kingdom');
                                     
                                     if (title && jobId) {
-                                        jobs.push({ title, url: jobUrl, location });
+                                        const jobType = inferJobTypeFromListing({
+                                            employmentField: [
+                                                item.positionType,
+                                                item.roleType,
+                                                item.jobType,
+                                                item.weeklyHours != null
+                                                    ? `${item.weeklyHours} hours per week`
+                                                    : null,
+                                            ],
+                                        });
+                                        jobs.push({
+                                            title,
+                                            url: jobUrl,
+                                            location,
+                                            ...(jobType ? { job_type: jobType } : {}),
+                                        });
                                     }
                                 }
                                 foundData = true;
@@ -2207,7 +2261,19 @@ async function fetchBabcock(url: string): Promise<Job[]> {
                 const location = rawLoc || 'United Kingdom';
                 
                 if (title && jobUrl) {
-                    jobs.push({ title, url: jobUrl, location });
+                    const employmentField = $(el)
+                        .find('.jobShifttype, .colShifttype, span.jobShifttype')
+                        .first()
+                        .text()
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    const jobType = inferJobTypeFromListing({ employmentField });
+                    jobs.push({
+                        title,
+                        url: jobUrl,
+                        location,
+                        ...(jobType ? { job_type: jobType } : {}),
+                    });
                 }
             }
             

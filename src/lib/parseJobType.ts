@@ -74,6 +74,70 @@ function classifyOne(raw: string): AllowedJobType | null {
   return null;
 }
 
+/** Legal / T&C lines that mention "contract" but are not employment type. */
+const LISTING_NOISE =
+  /agenda for change|contract of employment|terms (and|&) conditions|equal opportunit/i;
+
+/**
+ * Pull short employment / hours lines from a job card.
+ * Ignores long body copy so legal footers cannot stamp Contract / Part-time.
+ */
+export function extractEmploymentSnippet(text: string): string | null {
+  if (!text) return null;
+  const lines = String(text)
+    .split(/[\n\r|;•·]+/)
+    .map((s) => s.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  const hits: string[] = [];
+  for (const line of lines) {
+    if (line.length > 80) continue;
+    if (LISTING_NOISE.test(line)) continue;
+    if (
+      /\b(full[\s-]?time|part[\s-]?time|permanent|fixed[\s-]?term|temporary|intern(ship)?|apprentice|bank|casual|locum|contract)\b/i.test(
+        line,
+      )
+    ) {
+      hits.push(line);
+    }
+  }
+  return hits.length ? hits.join(' ') : null;
+}
+
+/** UK listings often say "36 hrs p/w" instead of Full-time / Part-time. */
+export function parseHoursPerWeek(text: string): number | null {
+  const m = String(text || '').match(
+    /(\d+(?:\.\d+)?)\s*(?:hrs?|hours?)\s*(?:p\/w|per week|a week|\bpw\b)/i,
+  );
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function jobTypeFromWeeklyHours(hours: number): AllowedJobType | null {
+  if (!Number.isFinite(hours) || hours <= 0) return null;
+  return hours >= 30 ? 'Full-time' : 'Part-time';
+}
+
+/**
+ * Dedicated ATS field first, then short metadata lines, then weekly hours.
+ * Never pass a full HTML card into parseJobType — use this instead.
+ */
+export function inferJobTypeFromListing(input: {
+  employmentField?: unknown;
+  cardText?: string | null;
+}): AllowedJobType | null {
+  const fromField = parseJobType(input.employmentField);
+  if (fromField) return fromField;
+
+  const snippet = extractEmploymentSnippet(input.cardText || '');
+  const fromSnippet = parseJobType(snippet);
+  if (fromSnippet) return fromSnippet;
+
+  const hrs = parseHoursPerWeek(input.cardText || '');
+  return hrs != null ? jobTypeFromWeeklyHours(hrs) : null;
+}
+
 /**
  * Parse ATS employment type into an allowlisted job type.
  * Prefer short employment fields; when given an array, try shorter parts first
