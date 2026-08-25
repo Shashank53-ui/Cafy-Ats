@@ -20,7 +20,7 @@ const TRUST_EMB_WITHOUT_SUPPORT = new Set([
   'Finance',
   'Legal',
   'HR / People',
-  'Construction & Infrastructure',
+  // Construction omitted — MiniLM maps any "architect" / "lateral" here.
   // Sales/Marketing omitted — MiniLM often maps vague clinical/ops titles here.
   'Logistics & Transport',
   'Operations',
@@ -35,6 +35,9 @@ function tokens(text: string): string[] {
   return contentTokensForEmbedding(text);
 }
 
+const BUILDING_ARCHITECT =
+  /\b(landscape|riba|part\s*[123]|architectural|site architect|quantity surveyor|civil|structural|highways|town plann)\b/;
+
 /** True if the title shares enough substance with the sector prototype. */
 export function embeddingSupportedByTitle(title: string, embeddingSector: string): boolean {
   if (!ALLOWED.has(embeddingSector) || embeddingSector === 'Other') return false;
@@ -43,6 +46,16 @@ export function embeddingSupportedByTitle(title: string, embeddingSector: string
   const hay = `${embeddingSector} ${proto.base} ${proto.examples.join(' ')}`.toLowerCase();
   const titleToks = tokens(title);
   if (titleToks.length === 0) return false;
+  const t = title.toLowerCase();
+  // "Architect" alone is not Construction — solutions/business/cyber architects.
+  if (embeddingSector === 'Construction & Infrastructure' && /\barchitects?\b/.test(t)) {
+    if (!BUILDING_ARCHITECT.test(t)) {
+      const hits = titleToks.filter(
+        (w) => w !== 'architect' && w !== 'architects' && hay.includes(w),
+      );
+      if (hits.length === 0) return false;
+    }
+  }
   const hits = titleToks.filter((w) => hay.includes(w));
   return hits.length >= 1;
 }
