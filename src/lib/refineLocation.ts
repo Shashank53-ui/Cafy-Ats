@@ -23,16 +23,47 @@ const UK_COUNTRY_ONLY =
 const IE_COUNTRY_ONLY =
     /^(ireland|republic of ireland|eire|éire)$/i;
 
-function findCityInText(text: string, cities: string[]): string | null {
-    const lower = text.toLowerCase();
-    for (const city of cities) {
-        const re = new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-        if (re.test(lower)) return city;
-    }
-    return null;
+/** ATS count placeholders — not a real worksite. */
+const PLACEHOLDER_LOCATION =
+    /^(\d+\s+locations?|multiple locations?|multi[- ]?locations?)$/i;
+
+/** Regions / area labels longer than a single city — checked before London etc. */
+const UK_REGIONS = [
+    'East London', 'West London', 'North London', 'South London', 'Greater London',
+    'West Midlands', 'East Midlands', 'Midlands',
+    'Northern England', 'Southern England', 'North & Midlands', 'North and Midlands', 'North&Midlands',
+    'Scotland', 'Wales', 'Northern Ireland',
+    'South East', 'South West', 'North East', 'North West',
+];
+
+function isPlaceholderLocation(loc: string): boolean {
+    return PLACEHOLDER_LOCATION.test(loc.trim());
 }
 
-/** If location is country-only, lift a city from title/url when confidently present. */
+function findCityInText(text: string, cities: string[]): string | null {
+    const lower = text.toLowerCase();
+    let best: { label: string; index: number; length: number } | null = null;
+    for (const city of cities) {
+        const re = new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        const match = re.exec(lower);
+        if (!match) continue;
+        const candidate = { label: city, index: match.index, length: city.length };
+        if (
+            !best ||
+            candidate.index < best.index ||
+            (candidate.index === best.index && candidate.length > best.length)
+        ) {
+            best = candidate;
+        }
+    }
+    return best?.label ?? null;
+}
+
+function placeLabels(market: 'uk' | 'ireland'): string[] {
+    return market === 'uk' ? [...UK_REGIONS, ...UK_CITIES] : IE_CITIES;
+}
+
+/** If location is country-only or an ATS placeholder, lift a city/region from title/url. */
 export function refineVagueLocation(
     location: string | null | undefined,
     title?: string | null,
@@ -44,15 +75,22 @@ export function refineVagueLocation(
 
     const isCountryOnly =
         market === 'uk' ? UK_COUNTRY_ONLY.test(loc) : IE_COUNTRY_ONLY.test(loc);
-    if (!isCountryOnly) return loc;
+    if (!isCountryOnly && !isPlaceholderLocation(loc)) return loc;
 
-    const haystack = `${title || ''} ${url || ''}`;
-    const city = findCityInText(haystack, market === 'uk' ? UK_CITIES : IE_CITIES);
-    if (!city) return loc;
+    const labels = placeLabels(market);
+    // Title is the job's geography; URLs often name HQ / board cities.
+    const city =
+        findCityInText(String(title || ''), labels) ||
+        findCityInText(String(url || ''), labels);
+    if (!city) {
+        return isPlaceholderLocation(loc)
+            ? (market === 'ireland' ? 'Ireland' : 'United Kingdom')
+            : loc;
+    }
 
     // Avoid lifting when the match is clearly a non-target country context in the URL path.
     if (market === 'uk' && /\b(united-states|usa|australia|canada)\b/i.test(String(url || ''))) {
-        return loc;
+        return isPlaceholderLocation(loc) ? 'United Kingdom' : loc;
     }
 
     return city;
@@ -93,6 +131,10 @@ export function sanitizeJobLocation(
     let loc = String(location || '').trim();
     if (!loc) return fallback;
 
+    if (isPlaceholderLocation(loc)) {
+        return refineVagueLocation(fallback, title, url, market);
+    }
+
     const firstLine = loc.split(/\n/)[0].replace(/\+\s*\d+\s+more\b[.…]* /gi, '').trim();
     if (firstLine && isTargetMarketPart(firstLine, market) && firstLine.length <= 80) {
         loc = firstLine;
@@ -100,8 +142,10 @@ export function sanitizeJobLocation(
 
     loc = loc
         .replace(/\+\s*\d+\s+more\b[.…]* /gi, ' ')
+        .replace(/(?:,\s*)?multiple locations?/gi, ' ')
         .replace(/\n+/g, ' ')
         .replace(/\s{2,}/g, ' ')
+        .replace(/^,+|,+$/g, '')
         .trim();
 
     if (/^(gbr|gb)$/i.test(loc)) return 'United Kingdom';

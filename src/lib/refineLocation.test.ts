@@ -14,6 +14,50 @@ test('refineVagueLocation lifts city from title when location is United Kingdom'
     );
 });
 
+test('sanitizeJobLocation replaces N Locations / Multiple locations placeholders', () => {
+    assert.strictEqual(
+        sanitizeJobLocation('2 Locations', 'uk', 'Lift Service Engineer - East London'),
+        'East London',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('4 Locations', 'uk', 'Join Our Talent Pool: Lift Engineers in Scotland'),
+        'Scotland',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('Multiple locations', 'uk', 'Corporate Tax Manager - Midlands'),
+        'Midlands',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('Multiple locations', 'uk', 'Corporate Tax Manager - Milton Keynes or Watford'),
+        'Milton Keynes',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('7 Locations', 'uk', 'Data Science AI Strategy, UK'),
+        'United Kingdom',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('United Kingdom, Multiple Locations, Multiple Locations', 'uk', 'Analyst'),
+        'United Kingdom',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation(
+            '4 Locations',
+            'uk',
+            'Join Our Talent Pool: Lift Engineers in Midlands',
+            'https://boards.greenhouse.io/otis/jobs/123?office=Birmingham',
+        ),
+        'Midlands',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation(
+            'Multiple locations',
+            'uk',
+            'Manager - Audit & Accounting Related Tax Services - London or Birmingham',
+        ),
+        'London',
+    );
+});
+
 test('sanitizeJobLocation maps codes and strips N/A', () => {
     assert.strictEqual(sanitizeJobLocation('GBR', 'uk'), 'United Kingdom');
     assert.strictEqual(sanitizeJobLocation('R062179', 'ireland'), 'Ireland');
