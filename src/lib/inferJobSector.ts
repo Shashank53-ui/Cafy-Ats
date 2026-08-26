@@ -1,8 +1,5 @@
 import { ALLOWED_SECTORS } from './constants';
 
-const IT_ARCHITECT_CUES =
-    /\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|it|application|infrastructure|network|aws|azure|saas|salesforce|sap|workday|identity|cyber|ai|ml)\b/;
-
 /** Patient-facing pharmacy / clinical care — keep under Healthcare, not industry Pharmaceutical. */
 const PATIENT_FACING_PHARMACY_OR_CARE =
     /\b(pharmacist|pharmacy technician|pharmacy accuracy|gp practice pharmacist|retail pharmacy|inpatient pharmacy|outpatient pharmacy|nurse|doctor|physician|midwife|paramedic|dentist|\bgp\b)\b/;
@@ -13,7 +10,7 @@ const NON_PHARMA_ROLE_OVERRIDE =
 
 /** Job *functions* that are pharmaceutical (lab / GMP / drug development). */
 const PHARMA_ROLE_SIGNAL =
-    /\b(pharmacovigilance|drug discovery|drug development|medicinal chemistry|bioprocess|biomanufacturing|biotechnician|formulation scientists?|process development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
+    /\b(pharmacovigilance|drug discovery|drug development|medicinal chemistry|organic chemists?|production chemists?|process chemists?|medicinal chemists?|bioprocess|biomanufacturing|biotechnician|formulation scientists?|process development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
 
 /** Industry domain tags — must not beat sales/engineering/finance job functions. */
 const PHARMA_DOMAIN_TAG =
@@ -40,7 +37,7 @@ export const RULES: [RegExp, string][] = [
     // (handled in inferJobSectorUnclamped with software-context cues).
     // IT service desk / app support / IT support are ops — not SWE (see overrides).
     [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa engineers?|quality assurance engineers?|sdet|test automation)\b/, 'Engineering (Software)'],
-    [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap)\s+architect\b/, 'Engineering (Software)'],
+    [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap|cybersecurity|devsecops|full[\s-]?stack|kubernetes)\s+architects?\b/, 'Engineering (Software)'],
     // Pharmaceutical — specific lab/GMP/drug-development *roles* only (not "Life Sciences" BD tags).
     [PHARMA_ROLE_SIGNAL, 'Pharmaceutical'],
     // Engineering (Hardware) — plant maintenance / reliability (not SRE)
@@ -64,14 +61,14 @@ export const RULES: [RegExp, string][] = [
     // Legal
     [/\b(legal|counsel|lawyer|attorney|solicitor|compliance|paralegal|data protection|gdpr|privacy analysts?|\bprivacy\b)\b/, 'Legal'],
     // Marketing & PR
-    [/\b(marketing|brand|content|social media|communications|seo|search engine optimization|growth|public relations|pr|copywriter|copywriting)\b/, 'Marketing & PR'],
-    // Design — include interior architecture / art direction (merchandiser overridden earlier)
+    [/\b(marketing|marketers?|brand|content|social media|communications|seo|search engine optimization|organic search|growth|public relations|pr|copywriter|copywriting)\b/, 'Marketing & PR'],
+    // Design — interior / UX / graphic. Org design is strategy (handled before matchRules).
     [/\b(interior architect|interior design|ui|ux|product designer|graphic|creative|art directors?)\b/, 'Design'],
-    [/\b(design)\b/, 'Design'],
+    [/\bdesign\b/, 'Design'],
     // Product Management — \bproduct\b catches ATS depts named "Product"
     [/\b(product manager|product management|product owner|product lead|head of product|product)\b/, 'Product Management'],
     // Project Management
-    [/\b(project manager|programme|program manager|scrum|agile|delivery manager|project portfolio|portfolio (&|and) governance|client delivery)\b/, 'Project Management'],
+    [/\b(project manager|programme|program manager|scrum|agile|delivery manager|project portfolio|portfolio (&|and) governance|client delivery|project controllers?|project coordinators?|project schedulers?|project administrators?)\b/, 'Project Management'],
     // Sales & Partnerships — include GTM / go-to-market ATS team labels
     [/\b(sales|partnerships|business development|account executive|bdr|sdr|revenue|client advisor|account director|partner manager|partnership manager|alliance managers?|client partners?|commercial managers?|go[\s-]*to[\s-]*market|goto\s*market|\bgtm\b)\b/, 'Sales & Partnerships'],
     // Customer Success
@@ -88,7 +85,7 @@ export const RULES: [RegExp, string][] = [
     // Service desk / IT support are workplace IT ops, not Engineering (Software).
     [/\b(operations|facilities|admin|procurement|purchasing|executive assistant|branch manager|deputy manager|assistant managers?|operational trainer|client processing|prisoner custody|production planners?|siam|workplace experience|events?.{0,20}operative|night painters?|\bpainters?\b|pick up and return|\behs\b|health and safety|workshop instructors?|service desk|it (onsite )?support|application support|application analysts?|applications? analysts?)\b/, 'Operations'],
     // Research (Non-technical) — specific phrases before generic research
-    [/\b(market research|user research|insights analyst|ux research)\b/, 'Research (Non-technical)'],
+    [/\b(market research|user research|consumer insights|insights analyst|ux research)\b/, 'Research (Non-technical)'],
     // Research (Technical)
     [/\b(research|scientist|r&d|phd|investigator|physicists?|researchers?)\b/, 'Research (Technical)'],
     // Media & Journalism
@@ -411,6 +408,16 @@ function inferJobSectorUnclamped(
         return 'Healthcare';
     }
 
+    // Org / operating-model design is strategy, not UX/graphic design.
+    if (/\borg(anisational|anizational)? design\b/.test(t)) {
+        return 'Business & Strategy';
+    }
+
+    // Product marketers (including those targeting "Enterprise Architects").
+    if (/\b(product marketing|performance marketers?|marketers?)\b/.test(t)) {
+        return 'Marketing & PR';
+    }
+
     // Field regulatory affairs (ads/promo, pharma, medtech) — clinical-adjacent.
     if (/\bregulatory affairs\b/.test(t)) {
         return 'Healthcare';
@@ -427,7 +434,10 @@ function inferJobSectorUnclamped(
     }
 
     if (/\bmedical devices?\b.*\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b|\b(regulatory|quality|compliance|engineer(ing)?|manufactur|design assurance)\b.*\bmedical devices?\b/.test(combined)) {
-        return 'Pharmaceutical';
+        // Cyber / product-security on a device is software, not pharma manufacturing.
+        if (!/\b(cyber|cybersecurity|infosec|product security|software)\b/.test(t)) {
+            return 'Pharmaceutical';
+        }
     }
 
     if (/\bproduct design(er|ers)?\b/.test(t)) {
@@ -456,10 +466,8 @@ function inferJobSectorUnclamped(
         if (/\binterior\b/.test(combined)) return 'Design';
         return 'Construction & Infrastructure';
     }
-    if (/\barchitects?\b/.test(combined) && !IT_ARCHITECT_CUES.test(combined)) {
-        if (/\binterior\b/.test(combined)) return 'Design';
-        return 'Construction & Infrastructure';
-    }
+    // Do not stamp remaining "Architect" titles as buildings — solutions /
+    // business / cyber architects fall through to title rules.
 
     if (/\b(anti-?doping|sports anti-?doping)\b/.test(combined)) {
         return 'Research (Technical)';

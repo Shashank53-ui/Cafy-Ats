@@ -39,6 +39,17 @@ test('software engineer rules path', () => {
   assert.equal(r.sector, 'Engineering (Software)');
 });
 
+test('IT architect titles do not count as Construction title-support', () => {
+  assert.equal(embeddingSupportedByTitle('Cybersecurity Architect', 'Construction & Infrastructure'), false);
+  assert.equal(embeddingSupportedByTitle('Business Architect', 'Construction & Infrastructure'), false);
+  assert.equal(embeddingSupportedByTitle('Landscape Architect', 'Construction & Infrastructure'), true);
+});
+
+test('Construction embedding does not fill Other for business architect', () => {
+  const r = mergeJobSector('Other', 'Construction & Infrastructure', 'Business Architect');
+  assert.equal(r.sector, 'Other');
+});
+
 test('thin titles do not take embedding Construction guesses', () => {
   const r = mergeJobSector('Other', 'Construction & Infrastructure', 'Lateral');
   assert.equal(r.sector, 'Other');
