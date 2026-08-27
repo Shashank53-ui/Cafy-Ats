@@ -43,6 +43,7 @@ test('IT architect titles do not count as Construction title-support', () => {
   assert.equal(embeddingSupportedByTitle('Cybersecurity Architect', 'Construction & Infrastructure'), false);
   assert.equal(embeddingSupportedByTitle('Business Architect', 'Construction & Infrastructure'), false);
   assert.equal(embeddingSupportedByTitle('Landscape Architect', 'Construction & Infrastructure'), true);
+  assert.equal(embeddingSupportedByTitle('Associate Director - Landscape Architecture', 'Construction & Infrastructure'), true);
 });
 
 test('Construction embedding does not fill Other for business architect', () => {
