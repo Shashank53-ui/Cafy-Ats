@@ -29,7 +29,7 @@ const PHARMA_COMPANY_SECTOR =
 // a given job without re-implementing/duplicating the match logic.
 export const RULES: [RegExp, string][] = [
     // Built-environment architecture — BEFORE software "architect" catch-all
-    [/\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\s+architect|riba|architecture practice)\b/, 'Construction & Infrastructure'],
+    [/\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architects?|landscape architecture|part\s*[123]\s+architect|riba|architecture practice)\b/, 'Construction & Infrastructure'],
     // Engineering (Software) — IT architects + developers (not building architects).
     // Bare "technology" deliberately excluded — IB/coverage titles like
     // "Investment Banking - EMEA Technology" are Finance, not SWE.
@@ -37,7 +37,7 @@ export const RULES: [RegExp, string][] = [
     // (handled in inferJobSectorUnclamped with software-context cues).
     // IT service desk / app support / IT support are ops — not SWE (see overrides).
     [/\b(software|esoftware|developer|frontend|backend|fullstack|full.stack|ios|android|devops|devsecops|mlops|sre|machine learning|ml engineer|ai engineer|cybersecurity|cyber security|infosec|information security|penetration test|pen test|qa engineers?|quality assurance engineers?|sdet|test automation)\b/, 'Engineering (Software)'],
-    [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|application|infrastructure|network|salesforce|sap|cybersecurity|devsecops|full[\s-]?stack|kubernetes)\s+architects?\b/, 'Engineering (Software)'],
+    [/\b(software|solution|solutions|cloud|enterprise|data|security|systems?|technical|platform|platforms?|application|infrastructure|network|salesforce|sap|servicenow|cybersecurity|devsecops|full[\s-]?stack|kubernetes|observability|migration|integration|information|test|digital|domain|cluster|deployment|transformation|hosting|aiops|cobol|e2e|viva|agentic|service)\s+architects?\b/, 'Engineering (Software)'],
     // Pharmaceutical — specific lab/GMP/drug-development *roles* only (not "Life Sciences" BD tags).
     [PHARMA_ROLE_SIGNAL, 'Pharmaceutical'],
     // Engineering (Hardware) — plant maintenance / reliability (not SRE)
@@ -174,6 +174,15 @@ export function inferJobSector(
 /** ATS org labels that are NOT job functions — never use alone for sector. */
 const WEAK_DEPARTMENTS =
     /^(digital|technology|technologies|tech|it|information technology|corporate|general|company|other|various|all|central|group|uk|emea|global|enterprise|innovation|transformation|platform|platforms|solutions|shared services|business unit|bu)$/i;
+
+const BUILDING_ARCHITECT_TITLE =
+    /\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architects?|landscape architecture|part\s*[123]\s+architect|riba|architecture practice)\b/;
+
+function isNonBuildingArchitectTitle(title: string): boolean {
+    if (!title) return false;
+    if (BUILDING_ARCHITECT_TITLE.test(title)) return false;
+    return /\barchitects?\b/.test(title) || /\bplatform architecture\b/.test(title);
+}
 
 function isWeakDepartment(department: string): boolean {
     const d = department.toLowerCase().trim();
@@ -459,12 +468,52 @@ function inferJobSectorUnclamped(
     }
 
     if (
-        /\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architect|part\s*[123]\b.*architect|riba)\b/.test(
+        /\b(architectural (assistant|technologist|designer|coordinator|technician|manager)|landscape architects?|landscape architecture|part\s*[123]\b.*architect|riba)\b/.test(
             combined
         )
     ) {
         if (/\binterior\b/.test(combined)) return 'Design';
         return 'Construction & Infrastructure';
+    }
+    if (
+        /\barchitecture\b/.test(t) &&
+        !/\b(platform|enterprise|solution|solutions|software|data|security|cloud|systems?|information|domain|digital|gpu) architecture\b/.test(t)
+    ) {
+        return 'Construction & Infrastructure';
+    }
+
+    if (/\bnaval architects?\b/.test(t)) {
+        return 'Engineering (Other)';
+    }
+    if (
+        /\b(gpu|processor|graphics|photonics|micro-architects?)\b/.test(t) &&
+        /\barchitect/.test(t)
+    ) {
+        return 'Engineering (Hardware)';
+    }
+    if (/\bsoc\b/.test(t) && /\b(compute|memory|subsystem)\b/.test(t)) {
+        return 'Engineering (Hardware)';
+    }
+    if (
+        /\b(outcomes|forward deployed|chief client|chief strategic|deal)\s+architects?\b/.test(t) ||
+        (/\bmanaging architect\b/.test(t) && /\b(emea|uki|sales|french)\b/.test(t))
+    ) {
+        return 'Sales & Partnerships';
+    }
+    if (/\bprocess architects?\b/.test(t)) {
+        return 'Business & Strategy';
+    }
+    if (/\bemployee experience\b/.test(t) && /\barchitects?\b/.test(t)) {
+        return 'HR / People';
+    }
+    if (/\b(ms lead architects?|platform architecture)\b/.test(t)) {
+        return 'Engineering (Software)';
+    }
+    if (/\barchitects?\b/.test(t) && /\baiops\b/.test(t)) {
+        return 'Engineering (Software)';
+    }
+    if (/\barchitects?\b/.test(t) && /\bsecurities\b/.test(t)) {
+        return 'Finance';
     }
     // Do not stamp remaining "Architect" titles as buildings — solutions /
     // business / cyber architects fall through to title rules.
@@ -492,6 +541,11 @@ function inferJobSectorUnclamped(
         ) {
             return 'Pharmaceutical';
         }
+    }
+
+    // Vague "Architect" titles must not inherit company Construction / Media.
+    if (isNonBuildingArchitectTitle(t)) {
+        return null;
     }
 
     // P2: Strong department only (never Digital/Technology/IT/Corporate alone)

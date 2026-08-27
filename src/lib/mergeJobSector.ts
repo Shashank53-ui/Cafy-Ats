@@ -36,7 +36,7 @@ function tokens(text: string): string[] {
 }
 
 const BUILDING_ARCHITECT =
-  /\b(landscape|riba|part\s*[123]|architectural|site architect|quantity surveyor|civil|structural|highways|town plann)\b/;
+  /\b(landscape|riba|part\s*[123]|architectural|architecture|site architect|quantity surveyor|civil|structural|highways|town plann)\b/;
 
 /** True if the title shares enough substance with the sector prototype. */
 export function embeddingSupportedByTitle(title: string, embeddingSector: string): boolean {

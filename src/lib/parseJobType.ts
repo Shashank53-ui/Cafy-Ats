@@ -40,11 +40,16 @@ function classifyOne(raw: string): AllowedJobType | null {
   if (/\b(part[\s-]?time|parttime|\bpt\b)\b/.test(l)) return 'Part-time';
   if (/\b(full[\s-]?time|fulltime|\bft\b|permanent)\b/.test(l)) return 'Full-time';
 
-  if (/\b(placement scheme|industrial placement|year in industry|sandwich year)\b/.test(l)) {
+  if (/\b(placement scheme|industrial placement|graduate placement|year in industry|sandwich year)\b/.test(l)) {
     return 'Placement scheme';
   }
 
-  if (/\b(internships?|\bintern\b|co-?op|apprentice|apprenticeship|graduate (scheme|program|programme)|student placement)\b/.test(l)) {
+  // Do not treat "Co-op Academy" / supermarket Co-op as a university co-op internship.
+  if (
+    /\b(internships?|\bintern\b|apprentice|apprenticeship|graduate (scheme|program|programme)|student placement)\b/.test(l) ||
+    /\bco-?op\s+(?:intern|student|program|programme|placement|engineer|developer)\b/.test(l) ||
+    /\b(?:intern|student)\s+co-?op\b/.test(l)
+  ) {
     return 'Internship';
   }
 
@@ -177,7 +182,13 @@ export function resolveJobType(input: {
     return fromTitle;
   }
 
-  if (fromEmployment) return fromEmployment;
+  const titleNorm = normalize(String(input.title || ''));
+  if (
+    fromEmployment &&
+    !(fromEmployment === 'Contract' && CONTRACT_FALSE_POSITIVE.test(titleNorm))
+  ) {
+    return fromEmployment;
+  }
   if (fromTitle) return fromTitle;
   if ((input.level || '').trim() === 'Internship') return 'Internship';
   return 'Full-time';
