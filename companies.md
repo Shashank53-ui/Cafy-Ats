@@ -43,91 +43,19 @@ We have dedicated fetchers to pull jobs from these Applicant Tracking Systems:
 We have bespoke scrapers built for the following specific companies (some have their own generic boards, but we use a custom script/function for them):
 
 1. **Airbnb** -> Implemented
-2. **Aize**
-3. **AlphaSights** -> Implemented
-4. **Amazon** -> Implemented
-5. **Ampa**
-6. **Apple** -> Implemented
-7. **Arup**
-8. **AstraZeneca**
-9. **Babcock** -> Implemented
-10. **BAE Systems** -> Implemented
-11. **BBC**
-12. **BIC**
-13. **Blackwall**
-14. **BlueLight**
-15. **Booking.com**
-16. **Bromcom**
-17. **BT Group**
-18. **Capgemini** -> Implemented
-19. **Clue**
-20. **Cognism**
-21. **Collinson**
-22. **Cynergy** -> recheck
-23. **Datadog**
-24. **DCC**
-25. **Depop**
-26. **DocuSign**
-27. **Dojo**
-28. **EasyJet**
-29. **Elastic**
-30. **EY** -> Implemented
-31. **Fastly**
-32. **Fisher**
-33. **Fitch Group**
-34. **Gates**
-35. **Goldman Sachs** -> Implemented
-36. **Google** -> recheck
-37. **GXO**
-38. **Helsing**
-39. **Hikma**
-40. **IBM** -> Implemented
-41. **Infobric**
-42. **Jacobs** -> recheck
-43. **Jaguar Land Rover (JLR)**
-44. **JPMorgan** -> recheck
-45. **KPMG** -> Implemented
-46. **LEVC**
-47. **LinkedIn**
-48. **Logically**
-49. **Lucanet**
-50. **McKinsey**
-51. **McLaren**
-52. **Mercor**
-53. **Meta**
-54. **Metro Bank**
-55. **Microsoft**
-56. **Mind Foundry**
-57. **NetJets**
-58. **Network Rail**
-59. **Next** -> Implemented
-60. **NHS** -> Implemented
-61. **Nothing**
-62. **Nottingham**
-63. **Otrium**
-64. **Prosek**
-65. **Public**
-66. **Publicis**
-67. **Qualcomm**
-68. **Rathbones**
-69. **Reading**
-70. **Royal Mail**
-71. **Salsify**
-72. **Samsara**
-73. **Sanofi**
-74. **Serco**
-75. **Siemens**
-76. **Spire**
-77. **Standard Chartered**
-78. **Stripe**
-79. **Sumup**
-80. **Teach First**
-81. **Tesco**
-82. **Trustpilot**
-83. **UHG**
-84. **Vodafone**
-85. **Vorboss**
-86. **Wipro**
-87. **WSP**
-88. **Zenobe**
-89. **Zwift**
+2. **AlphaSights** -> Implemented
+3. **Amazon** -> Implemented
+4. **Apple** -> Implemented
+5. **Babcock** -> Implemented
+6. **BAE Systems** -> Implemented
+7. **Capgemini** -> Implemented
+8. **Cynergy** -> recheck
+9. **EY** -> Implemented
+10. **Goldman Sachs** -> Implemented
+11. **Google** -> recheck
+12. **IBM** -> Implemented
+13. **Jacobs** -> recheck
+14. **JPMorgan** -> recheck
+15. **KPMG** -> Implemented
+16. **Next** -> Implemented
+17. **NHS** -> Implemented
