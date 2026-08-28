@@ -1402,16 +1402,16 @@ async function fetchJibe(domain: string): Promise<Job[]> {
             const data = await res.json();
             const jobs = data.jobs || [];
             if (jobs.length === 0) break;
-            
+
             for (const j of jobs) {
                 const title = j.title || j.data?.title || '';
                 const location = j.full_location || j.location || j.city || j.data?.full_location || j.data?.location || j.data?.city || '';
                 const slug = j.slug || j.req_id || j.id || j.data?.slug || j.data?.req_id || j.data?.id;
-                
+
                 if (title && slug) {
                     let dept = j.category || j.data?.category || '';
                     if (Array.isArray(dept)) dept = dept.join(', ');
-                    
+
                     let jobTypeField = j.job_type || j.employment_type || j.type || j.data?.job_type || j.data?.employment_type || j.data?.type || '';
                     if (Array.isArray(jobTypeField)) jobTypeField = jobTypeField.join(' ');
 
@@ -1494,18 +1494,18 @@ async function fetchAshby(token: string): Promise<Job[]> {
         // Try the JSON API first
         const r = await fetchWithTimeout(`https://api.ashbyhq.com/posting-api/job-board/${token}`);
         if (r.ok) {
-        const d = await r.json();
-        return (d.jobs || []).map((j: any) => {
-            const locRaw = typeof j.location === 'string' ? j.location : (j.location?.name || '');
-            const secLocs = (j.secondaryLocations || [])
-                .map((l: any) => typeof l === 'string' ? l : (l.location || l.name || ''))
-                .join(' ');
-            // Gap 4: Ashby Remote boolean check
-            return {
-                title: j.title || '',
-                location: `${locRaw} ${secLocs} ${j.isRemote ? 'Remote' : ''}`.trim(),
-                url: j.jobUrl || '',
-                department: j.department || '',
+            const d = await r.json();
+            return (d.jobs || []).map((j: any) => {
+                const locRaw = typeof j.location === 'string' ? j.location : (j.location?.name || '');
+                const secLocs = (j.secondaryLocations || [])
+                    .map((l: any) => typeof l === 'string' ? l : (l.location || l.name || ''))
+                    .join(' ');
+                // Gap 4: Ashby Remote boolean check
+                return {
+                    title: j.title || '',
+                    location: `${locRaw} ${secLocs} ${j.isRemote ? 'Remote' : ''}`.trim(),
+                    url: j.jobUrl || '',
+                    department: j.department || '',
                     salary: undefined,
                     atsProvider: 'ashby',
                     job_type: parseJobType(j.employmentType),
@@ -1668,28 +1668,28 @@ async function fetchWorkable(token: string): Promise<Job[]> {
 
 async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
     const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0';
-    
+
     const domainsToTry: string[] = [];
     if (token.includes('.')) domainsToTry.push(token);
     else domainsToTry.push(`${token}.teamtailor.com`);
-    
+
     if (company?.careers_url) {
         try {
             const urlObj = new URL(company.careers_url);
             if (!domainsToTry.includes(urlObj.hostname)) {
                 domainsToTry.push(urlObj.hostname);
             }
-        } catch {}
+        } catch { }
     }
 
     for (const domain of domainsToTry) {
-    // 1. Try JSON first
-    try {
+        // 1. Try JSON first
+        try {
             const url = `https://${domain}/jobs.json`;
-        const r = await fetchWithTimeout(url, {
-            headers: {
-                'User-Agent': ua,
-                'Accept': 'application/vnd.api+json',
+            const r = await fetchWithTimeout(url, {
+                headers: {
+                    'User-Agent': ua,
+                    'Accept': 'application/vnd.api+json',
                     'Referer': `https://${domain}/`
                 }
             });
@@ -1720,26 +1720,26 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
                         };
                     });
                 }
-        }
-    } catch { }
+            }
+        } catch { }
 
-    // 2. Try RSS as fallback
-    try {
+        // 2. Try RSS as fallback
+        try {
             const rssUrl = `https://${domain}/jobs.rss`;
-        const r = await fetchWithTimeout(rssUrl, { headers: { 'User-Agent': ua } });
+            const r = await fetchWithTimeout(rssUrl, { headers: { 'User-Agent': ua } });
             if (r.ok) {
-        const xml = await r.text();
-        const $ = cheerio.load(xml, { xmlMode: true });
-        const jobs: Job[] = [];
+                const xml = await r.text();
+                const $ = cheerio.load(xml, { xmlMode: true });
+                const jobs: Job[] = [];
 
-        $('item').each((_, el) => {
-            const item = $(el);
+                $('item').each((_, el) => {
+                    const item = $(el);
                     const city = item.find('tt\\:city').text().trim();
                     const country = item.find('tt\\:country').text().trim();
                     const ttLoc = [city, country].filter(Boolean).join(', ');
-                    
-            jobs.push({
-                title: item.find('title').text().trim(),
+
+                    jobs.push({
+                        title: item.find('title').text().trim(),
                         location: ttLoc || item.find('description').text().split('·')[1]?.trim() || '',
                         url: item.find('link').text().trim(),
                         department: item.find('category').first().text().trim(),
@@ -1815,9 +1815,9 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
                 url: `https://jobs.smartrecruiters.com/${token}/${j.id}`,
                 department: j.department?.label || '',
                 job_type: parseJobType([
-                    j.name, 
-                    j.department?.label, 
-                    j.typeOfEmployment?.label, 
+                    j.name,
+                    j.department?.label,
+                    j.typeOfEmployment?.label,
                     j.typeOfEmployment?.id,
                     j.employmentType,
                     j.type
@@ -2195,7 +2195,7 @@ async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
                 job_type: parseJobType(undefined)
             }));
     } catch {
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
         return [];
     }
 }
@@ -2267,8 +2267,8 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
             slug = parts[1];
             board = parts.slice(2).join('/') || 'External';
         } else {
-        slug = parts[0];
-        board = parts.slice(1).join('/');
+            slug = parts[0];
+            board = parts.slice(1).join('/');
         }
     }
 
@@ -2457,7 +2457,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                     }
 
                     if (currentPosts.length === 0) break;
-                    
+
                     const limitDetails = pLimit(10);
                     const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
                         let job_type_val = j.timeType || j.bulletFields;
@@ -2584,9 +2584,9 @@ export async function fetchOracleCloud(token: string): Promise<Job[]> {
         }
 
         if (!site) site = 'CX_1'; // Default site for Oracle Cloud HCM
-        
+
         domain = domain.trim().replace(/\/+$/, '');
-        
+
         // Fix incomplete domains from legacy data (e.g., jpmc.fa or *.fa.ocs)
         if (!domain.includes('.com') && !domain.includes('.co.uk') && !domain.includes('.org') && domain.includes('.fa')) {
             domain += '.oraclecloud.com';
@@ -2598,18 +2598,18 @@ export async function fetchOracleCloud(token: string): Promise<Job[]> {
 
         while (hasMore) {
             const url = `https://${domain}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.workLocation,requisitionList.otherWorkLocations,requisitionList.secondaryLocations,flexFieldsFacet.values,requisitionList.requisitionFlexFields&finder=findReqs;siteNumber=${site},facetsList=LOCATIONS%3BWORK_LOCATIONS%3BWORKPLACE_TYPES%3BTITLES%3BCATEGORIES%3BORGANIZATIONS%3BPOSTING_DATES%3BFLEX_FIELDS,limit=${limit},offset=${offset},sortBy=POSTING_DATES_DESC`;
-            
-        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+
+            const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
             if (!res.ok) break;
 
-        const data: any = await res.json();
+            const data: any = await res.json();
             const payload = data.items?.[0];
             if (!payload) break;
 
             const reqList = payload.requisitionList || [];
             for (const j of reqList) {
                 let job_type_val = j.JobSchedule || j.JobType || j.WorkerType || j.employmentType;
-                
+
                 // Next specific parsing for hours per week
                 if (!job_type_val && j.ShortDescriptionStr) {
                     const match = j.ShortDescriptionStr.match(/(\d+(?:\.\d+)?)\s*hrs\s*p\/w/i);
@@ -2644,14 +2644,14 @@ export async function fetchOracleCloud(token: string): Promise<Job[]> {
             const totalCount = payload.TotalJobsCount || 0;
             offset += limit;
             hasMore = offset < totalCount;
-            
+
             // Safety bound: Oracle HCM usually maxes out or times out if >10000 jobs are listed in a single site
             if (offset > 10000) break;
         }
 
         return allJobs;
     } catch (e) {
-        return allJobs; 
+        return allJobs;
     }
 }
 
@@ -2708,20 +2708,20 @@ async function fetchWipro(token: string): Promise<Job[]> {
 async function fetchSuccessFactors(token: string): Promise<Job[]> {
     try {
         let domain = token;
-        
+
         // If the token is just a company ID like 'bmwag', construct the default legacy URL to extract the real CSB domain
         if (!token.includes('.') && !token.includes('http')) {
             token = `https://career2.successfactors.eu/careers?company=${token}`;
         }
-        
+
         if (token.includes('http')) {
             const redirectRes = await fetchWithTimeout(token, { headers: { 'User-Agent': 'Mozilla/5.0' }, redirect: 'follow' });
             const htmlText = await redirectRes.text();
-            
-            const csbMatch = htmlText.match(/https?:\/\/([^\/]+)\/services\/security\/logoutp/i) || 
-                             htmlText.match(/https?:\/\/([^\/]+)\/search\/?\?/i) ||
-                             htmlText.match(/https?:\/\/(jobdetails\.[^\/\"']+)/i) ||
-                             htmlText.match(/https?:\/\/(careers\.[^\/\"']+)/i);
+
+            const csbMatch = htmlText.match(/https?:\/\/([^\/]+)\/services\/security\/logoutp/i) ||
+                htmlText.match(/https?:\/\/([^\/]+)\/search\/?\?/i) ||
+                htmlText.match(/https?:\/\/(jobdetails\.[^\/\"']+)/i) ||
+                htmlText.match(/https?:\/\/(careers\.[^\/\"']+)/i);
             if (csbMatch) {
                 domain = csbMatch[1];
             } else {
@@ -2845,7 +2845,7 @@ async function fetchSuccessFactorsHtmlSearch(
             `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('GB')}`,
             `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('United Kingdom')}`,
             `${csbBaseUrl}/search/?q=`,
-          ]
+        ]
         : [`${csbBaseUrl}/search/?q=`];
 
     for (const baseSearch of queries) {
@@ -2962,9 +2962,9 @@ export async function fetchEightfold(token: string): Promise<Job[]> {
         apiDomain = parts[1];
     } else {
         const domain = parts[0];
-    if (!domain) return [];
+        if (!domain) return [];
         country = parts[1] || '';
-        
+
         if (!domain.includes('.')) {
             host = domain + '.eightfold.ai';
             apiDomain = domain + '.com';
@@ -3029,7 +3029,7 @@ async function fetchICIMS(token: string): Promise<Job[]> {
             if (!res.ok) break;
 
             const html = await res.text();
-            
+
             // Check for Jibe redirect (e.g., SiriusXM / Adswizz)
             const jibeMatch = html.match(/window\.top\.location\.href\s*=\s*['"]([^'"]+)['"]/i);
             if (jibeMatch) {
@@ -3043,7 +3043,7 @@ async function fetchICIMS(token: string): Promise<Job[]> {
 
             const $ = cheerio.load(html);
             const cards = $('.iCIMS_JobsTable .iCIMS_JobCardItem');
-            
+
             if (cards.length === 0) break;
 
             cards.each((_, el) => {
@@ -3087,17 +3087,17 @@ async function fetchRippling(token: string): Promise<Job[]> {
         const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
         if (!match) return [];
         const data = JSON.parse(match[1]);
-        
+
         const buildId = data.buildId;
         const allItems: any[] = [];
-        
+
         // Extract page 0 jobs
         const queries = data?.props?.pageProps?.dehydratedState?.queries || [];
         const jobQuery = queries.find((q: any) => q?.queryKey?.includes('job-posts'));
-        
+
         if (jobQuery?.state?.data) {
             allItems.push(...(jobQuery.state.data.items || []));
-            
+
             const totalPages = jobQuery.state.data.totalPages || 1;
             for (let p = 1; p < totalPages; p++) {
                 try {
@@ -3252,7 +3252,7 @@ async function fetchGoldmanSachs(token: string): Promise<Job[]> {
             page++;
         }
     } catch (e) { console.error("Goldman Sachs Error:", e); } finally {
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     return allJobs;
 }
@@ -3298,7 +3298,7 @@ async function fetchGoogle(token: string): Promise<Job[]> {
             page++;
         }
     } catch (e) { console.error("Google Error:", e); } finally {
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     const uniqueMap = new Map();
     for (const j of allJobs) { uniqueMap.set(j.url, j); }
@@ -3347,7 +3347,11 @@ async function fetchMeta(token: string): Promise<Job[]> {
             );
             const locationText = card.find('[class*="location"], [class*="office"]').first().text().trim();
 
+            if (!href || !title || title.length < 5 || title.length > 150) return;
+            if (!href.match(/\/(?:v2\/)?jobs?\//i)) return; // Filter out fake nav links
             if (!isValidJobTitle(title)) return;
+
+            const combinedText = title + ' ' + card.text();
 
             allJobs.push({
                 title,
@@ -3355,13 +3359,14 @@ async function fetchMeta(token: string): Promise<Job[]> {
                 url: href.startsWith('http') ? href : `https://www.metacareers.com${href}`,
                 department: card.find('[class*="department"], [class*="team"]').first().text().trim() || '',
                 salary: undefined,
+                job_type: parseJobType(combinedText)
             });
         });
 
         await context.close();
     } catch (e) {
         console.error('Meta scraper error:', e);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
 
     // Deduplicate by URL
@@ -3372,7 +3377,7 @@ async function fetchMeta(token: string): Promise<Job[]> {
 // Scrapes public LinkedIn job search pages to bypass login walls
 async function fetchLinkedin(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
-    
+
     // Normalize URL: convert /company/SLUG/jobs/ to /jobs/SLUG-jobs-worldwide/
     let targetUrl = token;
     if (token.includes('linkedin.com/company/')) {
@@ -3391,7 +3396,7 @@ async function fetchLinkedin(token: string): Promise<Job[]> {
             viewport: { width: 1280, height: 1000 }
         });
         const page = await context.newPage();
-        
+
         await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(3000);
 
@@ -3434,7 +3439,7 @@ async function fetchLinkedin(token: string): Promise<Job[]> {
         await context.close();
     } catch (e) {
         console.error('LinkedIn scraper error:', e);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
 
     return allJobs;
@@ -3464,7 +3469,7 @@ async function fetchPublicis(token: string): Promise<Job[]> {
                 const titleEl = card.querySelector('.job-title-link, .job-title, [class*="title"], h3, h4, a');
                 const locEl = card.querySelector('.job-card-column-value, .job-location, [class*="location"], .office');
                 const linkEl = card.querySelector('a.job-title-link, a');
-                
+
                 if (titleEl && linkEl) {
                     const title = titleEl.textContent?.trim() || '';
                     if (title) {
@@ -3489,7 +3494,7 @@ async function fetchPublicis(token: string): Promise<Job[]> {
         await context.close();
     } catch (e) {
         console.error('Publicis scraper error:', e);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     return allJobs;
 }
@@ -3605,7 +3610,7 @@ async function fetchNHS(token: string): Promise<Job[]> {
 
         await context.close();
     } catch (e: any) {
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     return allJobs;
 }
@@ -3636,11 +3641,11 @@ async function fetchJazzHR(token: string): Promise<Job[]> {
             const department = listItems.eq(1).text().trim();
             const rowText = $(el).text().replace(/\s+/g, ' ').trim();
 
-            jobs.push({ 
-                title, 
-                location, 
-                url: jobUrl, 
-                department, 
+            jobs.push({
+                title,
+                location,
+                url: jobUrl,
+                department,
                 job_type: parseJobType([title, rowText]), // fallback from list
                 salary: undefined,
                 atsProvider: 'jazzhr'
@@ -3660,7 +3665,7 @@ async function fetchJazzHR(token: string): Promise<Job[]> {
                                 const detailText = $d('body').text().replace(/\s+/g, ' ').trim();
                                 job.job_type = parseJobType([job.title, detailText]);
                             }
-                        } catch {}
+                        } catch { }
                     }
                 })
             )
@@ -4209,7 +4214,7 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
                 'a[href*="job"], li[class*="job"], .job-result, article[class*="job"]',
                 els => els.map(el => ({
                     title: el.querySelector('[class*="title"], h2, h3')?.textContent?.trim() || el.textContent?.trim() || '',
-                    url:   (el as HTMLAnchorElement).href || el.querySelector('a')?.href || '',
+                    url: (el as HTMLAnchorElement).href || el.querySelector('a')?.href || '',
                     location: el.querySelector('[class*="location"], [class*="city"]')?.textContent?.trim() || '',
                     department: '', salary: undefined as any,
                 })).filter(j => j.title && j.url)
@@ -4220,7 +4225,7 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
         await context.close();
     } catch (e: any) {
         console.error('[AstraZeneca] scraper error:', e.message);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     return allJobs;
 }
@@ -4270,7 +4275,7 @@ async function fetchEasyJet(token: string): Promise<Job[]> {
             // Parse Taleo rendered table
             const jobs = await page.$$eval('tr[id]', rows => rows.map(row => ({
                 title: row.querySelector('a')?.textContent?.trim() || '',
-                url:   row.querySelector('a')?.href || '',
+                url: row.querySelector('a')?.href || '',
                 location: row.querySelector('td:nth-child(3), .location')?.textContent?.trim() || '',
                 department: '', salary: undefined as any,
             })).filter(j => j.title && j.url));
@@ -4280,7 +4285,7 @@ async function fetchEasyJet(token: string): Promise<Job[]> {
         await context.close();
     } catch (e: any) {
         console.error('[EasyJet] scraper error:', e.message);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     return allJobs;
 }
@@ -4473,7 +4478,7 @@ async function fetchVorboss(_token: string): Promise<Job[]> {
         }));
     } catch (e: any) {
         console.error('[Vorboss] scraper error:', e.message);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
         return [];
     }
 }
@@ -4705,7 +4710,7 @@ async function fetchStandardChartered(token: string): Promise<Job[]> {
         if (apiJobs.length > 0) return apiJobs;
     } catch (e: any) {
         console.error('[Standard Chartered] scraper error:', e.message);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     return [];
 }
@@ -4892,7 +4897,7 @@ async function fetchJacobs(_token: string): Promise<Job[]> {
                     const href = j.url || j.applyUrl || j.jobDetailUrl || j.canonicalPositionUrl || '';
                     if (title) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc?.name || ''), url: href, department: j.department || j.category || '', salary: undefined });
                 }
-            }).catch(() => {});
+            }).catch(() => { });
             pending.push(p);
         });
 
@@ -4920,7 +4925,7 @@ async function fetchJacobs(_token: string): Promise<Job[]> {
         await context.close();
     } catch (e: any) {
         console.error('[Jacobs] scraper error:', e.message);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
 }
@@ -4954,7 +4959,7 @@ async function fetchWSP(_token: string): Promise<Job[]> {
                     const href = j.url || j.Url || j.applyUrl || j.VacancyUrl || '';
                     if (title) apiJobs.push({ title, location: typeof loc === 'string' ? loc : 'United Kingdom', url: href || 'https://wsprecruit.mindmill.co.uk/Vacancies', department: j.department || j.Category || '', salary: undefined });
                 }
-            }).catch(() => {});
+            }).catch(() => { });
             pending.push(p);
         });
 
@@ -4995,7 +5000,7 @@ async function fetchWSP(_token: string): Promise<Job[]> {
         await context.close();
     } catch (e: any) {
         console.error('[WSP] scraper error:', e.message);
-        if (context) await context.close().catch(() => {});
+        if (context) await context.close().catch(() => { });
     }
     return Array.from(new Map(allJobs.map(j => [j.url, j])).values());
 }
@@ -5007,14 +5012,14 @@ async function fetchCornerstone(token: string): Promise<Job[]> {
         const homeRes = await fetchWithTimeout(homeUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!homeRes.ok) return [];
         const html = await homeRes.text();
-        
+
         const tokenMatch = html.match(/csod\.context\.token\s*=\s*['"]([^'"]+)['"]/i) || html.match(/"token"\s*:\s*"([^"]+)"/i);
         if (!tokenMatch) return [];
         const jwt = tokenMatch[1];
-        
+
         const hostMatch = html.match(/https?:\/\/[a-z0-9-]+\.api\.csod\.com/i);
         const apiHost = hostMatch ? hostMatch[0] : 'https://na.api.csod.com';
-        
+
         let allJobs: any[] = [];
         let page = 1;
         while (true) {
@@ -5031,12 +5036,12 @@ async function fetchCornerstone(token: string): Promise<Job[]> {
             const data = await reqRes.json();
             const reqs = data?.data?.requisitions || [];
             if (!reqs.length) break;
-            
+
             allJobs.push(...reqs);
             if (data?.data?.totalCount && allJobs.length >= data.data.totalCount) break;
             page++;
         }
-        
+
         return allJobs.map((j: any) => ({
             title: j.displayJobTitle || 'Untitled',
             url: `https://${token}.csod.com/ux/ats/careersite/1/job/${j.requisitionId}?c=${token}`,
@@ -5064,7 +5069,7 @@ async function fetchGem(token: string): Promise<Job[]> {
         if (!res.ok) return [];
         const batch = await res.json();
         if (!batch || !batch[0]) return [];
-        
+
         const postings = batch[0]?.data?.oatsExternalJobPostings?.jobPostings || [];
         return postings.map((j: any) => ({
             title: j.title || '',
@@ -5083,11 +5088,11 @@ async function fetchJoinCom(token: string): Promise<Job[]> {
         const homeRes = await fetchWithTimeout(`https://join.com/companies/${token}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!homeRes.ok) return [];
         const html = await homeRes.text();
-        
+
         const idMatch = html.match(/"company"\s*:\s*\{\s*"id"\s*:\s*"?(\d+)"?/i) || html.match(/"companyId"\s*:\s*"?(\d+)"?/i);
         if (!idMatch) return [];
         const companyId = idMatch[1];
-        
+
         let allJobs: any[] = [];
         let page = 1;
         while (true) {
@@ -5096,12 +5101,12 @@ async function fetchJoinCom(token: string): Promise<Job[]> {
             const data = await apiRes.json();
             const items = data.items || [];
             if (!items.length) break;
-            
+
             allJobs.push(...items);
             if (page >= (data.pagination?.totalPages || page)) break;
             page++;
         }
-        
+
         return allJobs.map((j: any) => {
             let locParts: string[] = [];
             if (j.remoteType === 'ANYWHERE') {
@@ -5110,7 +5115,7 @@ async function fetchJoinCom(token: string): Promise<Job[]> {
                 locParts = [j.location, j.city?.cityName || j.city?.city, j.city?.regionName || j.office?.regionName, j.city?.countryName || j.country?.name || j.office?.countryName].filter(Boolean);
                 if (j.workplaceType === 'REMOTE') locParts.unshift('Remote');
             }
-            
+
             return {
                 title: j.title || '',
                 url: j.url || `https://join.com/companies/${token}/jobs/${j.idParam || j.id}`,
@@ -5138,7 +5143,7 @@ async function fetchMercor(token: string): Promise<Job[]> {
         if (!res.ok) return [];
         const data = await res.json();
         const listings = data.listings || [];
-        
+
         return listings.map((j: any) => {
             const listingId = j.listingId || '';
             const title = j.title || '';
@@ -5177,7 +5182,7 @@ export async function fetchPhenom(token: string): Promise<Job[]> {
                 headers: { 'User-Agent': 'Mozilla/5.0' }
             });
             if (!initRes.ok) continue;
-        const html = await initRes.text();
+            const html = await initRes.text();
             if (!/"jobs"\s*:\s*\[/.test(html) && !/csrfToken/i.test(html)) continue;
             searchPath = path;
             seedHtml = html;
@@ -5192,7 +5197,7 @@ export async function fetchPhenom(token: string): Promise<Job[]> {
                 .map(c => c.split(';')[0].trim())
                 .filter(pair => pair.includes('='))
                 .join('; ');
-        const csrfMatch = html.match(/"csrfToken"\s*:\s*"([^"]+)"/);
+            const csrfMatch = html.match(/"csrfToken"\s*:\s*"([^"]+)"/);
             csrf = csrfMatch ? csrfMatch[1] : '';
             break;
         }
@@ -5230,7 +5235,7 @@ export async function fetchPhenom(token: string): Promise<Job[]> {
             : searchPath.includes('/gb/') ? 'en_gb' : 'en_us';
         const country = searchPath.includes('/global/') ? 'global'
             : searchPath.includes('/gb/') ? 'gb' : 'us';
-        
+
         while (true) {
             const payload = {
                 lang: locale, country, deviceType: "desktop", pageName: "search-results",
@@ -5244,7 +5249,7 @@ export async function fetchPhenom(token: string): Promise<Job[]> {
             };
             if (csrf) headers['x-csrf-token'] = csrf;
             if (cookieHeader) headers['Cookie'] = cookieHeader;
-            
+
             const reqRes = await fetchWithTimeout(`${baseUrl}/widgets`, {
                 method: 'POST',
                 headers,
@@ -5252,17 +5257,17 @@ export async function fetchPhenom(token: string): Promise<Job[]> {
             });
             if (!reqRes.ok) break;
             const data = await reqRes.json();
-            
+
             const rs = data?.refineSearch || {};
             const hits = rs?.data?.jobs || rs?.jobs || rs?.hits || data?.jobs || [];
             if (!hits.length) break;
-            
+
             allJobs.push(...hits);
             const total = rs?.totalHits || rs?.data?.totalHits || rs?.hitsCount || 0;
             from += hits.length;
             if (!total || from >= total) break;
         }
-        
+
         return mapPhenomJobs(allJobs, baseUrl);
     } catch { return []; }
 }
@@ -5326,25 +5331,25 @@ async function fetchPhenomHtmlPages(
 }
 
 function mapPhenomJobs(allJobs: any[], baseUrl: string): Job[] {
-        return allJobs.map((j: any) => {
+    return allJobs.map((j: any) => {
         const atsId = j.jobId || j.id || j.reqId || '';
         let url = j.jobUrl || j.applyUrl || j.url || '';
         if (url && !url.startsWith('http')) {
-                url = `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-            }
+            url = `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+        }
         if (!url && atsId) url = `${baseUrl}/job/${atsId}`;
         const location = [j.city, j.state, j.country].filter(Boolean).join(', ')
             || j.cityStateCountry
             || j.location
             || '';
-            return {
-                title: j.title || j.jobTitle || '',
+        return {
+            title: j.title || j.jobTitle || '',
             url,
             location,
-                department: j.department || j.category || '',
-                atsProvider: 'phenom'
-            };
-        }).filter((j: any) => j.title && j.url);
+            department: j.department || j.category || '',
+            atsProvider: 'phenom'
+        };
+    }).filter((j: any) => j.title && j.url);
 }
 
 // --- Recruiterbox ---
@@ -5358,14 +5363,14 @@ async function fetchRecruiterbox(token: string): Promise<Job[]> {
             const data = await res.json();
             const objects = data.objects || [];
             if (!objects.length) break;
-            
+
             allJobs.push(...objects);
             const total = data.meta?.total;
             offset += objects.length;
             if (total !== undefined && offset >= total) break;
             if (total === undefined && objects.length < 100) break;
         }
-        
+
         return allJobs.map((j: any) => ({
             title: j.title || '',
             url: j.hosted_url || j.url || '',
@@ -5415,7 +5420,7 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
     mercor: fetchMercor,
     phenom: fetchPhenom,
     recruiterbox: fetchRecruiterbox,
-    
+
     eploy: fetchEploy,
     talenttrack: fetchTalentTrack,
     softscape: fetchSoftscape,
@@ -5503,14 +5508,14 @@ class PythonLocationWorker {
         if (this.proc) return true;
         if (this.startFailed) return false;
 
-    const scriptPath = path.join(
-        path.dirname(fileURLToPath(import.meta.url)),
-        'normalizeLocations.py',
-    );
+        const scriptPath = path.join(
+            path.dirname(fileURLToPath(import.meta.url)),
+            'normalizeLocations.py',
+        );
         const cmd = process.platform === 'win32' ? 'python' : 'python3';
 
         try {
-        const proc = spawn(cmd, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+            const proc = spawn(cmd, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
             this.proc = proc;
 
             proc.stdout.on('data', (d: Buffer) => this.onStdout(d.toString()));
@@ -5577,7 +5582,7 @@ class PythonLocationWorker {
         try {
             proc.stdin?.end();
             proc.kill();
-            } catch {
+        } catch {
             // already gone
         }
     }
@@ -5659,333 +5664,359 @@ export function formatNormalizedLocation(n: NormalizedLocation): string | null {
 }
 
 export async function syncAll() {
-  // The whole run is wrapped so the shared Playwright browser and the
-  // persistent Python normalizer worker always get torn down — on success,
-  // on a thrown error, and whether this was invoked from the CLI or from
-  // the /api/cron/sync-jobs route handler. Leaving either process running
-  // would leak resources into the next cron invocation.
-  try {
-    const startTime = Date.now();
-    const syncRunId = crypto.randomUUID();
-    // Module-level logs/counters persist across cron warm starts — reset each run.
-    globalRejectionLog.length = 0;
-    filterLogBuffer.length = 0;
-    serperCallCount = 0;
-    serperHitCount = 0;
-    console.log('\n════════════════════════════════════════════════════');
-    console.log('  DAILY SYNC — ' + new Date().toISOString());
-    console.log(`  sync_run_id=${syncRunId}`);
-    console.log(`  stale_retention=${STALE_JOB_RETENTION_HOURS}h (soft-delete; no wipe-on-empty)`);
-    console.log('════════════════════════════════════════════════════\n');
-
+    // The whole run is wrapped so the shared Playwright browser and the
+    // persistent Python normalizer worker always get torn down — on success,
+    // on a thrown error, and whether this was invoked from the CLI or from
+    // the /api/cron/sync-jobs route handler. Leaving either process running
+    // would leak resources into the next cron invocation.
     try {
-      await ensureSectorEmbeddingRuntime();
-    } catch (e) {
-      console.warn('[sector_embedding] Runtime init failed — sync continues; new rows may lack sector_embedding:', e);
-    }
+        const startTime = Date.now();
+        const syncRunId = crypto.randomUUID();
+        // Module-level logs/counters persist across cron warm starts — reset each run.
+        globalRejectionLog.length = 0;
+        filterLogBuffer.length = 0;
+        serperCallCount = 0;
+        serperHitCount = 0;
+        console.log('\n════════════════════════════════════════════════════');
+        console.log('  DAILY SYNC — ' + new Date().toISOString());
+        console.log(`  sync_run_id=${syncRunId}`);
+        console.log(`  stale_retention=${STALE_JOB_RETENTION_HOURS}h (soft-delete; no wipe-on-empty)`);
+        console.log('════════════════════════════════════════════════════\n');
 
-    const args = process.argv.slice(2);
-    const idIndex = args.indexOf('--ids');
-    const specificIds = idIndex !== -1 ? args[idIndex + 1].split(',').map(id => parseInt(id.trim())) : null;
+        try {
+            await ensureSectorEmbeddingRuntime();
+        } catch (e) {
+            console.warn('[sector_embedding] Runtime init failed — sync continues; new rows may lack sector_embedding:', e);
+        }
 
-    const providerIndex = args.indexOf('--provider');
-    const targetProvider = providerIndex !== -1 ? args[providerIndex + 1].toLowerCase() : null;
+        const args = process.argv.slice(2);
+        const idIndex = args.indexOf('--ids');
+        const specificIds = idIndex !== -1 ? args[idIndex + 1].split(',').map(id => parseInt(id.trim())) : null;
 
-    const startIndex = args.indexOf('--start-from-provider');
-    const startFromProvider = startIndex !== -1 ? args[startIndex + 1].toLowerCase() : null;
+        const providerIndex = args.indexOf('--provider');
+        const targetProvider = providerIndex !== -1 ? args[providerIndex + 1].toLowerCase() : null;
 
-    const startCompanyIndex = args.indexOf('--start-from-company');
-    const startFromCompany = startCompanyIndex !== -1 ? args[startCompanyIndex + 1] : null;
+        const startIndex = args.indexOf('--start-from-provider');
+        const startFromProvider = startIndex !== -1 ? args[startIndex + 1].toLowerCase() : null;
 
-    const startIdIndex = args.indexOf('--start-from-id');
-    const startFromId = startIdIndex !== -1 ? parseInt(args[startIdIndex + 1]) : null;
+        const startCompanyIndex = args.indexOf('--start-from-company');
+        const startFromCompany = startCompanyIndex !== -1 ? args[startCompanyIndex + 1] : null;
 
-    const fallbackOnlyDryRun = args.includes('--dry-run-custom-fallback');
+        const startIdIndex = args.indexOf('--start-from-id');
+        const startFromId = startIdIndex !== -1 ? parseInt(args[startIdIndex + 1]) : null;
 
-    const includeLinkedin = !args.includes('--exclude-linkedin');
-    const includeDeadAts = args.includes('--include-dead-ats');
-    // Default OFF: location_filter_log filled the Free-tier disk (~3M rows).
-    // Pass --enable-filter-log only when you explicitly need DQ audit rows.
-    const skipFilterLog = !args.includes('--enable-filter-log');
+        const fallbackOnlyDryRun = args.includes('--dry-run-custom-fallback');
 
-    const marketIndex = args.indexOf('--market');
-    const targetMarket = marketIndex !== -1
-        ? String(args[marketIndex + 1] || '').toLowerCase()
-        : null;
+        const includeLinkedin = !args.includes('--exclude-linkedin');
+        const includeDeadAts = args.includes('--include-dead-ats');
+        // Default OFF: location_filter_log filled the Free-tier disk (~3M rows).
+        // Pass --enable-filter-log only when you explicitly need DQ audit rows.
+        const skipFilterLog = !args.includes('--enable-filter-log');
 
-    if (fallbackOnlyDryRun) {
-        console.log('Running in custom fallback DRY RUN mode (no DB writes)');
-    }
-    if (includeLinkedin) {
-        console.log('LinkedIn companies are INCLUDED in this run (use --exclude-linkedin to skip)');
-    } else {
-        console.log('LinkedIn companies will be SKIPPED');
-    }
-    if (targetMarket) {
-        console.log(`Filtering companies by sync_market=${targetMarket}`);
-    }
+        const marketIndex = args.indexOf('--market');
+        const targetMarket = marketIndex !== -1
+            ? String(args[marketIndex + 1] || '').toLowerCase()
+            : null;
 
-    if (specificIds) {
-        console.log(`Filtering for ${specificIds.length} specific IDs: ${specificIds.join(', ')}`);
-    }
-
-    let companies: CompanyRow[] = [];
-    try {
-        companies = await loadAllCompanies(specificIds);
-    } catch (e: any) {
-        console.error('❌ Could not load companies from DB:', e.message);
-        return;
-    }
-
-    if (targetMarket === 'ireland') {
-        companies = companies.filter((c) => {
-            const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
-            const provider = String(c.ats_provider || '').toLowerCase();
-            return market === 'ireland' || market === 'both' || provider === 'linkedin';
-        });
-        console.log(`Ireland-market companies: ${companies.length}`);
-    } else if (targetMarket === 'uk') {
-        companies = companies.filter((c) => {
-            const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
-            return market === 'uk' || market === 'both';
-        });
-        console.log(`UK-market companies: ${companies.length}`);
-    }
-
-    const { count: statusCount, error: statusCountError } = await supabase
-        .from('companies')
-        .select('*', { count: 'exact', head: true })
-        .not('ats_status', 'is', null);
-
-    if (statusCountError) {
-        console.warn(`Could not determine health tracking state: ${statusCountError.message}`);
-    }
-    const healthTrackingEnabled = !!statusCount && statusCount > 0;
-    if (!healthTrackingEnabled) {
-        console.warn('Health tracking disabled - run validateAtsTokens.ts and repairBadTokens.ts first');
-    }
-
-    if (targetProvider) {
-        companies = companies.filter(c => normalizeProviderName(c.ats_provider) === targetProvider || String(c.ats_provider).toLowerCase() === targetProvider);
-        console.log(`Filtering for provider: ${targetProvider} (${companies.length} companies)`);
-    }
-
-    if (startFromProvider) {
-        const index = companies.findIndex(c => normalizeProviderName(c.ats_provider) === startFromProvider || String(c.ats_provider).toLowerCase() === startFromProvider);
-        if (index !== -1) {
-            companies = companies.slice(index);
-            console.log(`Starting from first ${startFromProvider} company: ${companies[0].trading_name} (${companies.length} remaining)`);
+        if (fallbackOnlyDryRun) {
+            console.log('Running in custom fallback DRY RUN mode (no DB writes)');
+        }
+        if (includeLinkedin) {
+            console.log('LinkedIn companies are INCLUDED in this run (use --exclude-linkedin to skip)');
         } else {
-            console.warn(`No company found with provider: ${startFromProvider}`);
+            console.log('LinkedIn companies will be SKIPPED');
         }
-    }
-
-    if (startFromCompany) {
-        const index = companies.findIndex(c => String(c.trading_name || '').toLowerCase().includes(startFromCompany.toLowerCase()));
-        if (index !== -1) {
-            companies = companies.slice(index);
-            console.log(`Resuming from company: ${companies[0].trading_name} (${companies.length} remaining)`);
-        } else {
-            console.warn(`No company found matching name: ${startFromCompany}`);
+        if (targetMarket) {
+            console.log(`Filtering companies by sync_market=${targetMarket}`);
         }
-    }
 
-    if (startFromId) {
-        const index = companies.findIndex(c => c.id === startFromId);
-        if (index !== -1) {
-            companies = companies.slice(index);
-            console.log(`Resuming from company ID ${startFromId}: ${companies[0].trading_name} (${companies.length} remaining)`);
-        } else {
-            console.warn(`No company found with ID: ${startFromId}`);
+        if (specificIds) {
+            console.log(`Filtering for ${specificIds.length} specific IDs: ${specificIds.join(', ')}`);
         }
-    }
 
-    // Skip broken ATS boards on full runs (EC2 nightly). Explicit --ids always included.
-    let skippedDeadAts = 0;
-    if (!includeDeadAts && !(specificIds && specificIds.length > 0)) {
-        const before = companies.length;
-        companies = companies.filter((c) => {
-            const status = String(c.ats_status || '').toLowerCase();
-            return status !== 'dead' && status !== 'needs_manual_review';
-        });
-        skippedDeadAts = before - companies.length;
-        if (skippedDeadAts > 0) {
-            console.log(`Skipping ${skippedDeadAts} companies with ats_status dead/needs_manual_review (use --include-dead-ats to force)`);
-        }
-    } else if (includeDeadAts) {
-        console.log('Including dead/needs_manual_review ATS companies (--include-dead-ats)');
-    }
-
-    console.log(`Found ${companies.length} companies with configured ATS\n`);
-
-    if (fallbackOnlyDryRun && !specificIds) {
-        companies = companies.filter((company) => {
-            const provider = normalizeProviderName(company.ats_provider);
-            return !provider || provider === 'custom' || !FETCHERS[provider];
-        });
-        console.log(`Filtered to ${companies.length} custom/no-ATS companies for fallback dry run\n`);
-    } else if (fallbackOnlyDryRun) {
-        console.log(`Using explicit IDs for fallback dry run (${companies.length} companies)\n`);
-    }
-
-    const results: SyncResult[] = [];
-    let totalSaved = 0;
-    let totalRejected = 0;
-    let wipePreventedCount = 0;
-    let stalePurgedCount = 0;
-
-    // Each company's fetch/filter/persist pipeline is unchanged — only how
-    // many run at once has changed. Companies used to run strictly one at a
-    // time (fetch, then a flat 500ms sleep, then the next); with 2,500+
-    // companies that serial wait was most of the run time. A bounded
-    // concurrency pool now runs COMPANY_CONCURRENCY companies at once, each
-    // still paced by its own 500ms politeness delay between its own
-    // requests — no single ATS host sees more traffic per unit time than
-    // before, there's just several independent companies' worth of it
-    // in flight simultaneously instead of one.
-    const COMPANY_CONCURRENCY = 8;
-    const limit = pLimit(COMPANY_CONCURRENCY);
-
-    async function processCompany(company: CompanyRow): Promise<void> {
-        const { id, trading_name, ats_provider } = company;
-        let logBuffer = '';
-
-        if (String(ats_provider || '').toLowerCase() === 'linkedin' && !includeLinkedin) {
+        let companies: CompanyRow[] = [];
+        try {
+            companies = await loadAllCompanies(specificIds);
+        } catch (e: any) {
+            console.error('❌ Could not load companies from DB:', e.message);
             return;
         }
 
-        const resolved = resolveProviderAndToken(
-            company.ats_provider,
-            company.ats_board_token,
-            company.careers_url ?? null
-        );
-        const displayProvider = (resolved?.provider || normalizeProviderName(ats_provider) || ats_provider || 'custom').toUpperCase();
-        const isNHS = /\bnhs\b/i.test(trading_name);
-        // Trusted UK-only companies where location may be missing from ATS data
-        const isTrustedUKCompany = isNHS || /\baddison lee\b/i.test(trading_name);
+        if (targetMarket === 'ireland') {
+            companies = companies.filter((c) => {
+                const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
+                const provider = String(c.ats_provider || '').toLowerCase();
+                return market === 'ireland' || market === 'both' || provider === 'linkedin';
+            });
+            console.log(`Ireland-market companies: ${companies.length}`);
+        } else if (targetMarket === 'uk') {
+            companies = companies.filter((c) => {
+                const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
+                return market === 'uk' || market === 'both';
+            });
+            console.log(`UK-market companies: ${companies.length}`);
+        }
 
-        const result: SyncResult = {
-            company: trading_name,
-            provider: displayProvider.toLowerCase(),
-            fetched: 0, ukJobs: 0, irelandJobs: 0, saved: 0, savedIreland: 0, rejected: 0, needsReview: 0
-        };
+        const { count: statusCount, error: statusCountError } = await supabase
+            .from('companies')
+            .select('*', { count: 'exact', head: true })
+            .not('ats_status', 'is', null);
 
-        try {
-            const fetchOutcome = await fetchJobsWithFallback(company, { fallbackOnly: fallbackOnlyDryRun });
-            const providerKey = (resolved?.provider || normalizeProviderName(ats_provider) || ats_provider || 'custom').toLowerCase();
-            const allJobs = stampAtsProvider(fetchOutcome.jobs, providerKey);
-            result.fetched = allJobs.length;
+        if (statusCountError) {
+            console.warn(`Could not determine health tracking state: ${statusCountError.message}`);
+        }
+        const healthTrackingEnabled = !!statusCount && statusCount > 0;
+        if (!healthTrackingEnabled) {
+            console.warn('Health tracking disabled - run validateAtsTokens.ts and repairBadTokens.ts first');
+        }
 
-            if (!allJobs.length) {
-                console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⚪ Fetch: 0 | UK: 0 | Saved: 0`);
-                results.push(result);
+        if (targetProvider) {
+            companies = companies.filter(c => normalizeProviderName(c.ats_provider) === targetProvider || String(c.ats_provider).toLowerCase() === targetProvider);
+            console.log(`Filtering for provider: ${targetProvider} (${companies.length} companies)`);
+        }
+
+        if (startFromProvider) {
+            const index = companies.findIndex(c => normalizeProviderName(c.ats_provider) === startFromProvider || String(c.ats_provider).toLowerCase() === startFromProvider);
+            if (index !== -1) {
+                companies = companies.slice(index);
+                console.log(`Starting from first ${startFromProvider} company: ${companies[0].trading_name} (${companies.length} remaining)`);
+            } else {
+                console.warn(`No company found with provider: ${startFromProvider}`);
+            }
+        }
+
+        if (startFromCompany) {
+            const index = companies.findIndex(c => String(c.trading_name || '').toLowerCase().includes(startFromCompany.toLowerCase()));
+            if (index !== -1) {
+                companies = companies.slice(index);
+                console.log(`Resuming from company: ${companies[0].trading_name} (${companies.length} remaining)`);
+            } else {
+                console.warn(`No company found matching name: ${startFromCompany}`);
+            }
+        }
+
+        if (startFromId) {
+            const index = companies.findIndex(c => c.id === startFromId);
+            if (index !== -1) {
+                companies = companies.slice(index);
+                console.log(`Resuming from company ID ${startFromId}: ${companies[0].trading_name} (${companies.length} remaining)`);
+            } else {
+                console.warn(`No company found with ID: ${startFromId}`);
+            }
+        }
+
+        // Skip broken ATS boards on full runs (EC2 nightly). Explicit --ids always included.
+        let skippedDeadAts = 0;
+        if (!includeDeadAts && !(specificIds && specificIds.length > 0)) {
+            const before = companies.length;
+            companies = companies.filter((c) => {
+                const status = String(c.ats_status || '').toLowerCase();
+                return status !== 'dead' && status !== 'needs_manual_review';
+            });
+            skippedDeadAts = before - companies.length;
+            if (skippedDeadAts > 0) {
+                console.log(`Skipping ${skippedDeadAts} companies with ats_status dead/needs_manual_review (use --include-dead-ats to force)`);
+            }
+        } else if (includeDeadAts) {
+            console.log('Including dead/needs_manual_review ATS companies (--include-dead-ats)');
+        }
+
+        console.log(`Found ${companies.length} companies with configured ATS\n`);
+
+        if (fallbackOnlyDryRun && !specificIds) {
+            companies = companies.filter((company) => {
+                const provider = normalizeProviderName(company.ats_provider);
+                return !provider || provider === 'custom' || !FETCHERS[provider];
+            });
+            console.log(`Filtered to ${companies.length} custom/no-ATS companies for fallback dry run\n`);
+        } else if (fallbackOnlyDryRun) {
+            console.log(`Using explicit IDs for fallback dry run (${companies.length} companies)\n`);
+        }
+
+        const results: SyncResult[] = [];
+        let totalSaved = 0;
+        let totalRejected = 0;
+        let wipePreventedCount = 0;
+        let stalePurgedCount = 0;
+
+        // Each company's fetch/filter/persist pipeline is unchanged — only how
+        // many run at once has changed. Companies used to run strictly one at a
+        // time (fetch, then a flat 500ms sleep, then the next); with 2,500+
+        // companies that serial wait was most of the run time. A bounded
+        // concurrency pool now runs COMPANY_CONCURRENCY companies at once, each
+        // still paced by its own 500ms politeness delay between its own
+        // requests — no single ATS host sees more traffic per unit time than
+        // before, there's just several independent companies' worth of it
+        // in flight simultaneously instead of one.
+        const COMPANY_CONCURRENCY = 8;
+        const limit = pLimit(COMPANY_CONCURRENCY);
+
+        async function processCompany(company: CompanyRow): Promise<void> {
+            const { id, trading_name, ats_provider } = company;
+            let logBuffer = '';
+
+            if (String(ats_provider || '').toLowerCase() === 'linkedin' && !includeLinkedin) {
                 return;
             }
 
-            const ukJobs: Job[] = [];
-            const irelandJobs: Job[] = [];
-            let rejectedCount = 0;
-            let needsReviewCount = 0;
-            const syncMarket = String(company.sync_market || 'uk').toLowerCase();
-            const irelandOnlyMarket = syncMarket === 'ireland';
+            const resolved = resolveProviderAndToken(
+                company.ats_provider,
+                company.ats_board_token,
+                company.careers_url ?? null
+            );
+            const displayProvider = (resolved?.provider || normalizeProviderName(ats_provider) || ats_provider || 'custom').toUpperCase();
+            const isNHS = /\bnhs\b/i.test(trading_name);
+            // Trusted UK-only companies where location may be missing from ATS data
+            const isTrustedUKCompany = isNHS || /\baddison lee\b/i.test(trading_name);
 
-            const pushFilterLog = (
-                decision: 'accept' | 'reject',
-                reason: string,
-                job: Job,
-                market: string | null
-            ) => {
-                if (skipFilterLog || fallbackOnlyDryRun) return;
-                filterLogBuffer.push({
-                    company_id: String(id),
-                    job_url: job.url || null,
-                    raw_location: job.location || null,
-                    source: displayProvider.toLowerCase(),
-                    decision,
-                    reason,
-                    title: job.title || null,
-                    market,
-                    sync_run_id: syncRunId,
-                });
+            const result: SyncResult = {
+                company: trading_name,
+                provider: displayProvider.toLowerCase(),
+                fetched: 0, ukJobs: 0, irelandJobs: 0, saved: 0, savedIreland: 0, rejected: 0, needsReview: 0
             };
 
-            for (const j of allJobs) {
-                const atsProvider = j.atsProvider ?? j.source ?? providerKey;
-                const adapterKey = `${atsProvider.toLowerCase()}ToJobLocationInput` as keyof typeof Adapters;
-                const adapter = Adapters[adapterKey];
+            try {
+                const fetchOutcome = await fetchJobsWithFallback(company, { fallbackOnly: fallbackOnlyDryRun });
+                const providerKey = (resolved?.provider || normalizeProviderName(ats_provider) || ats_provider || 'custom').toLowerCase();
+                const allJobs = stampAtsProvider(fetchOutcome.jobs, providerKey);
+                result.fetched = allJobs.length;
 
-                // Fix empty/generic remote locations based on job title
-                const titleLower = String(j.title || '').toLowerCase();
-                let locTrimmed = String(j.location || '').trim();
-                const locLower = locTrimmed.toLowerCase();
-                
-                if (!locTrimmed || locLower === 'remote' || locLower === '(remote)') {
-                    if (titleLower.includes('uk remote') || titleLower.includes('remote uk') || titleLower.includes('united kingdom remote') || titleLower.includes('remote united kingdom')) {
-                        j.location = 'UK Remote';
-                    } else if (titleLower.includes('us remote') || titleLower.includes('remote us') || titleLower.includes('usa remote') || titleLower.includes('remote usa') || titleLower.includes('u.s. remote') || titleLower.includes('remote u.s')) {
-                        j.location = 'US Remote';
-                    } else if (titleLower.includes('india remote') || titleLower.includes('remote india')) {
-                        j.location = 'India Remote';
-                    } else if (titleLower.includes('remote')) {
-                        j.location = 'Remote';
+                if (!allJobs.length) {
+                    console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⚪ Fetch: 0 | UK: 0 | Saved: 0`);
+                    results.push(result);
+                    return;
+                }
+
+                const ukJobs: Job[] = [];
+                const irelandJobs: Job[] = [];
+                let rejectedCount = 0;
+                let needsReviewCount = 0;
+                const syncMarket = String(company.sync_market || 'uk').toLowerCase();
+                const irelandOnlyMarket = syncMarket === 'ireland';
+
+                const pushFilterLog = (
+                    decision: 'accept' | 'reject',
+                    reason: string,
+                    job: Job,
+                    market: string | null
+                ) => {
+                    if (skipFilterLog || fallbackOnlyDryRun) return;
+                    filterLogBuffer.push({
+                        company_id: String(id),
+                        job_url: job.url || null,
+                        raw_location: job.location || null,
+                        source: displayProvider.toLowerCase(),
+                        decision,
+                        reason,
+                        title: job.title || null,
+                        market,
+                        sync_run_id: syncRunId,
+                    });
+                };
+
+                for (const j of allJobs) {
+                    const atsProvider = j.atsProvider ?? j.source ?? providerKey;
+                    const adapterKey = `${atsProvider.toLowerCase()}ToJobLocationInput` as keyof typeof Adapters;
+                    const adapter = Adapters[adapterKey];
+
+                    // Fix empty/generic remote locations based on job title
+                    const titleLower = String(j.title || '').toLowerCase();
+                    let locTrimmed = String(j.location || '').trim();
+                    const locLower = locTrimmed.toLowerCase();
+
+                    if (!locTrimmed || locLower === 'remote' || locLower === '(remote)') {
+                        if (titleLower.includes('uk remote') || titleLower.includes('remote uk') || titleLower.includes('united kingdom remote') || titleLower.includes('remote united kingdom')) {
+                            j.location = 'UK Remote';
+                        } else if (titleLower.includes('us remote') || titleLower.includes('remote us') || titleLower.includes('usa remote') || titleLower.includes('remote usa') || titleLower.includes('u.s. remote') || titleLower.includes('remote u.s')) {
+                            j.location = 'US Remote';
+                        } else if (titleLower.includes('india remote') || titleLower.includes('remote india')) {
+                            j.location = 'India Remote';
+                        } else if (titleLower.includes('remote')) {
+                            j.location = 'Remote';
+                        }
                     }
-                }
 
-                // Rebuild location input AFTER remote title rewrites so "US Remote" /
-                // "India Remote" are not accepted as bare Remote UK jobs.
-                // Sanitize title first so geo + taxonomy see clean text.
-                j.title = sanitizeJobTitle(j.title);
+                    // Rebuild location input AFTER remote title rewrites so "US Remote" /
+                    // "India Remote" are not accepted as bare Remote UK jobs.
+                    // Sanitize title first so geo + taxonomy see clean text.
+                    j.title = sanitizeJobTitle(j.title);
 
-                const titleReason = getJobTitleRejectReason(j.title);
-                if (titleReason) {
-                    rejectedCount++;
-                    globalRejectionLog.push({
-                        company: trading_name,
-                        provider: displayProvider,
-                        title: j.title,
-                        location: j.location,
-                        url: j.url,
-                        reason: titleReason,
-                    });
-                    pushFilterLog('reject', titleReason, j, irelandOnlyMarket ? 'ireland' : 'uk');
-                    continue;
-                }
+                    const titleReason = getJobTitleRejectReason(j.title);
+                    if (titleReason) {
+                        rejectedCount++;
+                        globalRejectionLog.push({
+                            company: trading_name,
+                            provider: displayProvider,
+                            title: j.title,
+                            location: j.location,
+                            url: j.url,
+                            reason: titleReason,
+                        });
+                        pushFilterLog('reject', titleReason, j, irelandOnlyMarket ? 'ireland' : 'uk');
+                        continue;
+                    }
 
-                const ingestReason = getIngestRejectReason(j, company);
-                if (ingestReason) {
-                    rejectedCount++;
-                    globalRejectionLog.push({
-                        company: trading_name,
-                        provider: displayProvider,
-                        title: j.title,
-                        location: j.location,
-                        url: j.url,
-                        reason: ingestReason,
-                    });
-                    pushFilterLog('reject', ingestReason, j, irelandOnlyMarket ? 'ireland' : 'uk');
-                    continue;
-                }
+                    const ingestReason = getIngestRejectReason(j, company);
+                    if (ingestReason) {
+                        rejectedCount++;
+                        globalRejectionLog.push({
+                            company: trading_name,
+                            provider: displayProvider,
+                            title: j.title,
+                            location: j.location,
+                            url: j.url,
+                            reason: ingestReason,
+                        });
+                        pushFilterLog('reject', ingestReason, j, irelandOnlyMarket ? 'ireland' : 'uk');
+                        continue;
+                    }
 
-                const locationInput = adapter ? adapter(j) : buildLocationInput(j);
+                    const locationInput = adapter ? adapter(j) : buildLocationInput(j);
 
-                const matchesIreland = isIrelandJob(j.location, locationInput.locations);
-                // Never let company-level trust bypass an explicit foreign location string.
-                // NHS/Addison Lee still get a trust pass only when location is empty/remote/ambiguous.
-                const locText = String(j.location || '').trim();
-                const trustOk =
-                    isTrustedUKCompany &&
-                    (!locText || locationInput.isRemote || /^(uk|u\.k\.|united kingdom|great britain|england|scotland|wales|northern ireland)$/i.test(locText));
-                const matchesUK = isUKJob(locationInput) || trustOk;
+                    const matchesIreland = isIrelandJob(j.location, locationInput.locations);
+                    // Never let company-level trust bypass an explicit foreign location string.
+                    // NHS/Addison Lee still get a trust pass only when location is empty/remote/ambiguous.
+                    const locText = String(j.location || '').trim();
+                    const trustOk =
+                        isTrustedUKCompany &&
+                        (!locText || locationInput.isRemote || /^(uk|u\.k\.|united kingdom|great britain|england|scotland|wales|northern ireland)$/i.test(locText));
+                    const matchesUK = isUKJob(locationInput) || trustOk;
 
-                // Ireland-market companies: only write RoI jobs to jobs_IR (never UK table).
-                if (irelandOnlyMarket) {
+                    // Ireland-market companies: only write RoI jobs to jobs_IR (never UK table).
+                    if (irelandOnlyMarket) {
+                        if (matchesIreland) {
+                            irelandJobs.push(j);
+                            pushFilterLog('accept', 'ireland_geo', j, 'ireland');
+                        } else {
+                            rejectedCount++;
+                            const reason = j.rejection_reason
+                                || (isAmbiguousRemoteLocation(j.location) ? 'ambiguous_remote' : 'not_ireland_market');
+                            globalRejectionLog.push({
+                                company: trading_name,
+                                provider: displayProvider,
+                                title: j.title,
+                                location: j.location,
+                                url: j.url,
+                                reason,
+                            });
+                            pushFilterLog('reject', reason, j, 'ireland');
+                        }
+                        continue;
+                    }
+
+                    // Dual-write for multi-location posts (e.g. "London | Dublin").
+                    if (matchesUK) {
+                        ukJobs.push(j);
+                        if (j.needs_review) needsReviewCount++;
+                        pushFilterLog('accept', trustOk ? 'trusted_company' : 'uk_geo', j, 'uk');
+                    }
                     if (matchesIreland) {
                         irelandJobs.push(j);
                         pushFilterLog('accept', 'ireland_geo', j, 'ireland');
-                    } else {
+                    } else if (!matchesUK) {
                         rejectedCount++;
                         const reason = j.rejection_reason
-                            || (isAmbiguousRemoteLocation(j.location) ? 'ambiguous_remote' : 'not_ireland_market');
+                            || (isAmbiguousRemoteLocation(j.location) ? 'ambiguous_remote' : 'not_uk');
                         globalRejectionLog.push({
                             company: trading_name,
                             provider: displayProvider,
@@ -5994,354 +6025,328 @@ export async function syncAll() {
                             url: j.url,
                             reason,
                         });
-                        pushFilterLog('reject', reason, j, 'ireland');
+                        pushFilterLog('reject', reason, j, 'uk');
                     }
-                    continue;
                 }
 
-                // Dual-write for multi-location posts (e.g. "London | Dublin").
-                if (matchesUK) {
-                    ukJobs.push(j);
-                    if (j.needs_review) needsReviewCount++;
-                    pushFilterLog('accept', trustOk ? 'trusted_company' : 'uk_geo', j, 'uk');
+                result.ukJobs = ukJobs.length;
+                result.irelandJobs = irelandJobs.length;
+                result.rejected = rejectedCount;
+                result.needsReview = needsReviewCount;
+                totalRejected += rejectedCount;
+
+                const canWriteUk = isLicenceTruthy(company.licensed_sponsor);
+                // Allow Ireland dual-write for UK licensed sponsors even when the
+                // ireland_permit_employer flag has not been backfilled yet. Clear junk
+                // (neither flag) is still blocked.
+                const canWriteIreland =
+                    isLicenceTruthy(company.ireland_permit_employer) ||
+                    isLicenceTruthy(company.licensed_sponsor);
+
+                if (!canWriteUk && ukJobs.length) {
+                    console.log(
+                        `[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⛔ Skip UK write — not licensed_sponsor (${ukJobs.length} matched)`
+                    );
                 }
-                if (matchesIreland) {
-                    irelandJobs.push(j);
-                    pushFilterLog('accept', 'ireland_geo', j, 'ireland');
-                } else if (!matchesUK) {
-                    rejectedCount++;
-                    const reason = j.rejection_reason
-                        || (isAmbiguousRemoteLocation(j.location) ? 'ambiguous_remote' : 'not_uk');
-                    globalRejectionLog.push({
-                        company: trading_name,
-                        provider: displayProvider,
-                        title: j.title,
-                        location: j.location,
-                        url: j.url,
-                        reason,
-                    });
-                    pushFilterLog('reject', reason, j, 'uk');
+                if (!canWriteIreland && irelandJobs.length) {
+                    console.log(
+                        `[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⛔ Skip IR write — not permit/sponsor (${irelandJobs.length} matched)`
+                    );
                 }
-            }
 
-            result.ukJobs = ukJobs.length;
-            result.irelandJobs = irelandJobs.length;
-            result.rejected = rejectedCount;
-            result.needsReview = needsReviewCount;
-            totalRejected += rejectedCount;
+                const ukRows = !canWriteUk || irelandOnlyMarket
+                    ? []
+                    : await buildRowsForJobs(company, id, ukJobs, 'uk');
+                const irelandRows = !canWriteIreland
+                    ? []
+                    : (await buildRowsForJobs(company, id, irelandJobs, 'ireland')).map((row) => ({
+                        ...row,
+                        source: 'ats' as const,
+                    }));
 
-            const canWriteUk = isLicenceTruthy(company.licensed_sponsor);
-            // Allow Ireland dual-write for UK licensed sponsors even when the
-            // ireland_permit_employer flag has not been backfilled yet. Clear junk
-            // (neither flag) is still blocked.
-            const canWriteIreland =
-                isLicenceTruthy(company.ireland_permit_employer) ||
-                isLicenceTruthy(company.licensed_sponsor);
+                const persistRows = async (tableName: 'jobs' | 'jobs_IR', rows: JobRow[]) => {
+                    const staleCutoff = new Date(
+                        Date.now() - STALE_JOB_RETENTION_HOURS * 60 * 60 * 1000
+                    ).toISOString();
 
-            if (!canWriteUk && ukJobs.length) {
-                console.log(
-                    `[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⛔ Skip UK write — not licensed_sponsor (${ukJobs.length} matched)`
-                );
-            }
-            if (!canWriteIreland && irelandJobs.length) {
-                console.log(
-                    `[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ⛔ Skip IR write — not permit/sponsor (${irelandJobs.length} matched)`
-                );
-            }
+                    /** Soft-delete only: expire rows not refreshed within the retention window. Never wipe on empty. */
+                    const purgeStaleForCompany = async (): Promise<number> => {
+                        if (tableName === 'jobs_IR') {
+                            const bySource = await supabase
+                                .from(tableName)
+                                .delete({ count: 'exact' })
+                                .eq('company_id', id)
+                                .eq('source', 'ats')
+                                .lt('last_seen_at', staleCutoff);
+                            if (bySource.error && /source|last_seen_at/i.test(bySource.error.message)) {
+                                // Schema may lack source and/or last_seen_at — best-effort LinkedIn-safe purge
+                                const { data: existing } = await supabase
+                                    .from(tableName)
+                                    .select('url, last_seen_at')
+                                    .eq('company_id', id);
+                                const stale = (existing || [])
+                                    .filter((r: any) => {
+                                        if (/linkedin\.com|lnkd\.in/i.test(r.url)) return false;
+                                        if (!r.last_seen_at) return false;
+                                        return r.last_seen_at < staleCutoff;
+                                    })
+                                    .map((r: any) => r.url as string);
+                                let purged = 0;
+                                for (const chunk of chunkArray(stale, 100)) {
+                                    const { error: delErr, count } = await supabase
+                                        .from(tableName)
+                                        .delete({ count: 'exact' })
+                                        .in('url', chunk)
+                                        .eq('company_id', id);
+                                    if (!delErr) purged += count || chunk.length;
+                                }
+                                return purged;
+                            }
+                            if (bySource.error) {
+                                console.warn(`[${displayProvider}] ${trading_name} ${tableName} stale purge: ${bySource.error.message}`);
+                                return 0;
+                            }
+                            return bySource.count || 0;
+                        }
 
-            const ukRows = !canWriteUk || irelandOnlyMarket
-                ? []
-                : await buildRowsForJobs(company, id, ukJobs, 'uk');
-            const irelandRows = !canWriteIreland
-                ? []
-                : (await buildRowsForJobs(company, id, irelandJobs, 'ireland')).map((row) => ({
-                    ...row,
-                    source: 'ats' as const,
-                }));
-
-            const persistRows = async (tableName: 'jobs' | 'jobs_IR', rows: JobRow[]) => {
-                const staleCutoff = new Date(
-                    Date.now() - STALE_JOB_RETENTION_HOURS * 60 * 60 * 1000
-                ).toISOString();
-
-                /** Soft-delete only: expire rows not refreshed within the retention window. Never wipe on empty. */
-                const purgeStaleForCompany = async (): Promise<number> => {
-                    if (tableName === 'jobs_IR') {
-                        const bySource = await supabase
+                        const { error, count } = await supabase
                             .from(tableName)
                             .delete({ count: 'exact' })
                             .eq('company_id', id)
-                            .eq('source', 'ats')
                             .lt('last_seen_at', staleCutoff);
-                        if (bySource.error && /source|last_seen_at/i.test(bySource.error.message)) {
-                            // Schema may lack source and/or last_seen_at — best-effort LinkedIn-safe purge
-                            const { data: existing } = await supabase
-                                .from(tableName)
-                                .select('url, last_seen_at')
-                                .eq('company_id', id);
-                            const stale = (existing || [])
-                                .filter((r: any) => {
-                                    if (/linkedin\.com|lnkd\.in/i.test(r.url)) return false;
-                                    if (!r.last_seen_at) return false;
-                                    return r.last_seen_at < staleCutoff;
-                                })
-                                .map((r: any) => r.url as string);
-                            let purged = 0;
-                            for (const chunk of chunkArray(stale, 100)) {
-                                const { error: delErr, count } = await supabase
-                                    .from(tableName)
-                                    .delete({ count: 'exact' })
-                                    .in('url', chunk)
-                                    .eq('company_id', id);
-                                if (!delErr) purged += count || chunk.length;
+                        if (error) {
+                            if (/last_seen_at/i.test(error.message)) {
+                                console.warn(`[${displayProvider}] ${trading_name} ${tableName}: last_seen_at missing — skip stale purge (run add_last_seen_at.sql)`);
+                            } else {
+                                console.warn(`[${displayProvider}] ${trading_name} ${tableName} stale purge: ${error.message}`);
                             }
-                            return purged;
-                        }
-                        if (bySource.error) {
-                            console.warn(`[${displayProvider}] ${trading_name} ${tableName} stale purge: ${bySource.error.message}`);
                             return 0;
                         }
-                        return bySource.count || 0;
-                    }
+                        return count || 0;
+                    };
 
-                    const { error, count } = await supabase
-                        .from(tableName)
-                        .delete({ count: 'exact' })
-                        .eq('company_id', id)
-                        .lt('last_seen_at', staleCutoff);
-                    if (error) {
-                        if (/last_seen_at/i.test(error.message)) {
-                            console.warn(`[${displayProvider}] ${trading_name} ${tableName}: last_seen_at missing — skip stale purge (run add_last_seen_at.sql)`);
-                        } else {
-                            console.warn(`[${displayProvider}] ${trading_name} ${tableName} stale purge: ${error.message}`);
+                    // Phase 1: never wipe the whole company set when today's filter yields 0 rows.
+                    if (!rows.length) {
+                        const purged = await purgeStaleForCompany();
+                        stalePurgedCount += purged;
+                        if (purged > 0) {
+                            console.log(`[${displayProvider}] ${trading_name.padEnd(30)} 🛡️  ${tableName}: 0 saved — preserved live set, purged ${purged} stale (>${STALE_JOB_RETENTION_HOURS}h)`);
                         }
                         return 0;
                     }
-                    return count || 0;
-                };
 
-                // Phase 1: never wipe the whole company set when today's filter yields 0 rows.
-                if (!rows.length) {
+                    const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
+                    if (jobErr) {
+                        console.error(`[${displayProvider}] Initial upsert failed for ${trading_name}: ${jobErr.message}`);
+                        // Graceful degrade when optional columns are missing from the live schema.
+                        const stripSectorEmbedding = /sector_embedding/i.test(jobErr.message);
+                        const stripSector =
+                            /schema cache/i.test(jobErr.message) ||
+                            (/\bsector\b/i.test(jobErr.message) && !stripSectorEmbedding);
+                        const stripSource = /source/i.test(jobErr.message);
+                        const stripSeen = /last_seen_at/i.test(jobErr.message);
+                        const stripJobType = /job_type/i.test(jobErr.message);
+                        if (stripSector || stripSectorEmbedding || stripSource || stripSeen || stripJobType) {
+                            const stripped = rows.map((row) => {
+                                const next: Record<string, unknown> = {
+                                    company_id: row.company_id,
+                                    title: row.title,
+                                    location: row.location,
+                                    url: row.url,
+                                    department: row.department,
+                                    level: row.level,
+                                    updated_at: row.updated_at,
+                                };
+                                if (!stripSector) next.sector = row.sector;
+                                if (!stripSectorEmbedding && row.sector_embedding) {
+                                    next.sector_embedding = row.sector_embedding;
+                                }
+                                if (!stripSource && row.source) next.source = row.source;
+                                if (!stripSeen) next.last_seen_at = row.last_seen_at;
+                                if (!stripJobType) next.job_type = row.job_type;
+                                return next;
+                            });
+                            const { error: fallbackErr } = await supabase
+                                .from(tableName)
+                                .upsert(stripped as any, { onConflict: 'url' });
+                            if (!fallbackErr) {
+                                console.warn(`[${displayProvider}] ${trading_name} ${tableName} upsert retried with reduced columns.`);
+                                const purged = await purgeStaleForCompany();
+                                stalePurgedCount += purged;
+                                return rows.length;
+                            }
+                            console.error(`[${displayProvider}] ${trading_name} ${tableName} retry failed: ${fallbackErr.message}`);
+                            return 0;
+                        }
+                        console.error(`[${displayProvider}] ${trading_name} ${tableName} upsert failed: ${jobErr.message}`);
+                        return 0;
+                    }
+
                     const purged = await purgeStaleForCompany();
                     stalePurgedCount += purged;
-                    if (purged > 0) {
-                        console.log(`[${displayProvider}] ${trading_name.padEnd(30)} 🛡️  ${tableName}: 0 saved — preserved live set, purged ${purged} stale (>${STALE_JOB_RETENTION_HOURS}h)`);
+                    return rows.length;
+                };
+
+                if (!fallbackOnlyDryRun) {
+                    // Count once per company when a fetch returned jobs but markets saved nothing
+                    // (the old path would have wiped the company job set).
+                    if (
+                        (!irelandOnlyMarket && ukRows.length === 0) ||
+                        (irelandOnlyMarket && irelandRows.length === 0)
+                    ) {
+                        wipePreventedCount++;
                     }
-                    return 0;
+                    const savedUK = irelandOnlyMarket ? 0 : await persistRows('jobs', ukRows);
+                    const savedIreland = await persistRows('jobs_IR', irelandRows);
+                    result.saved = savedUK + savedIreland;
+                    result.savedIreland = savedIreland;
+                    totalSaved += result.saved;
+                } else {
+                    result.saved = ukRows.length + irelandRows.length;
+                    result.savedIreland = irelandRows.length;
+                    totalSaved += result.saved;
+                }
+                if (healthTrackingEnabled && !fallbackOnlyDryRun) {
+                    await supabase.from('companies').update({
+                        ats_status: 'ok',
+                        ats_failure_count: 0,
+                        ats_last_validated: new Date().toISOString(),
+                    }).eq('id', id);
                 }
 
-                const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
-                if (jobErr) {
-                    console.error(`[${displayProvider}] Initial upsert failed for ${trading_name}: ${jobErr.message}`);
-                    // Graceful degrade when optional columns are missing from the live schema.
-                    const stripSectorEmbedding = /sector_embedding/i.test(jobErr.message);
-                    const stripSector =
-                        /schema cache/i.test(jobErr.message) ||
-                        (/\bsector\b/i.test(jobErr.message) && !stripSectorEmbedding);
-                    const stripSource = /source/i.test(jobErr.message);
-                    const stripSeen = /last_seen_at/i.test(jobErr.message);
-                    const stripJobType = /job_type/i.test(jobErr.message);
-                    if (stripSector || stripSectorEmbedding || stripSource || stripSeen || stripJobType) {
-                        const stripped = rows.map((row) => {
-                            const next: Record<string, unknown> = {
-                                company_id: row.company_id,
-                                title: row.title,
-                                location: row.location,
-                                url: row.url,
-                                department: row.department,
-                                level: row.level,
-                                updated_at: row.updated_at,
-                            };
-                            if (!stripSector) next.sector = row.sector;
-                            if (!stripSectorEmbedding && row.sector_embedding) {
-                                next.sector_embedding = row.sector_embedding;
-                            }
-                            if (!stripSource && row.source) next.source = row.source;
-                            if (!stripSeen) next.last_seen_at = row.last_seen_at;
-                            if (!stripJobType) next.job_type = row.job_type;
-                            return next;
-                        });
-                        const { error: fallbackErr } = await supabase
-                            .from(tableName)
-                            .upsert(stripped as any, { onConflict: 'url' });
-                        if (!fallbackErr) {
-                            console.warn(`[${displayProvider}] ${trading_name} ${tableName} upsert retried with reduced columns.`);
-                            const purged = await purgeStaleForCompany();
-                            stalePurgedCount += purged;
-                            return rows.length;
-                        }
-                        console.error(`[${displayProvider}] ${trading_name} ${tableName} retry failed: ${fallbackErr.message}`);
-                        return 0;
-                    }
-                    console.error(`[${displayProvider}] ${trading_name} ${tableName} upsert failed: ${jobErr.message}`);
-                    return 0;
+                // Update active jobs count — skip for Ireland-only market so they don't dominate UK browse.
+                if (!fallbackOnlyDryRun && !irelandOnlyMarket) {
+                    const { count: finalCount } = await supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('company_id', id);
+                    await supabase.from('companies').update({ active_jobs_count: finalCount || 0 }).eq('id', id);
+                } else if (!fallbackOnlyDryRun && irelandOnlyMarket) {
+                    await supabase.from('companies').update({ active_jobs_count: 0 }).eq('id', id);
                 }
 
-                const purged = await purgeStaleForCompany();
-                stalePurgedCount += purged;
-                return rows.length;
+                const statusEmoji = (result.ukJobs + result.irelandJobs) > 0 ? '✅' : '⚪';
+                console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | IR: ${result.irelandJobs.toString().padEnd(3)} | Dups: ${(result.ukJobs + result.irelandJobs - result.saved).toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
+
+                results.push(result);
+                await sleep(500); // Politeness delay
+            } catch (err: any) {
+                console.log(`[${displayProvider}] ${trading_name} ... ❌ ERROR: ${err.message}`);
+                results.push({ ...result, error: err.message });
+                if (healthTrackingEnabled && !fallbackOnlyDryRun) {
+                    await markCompanyFailure(id);
+                }
+            }
+        }
+
+        await Promise.all(companies.map((company) => limit(() => processCompany(company))));
+
+        // ─── Summary ─────────────────────────────────────────────────────────────
+        const finishedAt = new Date();
+        const durationMs = Date.now() - startTime;
+        const elapsed = (durationMs / 1000).toFixed(1);
+        const withJobs = results.filter(r => r.saved > 0);
+        const noJobs = results.filter(r => r.saved === 0 && !r.error);
+        const errored = results.filter(r => r.error);
+
+        console.log('\n════════════════════════════════════════════════════');
+        console.log('  SYNC COMPLETE');
+        console.log('════════════════════════════════════════════════════');
+        console.log(`  ⏱  Time:          ${elapsed}s`);
+        console.log(`  🆔 Sync run:      ${syncRunId}`);
+        console.log(`  🏢 Companies:      ${companies.length} processed`);
+        console.log(`  ✅ With jobs:      ${withJobs.length}`);
+        console.log(`  ➕ Jobs saved:     ${totalSaved}`);
+        console.log(`  🚫 Rejected:       ${totalRejected}`);
+        console.log(`  🛡️  Wipe prevented: ${wipePreventedCount} (empty filter kept live set)`);
+        console.log(`  🧹 Stale purged:   ${stalePurgedCount} (>${STALE_JOB_RETENTION_HOURS}h)`);
+        console.log(`  ⚪ No jobs saved:  ${noJobs.length}`);
+        if (fallbackOnlyDryRun) {
+            console.log('  🧪 Mode:          custom fallback dry run (no writes)');
+        }
+        if (SERPER_API_KEY) {
+            console.log(`  🔎 Serper hits:    ${serperHitCount}/${serperCallCount}`);
+        }
+        if (errored.length > 0) {
+            console.log(`  ❌ Errors:        ${errored.length}`);
+            errored.forEach(r => console.log(`     - ${r.company}: ${r.error}`));
+        }
+
+        // Persist filter decisions for DQ (location_filter_log)
+        let filterLogsWritten = 0;
+        if (!fallbackOnlyDryRun && !skipFilterLog) {
+            filterLogsWritten = await flushFilterLogs();
+            if (filterLogsWritten > 0) {
+                console.log(`  📋 Filter log rows: ${filterLogsWritten}`);
+            }
+        } else if (skipFilterLog) {
+            filterLogBuffer.length = 0;
+            console.log('  📋 Filter log skipped (default; pass --enable-filter-log to write)');
+        }
+
+        // Persist sync summary for DQ ownership (table: sync_run_summary)
+        if (!fallbackOnlyDryRun) {
+            const summaryRow = {
+                sync_run_id: syncRunId,
+                started_at: new Date(startTime).toISOString(),
+                finished_at: finishedAt.toISOString(),
+                duration_ms: durationMs,
+                companies_processed: companies.length,
+                companies_with_jobs: withJobs.length,
+                companies_errored: errored.length,
+                jobs_saved: totalSaved,
+                jobs_rejected: totalRejected,
+                wipe_prevented: wipePreventedCount,
+                stale_purged: stalePurgedCount,
+                serper_calls: serperCallCount,
+                serper_hits: serperHitCount,
+                dry_run: false,
+                market_filter: targetMarket || null,
+                notes: `retention=${STALE_JOB_RETENTION_HOURS}h; skipped_dead_ats=${skippedDeadAts}; filter_logs=${filterLogsWritten}`,
             };
-
-            if (!fallbackOnlyDryRun) {
-                // Count once per company when a fetch returned jobs but markets saved nothing
-                // (the old path would have wiped the company job set).
-                if (
-                    (!irelandOnlyMarket && ukRows.length === 0) ||
-                    (irelandOnlyMarket && irelandRows.length === 0)
-                ) {
-                    wipePreventedCount++;
-                }
-                const savedUK = irelandOnlyMarket ? 0 : await persistRows('jobs', ukRows);
-                const savedIreland = await persistRows('jobs_IR', irelandRows);
-                result.saved = savedUK + savedIreland;
-                result.savedIreland = savedIreland;
-                totalSaved += result.saved;
+            const { error: summaryErr } = await supabase.from('sync_run_summary').insert(summaryRow);
+            if (summaryErr) {
+                console.warn(`  ⚠ Could not persist sync_run_summary: ${summaryErr.message}`);
+                console.warn('     Run supabase/create_sync_run_summary.sql if the table is missing.');
             } else {
-                result.saved = ukRows.length + irelandRows.length;
-                result.savedIreland = irelandRows.length;
-                totalSaved += result.saved;
-            }
-            if (healthTrackingEnabled && !fallbackOnlyDryRun) {
-                await supabase.from('companies').update({
-                    ats_status: 'ok',
-                    ats_failure_count: 0,
-                    ats_last_validated: new Date().toISOString(),
-                }).eq('id', id);
-            }
-
-            // Update active jobs count — skip for Ireland-only market so they don't dominate UK browse.
-            if (!fallbackOnlyDryRun && !irelandOnlyMarket) {
-                const { count: finalCount } = await supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('company_id', id);
-                await supabase.from('companies').update({ active_jobs_count: finalCount || 0 }).eq('id', id);
-            } else if (!fallbackOnlyDryRun && irelandOnlyMarket) {
-                await supabase.from('companies').update({ active_jobs_count: 0 }).eq('id', id);
-            }
-
-            const statusEmoji = (result.ukJobs + result.irelandJobs) > 0 ? '✅' : '⚪';
-            console.log(`[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} ${statusEmoji} Fetch: ${result.fetched.toString().padEnd(3)} | UK: ${result.ukJobs.toString().padEnd(3)} | IR: ${result.irelandJobs.toString().padEnd(3)} | Dups: ${(result.ukJobs + result.irelandJobs - result.saved).toString().padEnd(3)} | Saved: ${result.saved.toString().padEnd(3)} | Rej: ${result.rejected.toString().padEnd(3)} | Rev: ${result.needsReview}`);
-
-            results.push(result);
-            await sleep(500); // Politeness delay
-        } catch (err: any) {
-            console.log(`[${displayProvider}] ${trading_name} ... ❌ ERROR: ${err.message}`);
-            results.push({ ...result, error: err.message });
-            if (healthTrackingEnabled && !fallbackOnlyDryRun) {
-                await markCompanyFailure(id);
+                console.log(`  📊 Sync summary saved (sync_run_id=${syncRunId})`);
             }
         }
-    }
 
-    await Promise.all(companies.map((company) => limit(() => processCompany(company))));
+        // Gap 9: Print Rejection Summary
+        if (globalRejectionLog.length > 0) {
+            const fs = await import('fs');
+            const path = await import('path');
+            const logPath = path.resolve(process.cwd(), 'rejection_log.json');
+            fs.writeFileSync(logPath, JSON.stringify(globalRejectionLog, null, 2));
 
-    // ─── Summary ─────────────────────────────────────────────────────────────
-    const finishedAt = new Date();
-    const durationMs = Date.now() - startTime;
-    const elapsed = (durationMs / 1000).toFixed(1);
-    const withJobs = results.filter(r => r.saved > 0);
-    const noJobs = results.filter(r => r.saved === 0 && !r.error);
-    const errored = results.filter(r => r.error);
+            console.log(`\n  📝 Rejection Log saved to ${logPath}`);
+            console.log(`  Total rejected: ${globalRejectionLog.length}`);
 
-    console.log('\n════════════════════════════════════════════════════');
-    console.log('  SYNC COMPLETE');
-    console.log('════════════════════════════════════════════════════');
-    console.log(`  ⏱  Time:          ${elapsed}s`);
-    console.log(`  🆔 Sync run:      ${syncRunId}`);
-    console.log(`  🏢 Companies:      ${companies.length} processed`);
-    console.log(`  ✅ With jobs:      ${withJobs.length}`);
-    console.log(`  ➕ Jobs saved:     ${totalSaved}`);
-    console.log(`  🚫 Rejected:       ${totalRejected}`);
-    console.log(`  🛡️  Wipe prevented: ${wipePreventedCount} (empty filter kept live set)`);
-    console.log(`  🧹 Stale purged:   ${stalePurgedCount} (>${STALE_JOB_RETENTION_HOURS}h)`);
-    console.log(`  ⚪ No jobs saved:  ${noJobs.length}`);
-    if (fallbackOnlyDryRun) {
-        console.log('  🧪 Mode:          custom fallback dry run (no writes)');
-    }
-    if (SERPER_API_KEY) {
-        console.log(`  🔎 Serper hits:    ${serperHitCount}/${serperCallCount}`);
-    }
-    if (errored.length > 0) {
-        console.log(`  ❌ Errors:        ${errored.length}`);
-        errored.forEach(r => console.log(`     - ${r.company}: ${r.error}`));
-    }
-
-    // Persist filter decisions for DQ (location_filter_log)
-    let filterLogsWritten = 0;
-    if (!fallbackOnlyDryRun && !skipFilterLog) {
-        filterLogsWritten = await flushFilterLogs();
-        if (filterLogsWritten > 0) {
-            console.log(`  📋 Filter log rows: ${filterLogsWritten}`);
+            // Count top rejection reasons
+            const reasons: Record<string, number> = {};
+            for (const log of globalRejectionLog) {
+                reasons[log.reason] = (reasons[log.reason] || 0) + 1;
+            }
+            console.log('  Top rejection reasons:');
+            Object.entries(reasons)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .forEach(([reason, count]) => {
+                    console.log(`     - ${reason}: ${count}`);
+                });
         }
-    } else if (skipFilterLog) {
-        filterLogBuffer.length = 0;
-        console.log('  📋 Filter log skipped (default; pass --enable-filter-log to write)');
-    }
+        console.log('');
 
-    // Persist sync summary for DQ ownership (table: sync_run_summary)
-    if (!fallbackOnlyDryRun) {
-        const summaryRow = {
-            sync_run_id: syncRunId,
-            started_at: new Date(startTime).toISOString(),
-            finished_at: finishedAt.toISOString(),
-            duration_ms: durationMs,
-            companies_processed: companies.length,
-            companies_with_jobs: withJobs.length,
-            companies_errored: errored.length,
-            jobs_saved: totalSaved,
-            jobs_rejected: totalRejected,
-            wipe_prevented: wipePreventedCount,
-            stale_purged: stalePurgedCount,
-            serper_calls: serperCallCount,
-            serper_hits: serperHitCount,
-            dry_run: false,
-            market_filter: targetMarket || null,
-            notes: `retention=${STALE_JOB_RETENTION_HOURS}h; skipped_dead_ats=${skippedDeadAts}; filter_logs=${filterLogsWritten}`,
-        };
-        const { error: summaryErr } = await supabase.from('sync_run_summary').insert(summaryRow);
-        if (summaryErr) {
-            console.warn(`  ⚠ Could not persist sync_run_summary: ${summaryErr.message}`);
-            console.warn('     Run supabase/create_sync_run_summary.sql if the table is missing.');
-        } else {
-            console.log(`  📊 Sync summary saved (sync_run_id=${syncRunId})`);
+        if (withJobs.length > 0) {
+            console.log('  Top results:');
+            withJobs
+                .sort((a, b) => b.saved - a.saved)
+                .slice(0, 10)
+                .forEach(r => console.log(`     ${r.company.padEnd(35)} ${r.saved} jobs  [${r.provider}]`));
         }
+        console.log('════════════════════════════════════════════════════\n');
+    } finally {
+        await closeSharedBrowser();
+        await closePythonWorker();
     }
-
-    // Gap 9: Print Rejection Summary
-    if (globalRejectionLog.length > 0) {
-        const fs = await import('fs');
-        const path = await import('path');
-        const logPath = path.resolve(process.cwd(), 'rejection_log.json');
-        fs.writeFileSync(logPath, JSON.stringify(globalRejectionLog, null, 2));
-
-        console.log(`\n  📝 Rejection Log saved to ${logPath}`);
-        console.log(`  Total rejected: ${globalRejectionLog.length}`);
-
-        // Count top rejection reasons
-        const reasons: Record<string, number> = {};
-        for (const log of globalRejectionLog) {
-            reasons[log.reason] = (reasons[log.reason] || 0) + 1;
-        }
-        console.log('  Top rejection reasons:');
-        Object.entries(reasons)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5)
-            .forEach(([reason, count]) => {
-                console.log(`     - ${reason}: ${count}`);
-            });
-    }
-    console.log('');
-
-    if (withJobs.length > 0) {
-        console.log('  Top results:');
-        withJobs
-            .sort((a, b) => b.saved - a.saved)
-            .slice(0, 10)
-            .forEach(r => console.log(`     ${r.company.padEnd(35)} ${r.saved} jobs  [${r.provider}]`));
-    }
-    console.log('════════════════════════════════════════════════════\n');
-  } finally {
-    await closeSharedBrowser();
-    await closePythonWorker();
-  }
 }
 
 const isDirectExecution = process.argv[1]

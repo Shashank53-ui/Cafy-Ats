@@ -572,6 +572,7 @@ async function fetchIBM(url: string): Promise<Job[]> {
                         title: source.title,
                         location: (source.field_keyword_19 ? source.field_keyword_19 + ', United Kingdom' : 'United Kingdom'),
                         department: source.field_keyword_08 || '',
+                        job_type: source.field_keyword_18 ? parseJobType(source.field_keyword_18) : undefined,
                         url: source.url,
                     });
                 }

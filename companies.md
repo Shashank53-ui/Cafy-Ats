@@ -81,7 +81,7 @@ We have bespoke scrapers built for the following specific companies (some have t
 37. **GXO**
 38. **Helsing**
 39. **Hikma**
-40. **IBM**
+40. **IBM** -> Implemented
 41. **Infobric**
 42. **Jacobs** -> recheck
 43. **Jaguar Land Rover (JLR)**
