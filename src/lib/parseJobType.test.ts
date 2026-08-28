@@ -1,4 +1,11 @@
-import { parseJobType, resolveJobType } from './parseJobType';
+import {
+  extractEmploymentSnippet,
+  inferJobTypeFromListing,
+  jobTypeFromWeeklyHours,
+  parseHoursPerWeek,
+  parseJobType,
+  resolveJobType,
+} from './parseJobType';
 import { ALLOWED_JOB_TYPES } from './constants';
 
 const cases: Array<[unknown, string | null]> = [
@@ -11,7 +18,12 @@ const cases: Array<[unknown, string | null]> = [
   ['part time', 'Part-time'],
   ['Internship', 'Internship'],
   ['Summer Intern', 'Internship'],
+  ['Software Apprentice', 'Internship'],
   ['Industrial Placement', 'Placement scheme'],
+  ['Graduate Placement - Technical Purchasing (12-24 Months)', 'Placement scheme'],
+  ['Caterlink - Chef Manager - Co-op Academy Delius', null],
+  ['Caterlink - Chef - COOP Academy Grange', null],
+  ['Software Engineer Co-op Intern', 'Internship'],
   ['Fixed-term', 'Contract'],
   ['Temporary', 'Contract'],
   ['Contract', 'Contract'],
@@ -47,8 +59,14 @@ const resolveCases: Array<[{ employment?: unknown; title?: string; level?: strin
   [{ title: 'Analyst', level: 'Internship' }, 'Internship'],
   [{ employment: 'Part-time', title: 'Engineer' }, 'Part-time'],
   [{ title: 'Contract Manager' }, 'Full-time'], // role title, not employment Contract
+  [{ employment: 'Contract', title: 'Senior Contracts Manager:Rail projects' }, 'Full-time'],
+  [{ title: 'Graduate Placement - Technical Purchasing (12-24 Months)', level: 'Internship' }, 'Placement scheme'],
+  [{ title: 'Caterlink - Chef Manager - Co-op Academy Delius', level: 'Mid-level' }, 'Full-time'],
   [{ employment: 'Full-time', title: 'Software Engineer - Intern' }, 'Internship'],
   [{ employment: 'Full-time', title: 'Part Time Care Assistant' }, 'Part-time'],
+  [{ employment: 'Full-time', title: 'Care Assistant - Bank - Care Home' }, 'Part-time'],
+  [{ title: 'Registered Nurse (RGN) - Bank' }, 'Part-time'],
+  [{ employment: 'Full-time', title: 'Software Engineer (Contract)' }, 'Contract'],
   [{ employment: 'Full-time', title: 'Software Engineer' }, 'Full-time'],
 ];
 
@@ -62,8 +80,60 @@ for (const [input, expect] of resolveCases) {
   }
 }
 
+const snippetCases: Array<[string, string | null]> = [
+  ['Permanent\nFull time - 37.5 hours per week', 'Permanent Full time - 37.5 hours per week'],
+  [
+    'Staff Nurse\nNHS Trust\nThis post is offered on an Agenda for Change contract with standard terms and conditions of employment for the successful candidate after interview.',
+    null,
+  ],
+  ['Equal opportunities employer. Contract of employment issued on start.', null],
+];
+
+for (const [input, expect] of snippetCases) {
+  const got = extractEmploymentSnippet(input);
+  if (got !== expect) {
+    failed++;
+    console.error(`FAIL snippet: ${JSON.stringify(input)} → ${JSON.stringify(got)}, want ${JSON.stringify(expect)}`);
+  } else {
+    console.log(`ok snippet: ${JSON.stringify(input.slice(0, 40))} → ${got}`);
+  }
+}
+
+const listingCases: Array<[{ employmentField?: unknown; cardText?: string }, string | null]> = [
+  [{ employmentField: 'Employment type: Full Time' }, 'Full-time'],
+  [{ employmentField: 'Contract type: Permanent' }, 'Full-time'],
+  [{ cardText: 'Permanent\nPart time' }, 'Part-time'],
+  [{ cardText: 'Sales Advisor\n20 hrs p/w' }, 'Part-time'],
+  [{ cardText: 'Sales Advisor\n36 hrs p/w' }, 'Full-time'],
+  [
+    {
+      cardText:
+        'Software Engineer\nPlease read the contract of employment and terms and conditions before applying. This is a permanent position.',
+    },
+    null,
+  ],
+  [{ employmentField: 'Full-time', cardText: 'part time mentioned in a long legal footer that is ignored' }, 'Full-time'],
+];
+
+for (const [input, expect] of listingCases) {
+  const got = inferJobTypeFromListing(input);
+  if (got !== expect) {
+    failed++;
+    console.error(`FAIL listing: ${JSON.stringify(input)} → ${got}, want ${expect}`);
+  } else {
+    console.log(`ok listing: ${JSON.stringify(input)} → ${got}`);
+  }
+}
+
+if (parseHoursPerWeek('36 hrs p/w') !== 36 || jobTypeFromWeeklyHours(20) !== 'Part-time') {
+  failed++;
+  console.error('FAIL hours helpers');
+}
+
 if (failed) {
   console.error(`\n${failed} failure(s)`);
   process.exit(1);
 }
-console.log(`\nAll ${cases.length} parseJobType + ${resolveCases.length} resolveJobType checks passed.`);
+console.log(
+  `\nAll ${cases.length} parseJobType + ${resolveCases.length} resolveJobType + ${snippetCases.length} snippet + ${listingCases.length} listing checks passed.`,
+);

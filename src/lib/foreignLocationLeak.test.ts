@@ -112,3 +112,16 @@ test('Keep: Ireland county Co. is not Colorado', () => {
         false,
     );
 });
+
+test('Leak: Jamaica Manchester Parish is not UK Manchester', () => {
+    assert.equal(
+        isForeignLocationLeak(
+            {
+                location: 'Mandeville, Manchester Parish, Jamaica,',
+                title: 'Retail Customer Care Associate',
+            },
+            'uk',
+        ),
+        true,
+    );
+});

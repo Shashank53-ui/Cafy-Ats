@@ -44,7 +44,7 @@ function locationIsExplicitlyForeign(location: string): boolean {
     if (!l) return false;
     if (/^(multiple locations?|\d+\s+locations?)$/i.test(l)) return false;
     if (
-        /\b(united states|\busa\b|u\.s\.a?|north carolina|california|menlo park|ontario|canada|australia|netherlands|germany|france|spain|singapore|india)\b/i.test(
+        /\b(united states|\busa\b|u\.s\.a?|north carolina|california|menlo park|ontario|canada|australia|netherlands|germany|france|spain|singapore|india|jamaica|manchester parish)\b/i.test(
             l,
         )
     ) {
