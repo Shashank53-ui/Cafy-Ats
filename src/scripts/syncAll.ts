@@ -35,7 +35,8 @@ import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import { sanitizeJobTitle } from '../lib/sanitizeJobTitle';
-import { getIngestRejectReason } from '../lib/jobIngestGuards';
+import { getIngestRejectReason, isForeignEmployerJobUrl } from '../lib/jobIngestGuards';
+import { isLicenceTruthy, resolveSyncMarket } from '../lib/syncMarket';
 import { isForeignLocationLeak } from '../lib/foreignLocationLeak';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
@@ -154,18 +155,7 @@ export interface CompanyRow {
     ireland_permit_employer?: boolean | null;
 }
 
-function isLicenceTruthy(v: unknown): boolean {
-    return v === true || v === 'true' || v === 't' || v === 1 || v === '1';
-}
-
-/**
- * Infer sync market when companies.sync_market is missing.
- * Ireland permit seeds: 900000–959999. Phase-4 UK gap companies: 960000+.
- */
-export function inferDefaultSyncMarket(id: number): 'uk' | 'ireland' {
-    if (id >= 900000 && id < 960000) return 'ireland';
-    return 'uk';
-}
+export { inferDefaultSyncMarket, resolveSyncMarket, isLicenceTruthy } from '../lib/syncMarket';
 
 interface FilterLogEntry {
     company_id: string;
@@ -923,7 +913,9 @@ function isLikelyCareersDiscoveryUrl(url: string, company: CompanyRow): boolean 
             host.includes('myworkdayjobs.com') ||
             host.includes('jobvite.com')
         ) {
-            return true;
+            // Any Greenhouse/Lever/etc. URL is not automatically this company.
+            // Serper once attached Pulse Healthcare's entire board to Digital Autopsy UK.
+            return !isForeignEmployerJobUrl(url, company);
         }
 
         if (company.url) {
@@ -1276,7 +1268,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
                 const base = {
                     ...company,
                     careers_url: company.careers_url || company.url,
-                    sync_market: company.sync_market || inferDefaultSyncMarket(company.id),
+                    sync_market: resolveSyncMarket(company),
                 };
                 if (!override) return base;
 
@@ -1355,7 +1347,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
             const base = {
                 ...company,
                 careers_url: company.careers_url || company.url,
-                sync_market: company.sync_market || inferDefaultSyncMarket(company.id),
+                sync_market: resolveSyncMarket(company),
             };
             if (!override) return base;
 
@@ -5743,14 +5735,14 @@ export async function syncAll() {
 
     if (targetMarket === 'ireland') {
         companies = companies.filter((c) => {
-            const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
+            const market = resolveSyncMarket(c);
             const provider = String(c.ats_provider || '').toLowerCase();
             return market === 'ireland' || market === 'both' || provider === 'linkedin';
         });
         console.log(`Ireland-market companies: ${companies.length}`);
     } else if (targetMarket === 'uk') {
         companies = companies.filter((c) => {
-            const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
+            const market = resolveSyncMarket(c);
             return market === 'uk' || market === 'both';
         });
         console.log(`UK-market companies: ${companies.length}`);
@@ -5890,7 +5882,7 @@ export async function syncAll() {
             const irelandJobs: Job[] = [];
             let rejectedCount = 0;
             let needsReviewCount = 0;
-            const syncMarket = String(company.sync_market || 'uk').toLowerCase();
+            const syncMarket = resolveSyncMarket(company);
             const irelandOnlyMarket = syncMarket === 'ireland';
 
             const pushFilterLog = (
