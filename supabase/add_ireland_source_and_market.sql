@@ -16,12 +16,25 @@ ALTER TABLE public.companies
   ADD COLUMN IF NOT EXISTS sync_market TEXT NOT NULL DEFAULT 'uk';
 
 -- Ireland-seeded ATS companies (id range used by ireland_companies.csv)
--- companies.id is text in this project — cast before numeric compare
+-- companies.id is text in this project — cast before numeric compare.
+-- UK licensed sponsors in this range still post UK jobs (Pulse, HubSpot, …)
+-- and must be `both`, not Ireland-only.
 UPDATE public.companies
 SET sync_market = 'ireland'
 WHERE id ~ '^[0-9]+$'
   AND id::bigint >= 900000
-  AND sync_market = 'uk';
+  AND id::bigint < 960000
+  AND sync_market = 'uk'
+  AND lower(coalesce(ats_provider, '')) <> 'linkedin'
+  AND lower(coalesce(licensed_sponsor::text, '')) NOT IN ('true', 't', '1');
+
+UPDATE public.companies
+SET sync_market = 'both'
+WHERE id ~ '^[0-9]+$'
+  AND id::bigint >= 900000
+  AND id::bigint < 960000
+  AND lower(coalesce(ats_provider, '')) <> 'linkedin'
+  AND lower(coalesce(licensed_sponsor::text, '')) IN ('true', 't', '1');
 
 -- LinkedIn-only companies
 UPDATE public.companies

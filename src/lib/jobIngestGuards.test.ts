@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   getIngestRejectReason,
   isForeignEmployerJobUrl,
+  extractSharedAtsBoardSlug,
   isRelocateAbroadTitle,
   sanitizeCompanySectorForInference,
 } from './jobIngestGuards';
@@ -73,6 +74,75 @@ check(
     trading_name: 'Cervest',
     url: 'https://www.cervest.earth',
   }) === true,
+);
+check(
+  'Pulse greenhouse is foreign to Digital Autopsy even when token is a Wix URL',
+  isForeignEmployerJobUrl('https://job-boards.greenhouse.io/pulse/jobs/6088758003', {
+    trading_name: 'Digital Autopsy UK',
+    url: 'https://www.digitalautopsy.co.uk/news-and-careers',
+    careers_url: 'https://www.digitalautopsy.co.uk/news-and-careers',
+    ats_board_token: 'https://www.digitalautopsy.co.uk/news-and-careers/categories/careers',
+  }) === true,
+);
+check(
+  'Pulse greenhouse is ok for Pulse',
+  isForeignEmployerJobUrl('https://job-boards.greenhouse.io/pulse/jobs/6088758003', {
+    trading_name: 'pulse',
+    ats_board_token: 'pulse',
+    url: 'https://boards.greenhouse.io/pulse',
+  }) === false,
+);
+check(
+  'Workable short /j/ link is not foreign for the owning company',
+  isForeignEmployerJobUrl('https://apply.workable.com/j/A24057111C', {
+    trading_name: 'Starling Bank',
+    ats_board_token: 'starling-bank',
+    url: 'https://www.starlingbank.com',
+  }) === false,
+);
+check(
+  'Greenhouse gh_board=samsara is foreign to Yumpingo',
+  isForeignEmployerJobUrl(
+    'https://job-boards.greenhouse.io/company/careers/roles/8002357?gh_jid=8002357&gh_board=samsara',
+    {
+      trading_name: 'Yumpingo',
+      ats_board_token: 'yumpingo',
+      url: 'https://www.yumpingo.com',
+    },
+  ) === true,
+);
+check(
+  'Greenhouse gh_board=samsara is ok for Samsara',
+  isForeignEmployerJobUrl(
+    'https://job-boards.greenhouse.io/company/careers/roles/8002357?gh_board=samsara',
+    {
+      trading_name: 'Samsara',
+      ats_board_token: 'samsara',
+      url: 'https://www.samsara.com',
+    },
+  ) === false,
+);
+check(
+  'Ashby cube board is foreign to BBJ&K',
+  isForeignEmployerJobUrl('https://jobs.ashbyhq.com/cube/b314e561-599f-4043-9e6d-64c67ba14ba5', {
+    trading_name: 'BBJ&K',
+    ats_board_token: '',
+    url: 'https://www.bbjk.com',
+  }) === true,
+);
+check(
+  'extractSharedAtsBoardSlug reads gh_board',
+  extractSharedAtsBoardSlug(
+    'https://job-boards.greenhouse.io/company/careers/roles/8002357?gh_board=samsara',
+  ) === 'samsara',
+);
+check(
+  'extractSharedAtsBoardSlug ignores Workable /j/ short links',
+  extractSharedAtsBoardSlug('https://apply.workable.com/j/A24057111C') === null,
+);
+check(
+  'extractSharedAtsBoardSlug keeps Pulse greenhouse path',
+  extractSharedAtsBoardSlug('https://job-boards.greenhouse.io/pulse/jobs/6088758003') === 'pulse',
 );
 
 check(

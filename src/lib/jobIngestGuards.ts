@@ -58,21 +58,63 @@ function isSharedAtsHost(host: string): boolean {
   return SHARED_ATS_HOST_RE.test(host);
 }
 
-function extractSharedAtsBoardSlug(jobUrl: string): string | null {
+/**
+ * Board slug from ats_board_token. Full careers URLs (Wix, etc.) must not
+ * collapse to "www" / a hostname fragment — that is not an ATS board slug.
+ */
+function companyAtsBoardSlug(raw: string | null | undefined): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed) || SHARED_ATS_HOST_RE.test(trimmed)) {
+    const urlish = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    return extractSharedAtsBoardSlug(urlish) || '';
+  }
+  return trimmed.toLowerCase().split('/')[0]?.split('?')[0] || '';
+}
+
+const GENERIC_ATS_PATH_SLUGS = new Set([
+  'j',
+  'job',
+  'jobs',
+  'company',
+  'careers',
+  'career',
+  'role',
+  'roles',
+  'posting',
+  'postings',
+  'en',
+  'en-gb',
+  'uk',
+  'apply',
+]);
+
+function usableBoardSlug(raw: string | null | undefined): string | null {
+  const slug = String(raw || '').toLowerCase().trim();
+  if (!slug || slug.length < 2) return null;
+  if (GENERIC_ATS_PATH_SLUGS.has(slug)) return null;
+  return slug;
+}
+
+export function extractSharedAtsBoardSlug(jobUrl: string): string | null {
   try {
     const u = new URL(jobUrl);
     const host = u.hostname.toLowerCase();
     const parts = u.pathname.split('/').filter(Boolean);
-    if (host.includes('greenhouse.io')) return (parts[0] || '').toLowerCase() || null;
-    if (host.includes('ashbyhq.com')) return (parts[0] || '').toLowerCase() || null;
-    if (host.includes('lever.co')) return (parts[0] || '').toLowerCase() || null;
-    if (host.includes('workable.com')) {
-      // apply.workable.com/company or company.workable.com
-      const sub = host.split('.')[0];
-      if (sub && sub !== 'apply' && sub !== 'jobs') return sub;
-      return (parts[0] || '').toLowerCase() || null;
+    if (host.includes('greenhouse.io')) {
+      const fromQuery = u.searchParams.get('gh_board') || u.searchParams.get('for');
+      return usableBoardSlug(fromQuery) || usableBoardSlug(parts[0]);
     }
-    if (host.includes('smartrecruiters.com')) return (parts[0] || '').toLowerCase() || null;
+    if (host.includes('ashbyhq.com')) return usableBoardSlug(parts[0]);
+    if (host.includes('lever.co')) return usableBoardSlug(parts[0]);
+    if (host.includes('workable.com')) {
+      // apply.workable.com/company/j/CODE  or company.workable.com
+      // apply.workable.com/j/CODE is a short link — not a board slug.
+      const sub = host.split('.')[0];
+      if (sub && sub !== 'apply' && sub !== 'jobs' && sub !== 'www') return usableBoardSlug(sub);
+      return usableBoardSlug(parts[0]);
+    }
+    if (host.includes('smartrecruiters.com')) return usableBoardSlug(parts[0]);
     return null;
   } catch {
     return null;
@@ -112,20 +154,16 @@ export function isForeignEmployerJobUrl(
     .map(hostnameOf)
     .filter((h): h is string => !!h);
 
-  const rawToken = String(company.ats_board_token || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '');
-  const token =
-    rawToken
-      .split('/')[0]
-      ?.replace(/\.com$/, '')
-      .split('.')[0] || '';
+  const token = companyAtsBoardSlug(company.ats_board_token);
 
   if (isSharedAtsHost(jobHost)) {
     const boardSlug = extractSharedAtsBoardSlug(jobUrl);
     if (token && boardSlug) {
-      if (boardSlug === token || boardSlug.includes(token) || token.includes(boardSlug)) {
+      if (
+        boardSlug === token ||
+        (token.length >= 3 && boardSlug.includes(token)) ||
+        (boardSlug.length >= 3 && token.includes(boardSlug))
+      ) {
         return false;
       }
       return true;
