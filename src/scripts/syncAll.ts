@@ -91,6 +91,7 @@ export interface Job {
     rejection_reason?: string;
     atsProvider?: string;
     source?: string;
+    description?: string | null;
 }
 
 interface SyncResult {
@@ -120,6 +121,8 @@ interface JobRow {
     updated_at: string;
     last_seen_at: string;
     source?: 'ats' | 'linkedin';
+    description?: string | null;
+    salary?: string | null;
 }
 
 /** Soft-delete grace: jobs not refreshed within this window are purged. */
@@ -485,6 +488,8 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             }),
             updated_at: nowIso,
             last_seen_at: nowIso,
+            description: cleanJobDescription(j.description),
+            salary: cleanSalary(j.salary),
         });
     }
     return rows;
@@ -574,6 +579,52 @@ function isUKLocation(loc: any): boolean {
 
 function safeStr(s: any, maxLen = 500): string {
     return String(s || '').slice(0, maxLen);
+}
+
+
+const MAX_DESCRIPTION_LENGTH = 20000;
+
+/** Cleans raw ATS description text into plain text for storage/display. */
+function cleanJobDescription(raw: string | null | undefined): string | null {
+    let text = String(raw || '').trim();
+    if (!text) return null;
+
+    for (let pass = 0; pass < 2 && /[<&]/.test(text); pass++) {
+        try {
+            text = cheerio.load(`<div>${text}</div>`).text();
+        } catch {
+            text = text.replace(/<[^>]+>/g, ' ');
+            break;
+        }
+    }
+
+    text = text
+        .replace(/\r\n/g, '\n')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+    if (!text) return null;
+    return text.length > MAX_DESCRIPTION_LENGTH ? text.slice(0, MAX_DESCRIPTION_LENGTH) : text;
+}
+
+function cleanSalary(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    const text = String(raw).trim();
+
+    // Look for a salary range with currencies
+    const rangeRegex = /(?:£|\$|€|JPY|¥)\s*[\d,.]+[kKmM]?\s*(?:-|to|–|—)\s*(?:£|\$|€|JPY|¥)?\s*[\d,.]+[kKmM]?/i;
+    const rangeMatch = text.match(rangeRegex);
+    if (rangeMatch) return rangeMatch[0].trim();
+
+    // Fallback: look for a single currency amount
+    const singleRegex = /(?:£|\$|€|JPY|¥)\s*[\d,.]+[kKmM]?/i;
+    const singleMatch = text.match(singleRegex);
+    if (singleMatch) return singleMatch[0].trim();
+
+    // If no currency found, just return the first 50 chars as fallback
+    if (text.length > 50) return text.substring(0, 50) + '...';
+    return text;
 }
 
 const LOW_PROFILE_TITLE_PATTERN = /\b(customer (assistant|team member|colleague|care advi[cs]or)|sales assistant|store assistant|shop assistant|checkout (operator|assistant|colleague)|night fill|shelf (stacker|filler|colleague)|replenishment (assistant|colleague|operator)|van driver|delivery driver|picker|packer|warehouse (operative|assistant|colleague)|stock (replenishment|assistant|colleague)|counter assistant|retail (assistant|adviser|advisor|store manager|sales advi[cs]or|advi[cs]or)|store manager|assistant store manager|visual merchandis|till operator|shop floor|consumer sales advi[cs]or|webchat sales advi[cs]or|barista|bar staff|waiter|waitress|food runner|kitchen (porter|assistant|crew)|dishwasher|clean(er|ers|ing)\b|cleaning (operative|supervisor|team leader|manager|coordinator|assistant|technician|controller|inspector)|hgv driver|security (guard|officer|operative|supervisor|team leader|warden|patrol)|(relief|mobile|static|door|night|site) security (officer|guard|operative)|cctv (operator|officer|monitor)|door supervisor|crowd steward|event steward|match day steward|housekeeper|housekeeping|waste (operative|collector|handler|driver|technician)|janitor|caretaker|groundsman|groundswoman|grounds maintenance|groundskeeper|window clean|pest control|laundry (operative|assistant)|room attendant|maintenance operative|car park (attendant|operative|marshal)|parking (attendant|warden|marshal)|domestic (operative|assistant|services team)|porter(?! manage))\b/i;
@@ -1404,23 +1455,38 @@ async function fetchJibe(domain: string): Promise<Job[]> {
             if (jobs.length === 0) break;
 
             for (const j of jobs) {
-                const title = j.title || j.data?.title || '';
-                const location = j.full_location || j.location || j.city || j.data?.full_location || j.data?.location || j.data?.city || '';
-                const slug = j.slug || j.req_id || j.id || j.data?.slug || j.data?.req_id || j.data?.id;
+                const d = j.data || j; // Jibe wraps fields under .data
+                const title = d.title || j.title || '';
+                const location = d.full_location || d.location_name || d.city || j.full_location || j.location || j.city || '';
+                const slug = d.slug || d.req_id || d.id || j.slug || j.req_id || j.id;
 
                 if (title && slug) {
-                    let dept = j.category || j.data?.category || '';
+                    let dept = d.category || d.department || j.category || j.department || '';
                     if (Array.isArray(dept)) dept = dept.join(', ');
 
-                    let jobTypeField = j.job_type || j.employment_type || j.type || j.data?.job_type || j.data?.employment_type || j.data?.type || '';
+                    let jobTypeField = d.employment_type || d.job_type || d.type || j.job_type || j.employment_type || j.type || '';
                     if (Array.isArray(jobTypeField)) jobTypeField = jobTypeField.join(' ');
+
+                    // Jibe returns description and salary directly in the list
+                    const rawDesc = d.description || j.description || '';
+                    const description = rawDesc ? rawDesc : undefined;
+
+                    let salary: string | undefined;
+                    if (d.salary_min_value) {
+                        salary = `${d.salary_min_value}`;
+                        if (d.salary_max_value) salary += ` - ${d.salary_max_value}`;
+                    }
+                    if (!salary && rawDesc) {
+                        salary = extractGreenhouseSalaryFromContent(rawDesc);
+                    }
 
                     allJobs.push({
                         title,
                         location,
-                        url: `https://${domain}/jobs/${slug}`,
+                        url: d.apply_url || `https://${domain}/jobs/${slug}`,
                         department: dept,
-                        salary: undefined,
+                        salary,
+                        description,
                         job_type: parseJobType([title, dept, jobTypeField]),
                         verified: false,
                         atsProvider: 'jibe'
@@ -1436,6 +1502,51 @@ async function fetchJibe(domain: string): Promise<Job[]> {
         }
     }
     return allJobs;
+}
+
+/**
+ * Greenhouse's list endpoint (/jobs?content=true) does not expose pay data as a
+ * structured field — salary is only mentioned inside the description HTML body.
+ * This helper strips HTML tags then pulls the first currency range or single
+ * amount (£/$/€) it finds in that text.
+ */
+function extractGreenhouseSalaryFromContent(html: string | null | undefined): string | undefined {
+    if (!html) return undefined;
+    // Strip HTML tags to get plain text (handles HTML-entity-escaped content too)
+    let text = html;
+    // Two-pass cheerio strip (same logic as cleanJobDescription)
+    for (let pass = 0; pass < 2 && /[<&]/.test(text); pass++) {
+        try { text = cheerio.load(`<div>${text}</div>`).text(); } catch { text = text.replace(/<[^>]+>/g, ' '); break; }
+    }
+    const numPattern = '(?:\\d{1,3}(?:,\\d{3})+|\\d{4,}|[1-9]\\d{0,2}[kKmM])';
+    const currencyPattern = '(?:A£|A\\$|\\$|€|£)';
+    
+    // Pattern for ranges: £40k - £50k
+    const range = `${currencyPattern}\\s*${numPattern}\\s*(?:-|to|—|–)\\s*(?:${currencyPattern})?\\s*${numPattern}`;
+    // Pattern for single: £40k
+    const single = `${currencyPattern}\\s*${numPattern}`;
+    const amountPattern = `(?:${range}|${single})`;
+    
+    // Lookaround keywords that indicate salary
+    const keywordsBefore = `(?:salary|pay|compensation|remuneration|ote|package|earning|income)\\s*(?:is|of|from|:|-)?\\s*`;
+    const keywordsAfter = `\\s*(?:a year|per year|per annum|pa|p\\.a\\.|\\/yr|\\/year|annually)`;
+    
+    // 1. Strict match: Keyword before + amount
+    const beforeRegex = new RegExp(`(${keywordsBefore})(${amountPattern})`, 'i');
+    const matchBefore = text.match(beforeRegex);
+    if (matchBefore) return matchBefore[2].trim();
+    
+    // 2. Strict match: Amount + Keyword after
+    const afterRegex = new RegExp(`(${amountPattern})(${keywordsAfter})`, 'i');
+    const matchAfter = text.match(afterRegex);
+    if (matchAfter) return matchAfter[1].trim();
+    
+    // 3. Medium strict: If it's a range (e.g. £40k - £60k), it's highly likely to be a salary, even without keywords
+    // because budgets/bonuses are rarely ranges.
+    const justRangeRegex = new RegExp(`(${range})`, 'i');
+    const matchRange = text.match(justRangeRegex);
+    if (matchRange) return matchRange[1].trim();
+    return undefined;
 }
 
 async function fetchGreenhouse(token: string): Promise<Job[]> {
@@ -1478,7 +1589,10 @@ async function fetchGreenhouse(token: string): Promise<Job[]> {
                     location: location,
                     url: j.absolute_url || j.url || '',
                     department: j.departments?.[0]?.name || '',
-                    salary: undefined,
+                    // content=true (already in the API URL) returns the full description HTML — no extra request.
+                    description: j.content || undefined,
+                    // Greenhouse list API has no structured salary field; extract from the description body.
+                    salary: extractGreenhouseSalaryFromContent(j.content),
                     job_type: parseJobType(jobTypeMeta || j.employment_type || j.type || j.employmentType),
                     atsProvider: 'greenhouse',
                 };
@@ -1490,64 +1604,132 @@ async function fetchGreenhouse(token: string): Promise<Job[]> {
 }
 
 async function fetchAshby(token: string): Promise<Job[]> {
+    let jobsFromApi: any[] = [];
+    let jobsFromHtml: any[] = [];
+
+    // 1. Try JSON API for descriptions
     try {
-        // Try the JSON API first
         const r = await fetchWithTimeout(`https://api.ashbyhq.com/posting-api/job-board/${token}`);
         if (r.ok) {
             const d = await r.json();
-            return (d.jobs || []).map((j: any) => {
-                const locRaw = typeof j.location === 'string' ? j.location : (j.location?.name || '');
-                const secLocs = (j.secondaryLocations || [])
-                    .map((l: any) => typeof l === 'string' ? l : (l.location || l.name || ''))
-                    .join(' ');
-                // Gap 4: Ashby Remote boolean check
-                return {
-                    title: j.title || '',
-                    location: `${locRaw} ${secLocs} ${j.isRemote ? 'Remote' : ''}`.trim(),
-                    url: j.jobUrl || '',
-                    department: j.department || '',
-                    salary: undefined,
-                    atsProvider: 'ashby',
-                    job_type: parseJobType(j.employmentType),
-                };
-            });
+            jobsFromApi = d.jobs || [];
         }
-    } catch { /* fall through to HTML */ }
+    } catch { /* ignore */ }
 
-    // Fallback: Parse Ashby's window.__appData payload when the JSON API is unavailable
+    // 2. Try HTML Board for salaries
     try {
-        const htmlRes = await fetchWithTimeout(`https://jobs.ashbyhq.com/${token}`, {
+        const r2 = await fetchWithTimeout(`https://jobs.ashbyhq.com/${token}`, {
             headers: { 'User-Agent': 'Mozilla/5.0' },
         });
-        if (htmlRes.ok) {
-            const html = await htmlRes.text();
+        if (r2.ok) {
+            const html = await r2.text();
             if (html.includes('window.__appData = ')) {
-                const jsonStr = html.split('window.__appData = ')[1].split('};\n')[0] + '}';
+                const jsonStr = html.split('window.__appData = ')[1].split('};\\n')[0] + '}';
                 const appData = JSON.parse(jsonStr);
-                const postings = appData.jobBoard?.jobPostings || [];
-                const teams = appData.jobBoard?.teams || [];
-                const teamMap = new Map(teams.map((t: any) => [t.id, t.name]));
-
-                return postings.map((j: any) => {
-                    const locRaw = j.locationName || '';
-                    const secLocs = (j.secondaryLocations || []).map((l: any) => l.locationName || '').join(' ');
-                    const remoteStr = j.workplaceType === 'Remote' ? 'Remote' : '';
-
-                    return {
-                        title: j.title || '',
-                        location: `${locRaw} ${secLocs} ${remoteStr}`.trim(),
-                        url: `https://jobs.ashbyhq.com/${token}/${j.id}`,
-                        department: teamMap.get(j.teamId) || '',
-                        salary: undefined,
-                        atsProvider: 'ashby',
-                        job_type: parseJobType(j.employmentType),
-                    };
-                });
+                jobsFromHtml = appData.jobBoard?.jobPostings || [];
             }
         }
     } catch { /* ignore */ }
 
-    return [];
+    if (!jobsFromApi.length && !jobsFromHtml.length) return [];
+
+    // If API failed but HTML worked, we map from HTML, but we have to fetch individual pages for descriptions
+    if (!jobsFromApi.length && jobsFromHtml.length) {
+        const appData = { jobBoard: { jobPostings: jobsFromHtml, teams: [] } };
+        const teams = appData.jobBoard?.teams || [];
+        const teamMap = new Map(teams.map((t: any) => [t.id, t.name]));
+
+        const jobs = jobsFromHtml.map((j: any) => {
+            const locRaw = j.locationName || '';
+            const secLocs = (j.secondaryLocations || []).map((l: any) => l.locationName || '').join(' ');
+            const remoteStr = j.workplaceType === 'Remote' ? 'Remote' : '';
+
+            return {
+                title: j.title || '',
+                location: `${locRaw} ${secLocs} ${remoteStr}`.trim(),
+                url: `https://jobs.ashbyhq.com/${token}/${j.id}`,
+                department: teamMap.get(j.teamId) || '',
+                salary: j.compensationTierSummary || j.compensationTier?.summary || j.compensation?.summary || undefined,
+                atsProvider: 'ashby',
+                description: undefined as string | undefined, // fetched below
+            };
+        });
+
+        const descLimit = pLimit(4);
+        await Promise.all(jobs.map((j: Job) => descLimit(async () => {
+            try {
+                const pr = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                if (!pr.ok) return;
+                const phtml = await pr.text();
+                if (!phtml.includes('window.__appData = ')) return;
+                const pJsonStr = phtml.split('window.__appData = ')[1].split('};\\n')[0] + '}';
+                const pAppData = JSON.parse(pJsonStr);
+                j.description = pAppData.posting?.descriptionHtml || undefined;
+            } catch { /* ignore */ }
+            await sleep(50);
+        })));
+        return jobs;
+    }
+
+    // 3. Merge API jobs with HTML salaries (Optimal Path)
+    const salaryMap = new Map(jobsFromHtml.map((j: any) => [
+        j.id,
+        j.compensationTierSummary || j.compensationTier?.summary || j.compensation?.summary || undefined
+    ]));
+
+    return jobsFromApi.map((j: any) => {
+        const locRaw = typeof j.location === 'string' ? j.location : (j.location?.name || '');
+        const secLocs = (j.secondaryLocations || [])
+            .map((l: any) => typeof l === 'string' ? l : (l.location || l.name || ''))
+            .join(' ');
+
+        return {
+            title: j.title || '',
+            location: `${locRaw} ${secLocs} ${j.isRemote ? 'Remote' : ''}`.trim(),
+            url: j.jobUrl || '',
+            department: j.department || '',
+            salary: salaryMap.get(j.id) || undefined,
+            description: j.descriptionHtml || j.descriptionPlain || undefined,
+            atsProvider: 'ashby',
+        };
+    });
+}
+
+/** Lever's mode=json postings response includes description + structured salary fields —
+ * verified live. `lists` holds named sections beyond the main body (requirements/benefits).
+ *
+ * Salary precedence:
+ *  1. salaryRange object { min, max, currency, interval } — structured, most accurate
+ *  2. salaryDescription — raw HTML prose; strip tags and extract a currency pattern
+ */
+function buildLeverDescriptionAndSalary(p: any): { description?: string; salary?: string } {
+    const listText = (p.lists || []).map((l: any) => l.content).filter(Boolean).join('\n\n');
+    const descriptionParts = [p.description, listText].filter(Boolean);
+
+    // 1. Prefer structured salaryRange object: { min, max, currency, interval }
+    let salary: string | undefined;
+    const sr = p.salaryRange;
+    if (sr && typeof sr === 'object' && (sr.min != null || sr.max != null)) {
+        // Map ISO code → symbol so cleanSalary() recognises the value downstream
+        const ISO_TO_SYMBOL: Record<string, string> = { GBP: '£', USD: '$', EUR: '€', JPY: '¥' };
+        const sym = ISO_TO_SYMBOL[String(sr.currency || '').toUpperCase()] || String(sr.currency || '').toUpperCase();
+        const fmt = (n: number) => Number(n).toLocaleString('en-GB');
+        if (sr.min != null && sr.max != null) {
+            salary = `${sym}${fmt(sr.min)} - ${sym}${fmt(sr.max)}`;
+        } else {
+            salary = `${sym}${fmt(sr.min ?? sr.max)}`;
+        }
+    }
+
+    // 2. Fallback: extract a currency amount from the HTML prose salaryDescription
+    if (!salary && p.salaryDescription && typeof p.salaryDescription === 'string') {
+        salary = extractGreenhouseSalaryFromContent(p.salaryDescription);
+    }
+
+    return {
+        description: descriptionParts.length ? descriptionParts.join('\n\n') : undefined,
+        salary,
+    };
 }
 
 async function fetchLever(token: string): Promise<Job[]> {
@@ -1573,8 +1755,8 @@ async function fetchLever(token: string): Promise<Job[]> {
                                 url: p.hostedUrl || '',
                                 department: team,
                                 job_type: parseJobType([p.text, p.categories?.department, p.categories?.team, p.categories?.commitment, p.workplaceType]),
-                                salary: undefined,
                                 atsProvider: 'lever',
+                                ...buildLeverDescriptionAndSalary(p),
                             });
                         });
                     });
@@ -1596,8 +1778,8 @@ async function fetchLever(token: string): Promise<Job[]> {
                             url: p.hostedUrl || '',
                             department: team,
                             job_type: parseJobType([p.text, p.categories?.department, p.categories?.team, p.categories?.commitment, p.workplaceType]),
-                            salary: undefined,
                             atsProvider: 'lever',
+                            ...buildLeverDescriptionAndSalary(p),
                         };
                     });
                 }
@@ -1626,25 +1808,74 @@ async function fetchWorkable(token: string): Promise<Job[]> {
         return null;
     };
 
-    // 1. Try public detail API (most reliable/fastest)
+    // Workable's listing endpoints (?detail=true included) do NOT return description
+    // text despite the name — verified against a live account. The real description
+    // lives behind a per-job detail call, so it costs one extra request per job.
+    const descriptionLimit = pLimit(4);
+    async function attachDescriptions(jobs: Array<Job & { _shortcode?: string }>): Promise<Job[]> {
+        await Promise.all(jobs.map((j) => descriptionLimit(async () => {
+            if (!j._shortcode) return;
+            try {
+                const r = await workableFetchWithRetry(
+                    `https://apply.workable.com/api/v1/accounts/${token}/jobs/${j._shortcode}`,
+                    { headers: { 'User-Agent': ua, 'Accept': 'application/json' } }
+                );
+                if (r?.ok) {
+                    const d = await r.json();
+                    // Workable splits the posting across 3 separate fields — description
+                    // alone was silently dropping requirements/benefits (confirmed live:
+                    // requirements had real content on a job that "description" alone made
+                    // look complete but wasn't).
+                    const parts = [d.description, d.requirements, d.benefits].filter(Boolean);
+                    j.description = parts.length ? parts.join('\n\n') : undefined;
+                }
+            } catch { /* description stays unset — not fatal to the job itself */ }
+        })));
+        return jobs.map(({ _shortcode, ...rest }) => rest);
+    }
+
+    // 1. Try Widget API (returns full descriptions, bypasses strict rate limits)
+    const widgetRes = await workableFetchWithRetry(`https://apply.workable.com/api/v1/widget/accounts/${token}?details=true`, {
+        headers: { 'User-Agent': ua, 'Accept': 'application/json' }
+    });
+    if (widgetRes?.ok) {
+        const d = await widgetRes.json();
+        if (Array.isArray(d.jobs)) {
+            return d.jobs.map((j: any) => ({
+                title: j.title || '',
+                location: [j.city, j.state, j.country].filter(Boolean).join(', ') || (j.telecommuting ? 'Remote' : ''),
+                // MUST format as apply.workable.com/${token}/j/... so isForeignEmployerJobUrl does not reject it
+                url: `https://apply.workable.com/${token}/j/${j.shortcode}`,
+                department: j.department || '',
+                salary: extractGreenhouseSalaryFromContent(j.description),
+                job_type: parseJobType(j.employment_type),
+                description: j.description || undefined,
+            }));
+        }
+    }
+
+    // 2. Try public detail API (most reliable/fastest for basic info, but description requires attachDescriptions)
     const r1 = await workableFetchWithRetry(`https://www.workable.com/api/accounts/${token}?detail=true`, {
         headers: { 'User-Agent': ua, 'Accept': 'application/json' }
     });
     if (r1?.ok) {
         const d = await r1.json();
         if (Array.isArray(d.jobs)) {
-            return d.jobs.map((j: any) => ({
+            const jobs = d.jobs.map((j: any) => ({
                 title: j.title || '',
                 location: [j.city, j.state, j.country].filter(Boolean).join(', ') || (j.telecommuting ? 'Remote' : ''),
-                url: j.url || j.shortlink || `https://apply.workable.com/j/${j.shortcode}`,
+                // MUST format as apply.workable.com/${token}/j/... so isForeignEmployerJobUrl does not reject it
+                url: `https://apply.workable.com/${token}/j/${j.shortcode}`,
                 department: j.department || '',
                 salary: undefined,
-                job_type: parseJobType(j.employment_type)
+                job_type: parseJobType(j.employment_type),
+                _shortcode: j.shortcode as string | undefined,
             }));
+            return attachDescriptions(jobs);
         }
     }
 
-    // 2. Try v3 API fallback
+    // 3. Try v3 API fallback
     const body = { query: '', location: [], department: [], worktype: [], remote: [] };
     const r2 = await workableFetchWithRetry(`https://apply.workable.com/api/v3/accounts/${token}/jobs`, {
         method: 'POST',
@@ -1653,14 +1884,17 @@ async function fetchWorkable(token: string): Promise<Job[]> {
     });
     if (r2?.ok) {
         const d = await r2.json();
-        return (d.results || []).map((j: any) => ({
+        const jobs = (d.results || []).map((j: any) => ({
             title: j.title || '',
             location: [j.location?.city, j.location?.region, j.location?.country].filter(Boolean).join(', ') || (j.remote ? 'Remote' : ''),
-            url: `https://apply.workable.com/${token}/j/${j.shortcode}/`,
+            // MUST format as apply.workable.com/${token}/j/... so isForeignEmployerJobUrl does not reject it
+            url: `https://apply.workable.com/${token}/j/${j.shortcode}`,
             department: j.department || '',
             salary: undefined,
-            job_type: parseJobType(j.type)
+            job_type: parseJobType(j.type),
+            _shortcode: j.shortcode as string | undefined,
         }));
+        return attachDescriptions(jobs);
     }
 
     return [];
@@ -1701,8 +1935,9 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
                         location: j.attributes?.['human-location'] || '',
                         url: j.links?.['careersite-job-url'] || '',
                         department: '',
-                        salary: undefined,
-                        job_type: parseJobType(j.attributes?.['employment-type'] || j.attributes?.['pitch'] || j.attributes?.['body'])
+                        salary: extractGreenhouseSalaryFromContent(j.attributes?.body),
+                        job_type: parseJobType(j.attributes?.['employment-type'] || j.attributes?.['pitch'] || j.attributes?.['body']),
+                        description: j.attributes?.body || undefined,
                     }));
                 }
                 if (d.items?.length > 0) {
@@ -1715,8 +1950,9 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
                             location: loc,
                             url: j.url || '',
                             department: '',
-                            salary: undefined,
-                            job_type: parseJobType(j._jobposting?.employmentType || j.content_html)
+                            salary: extractGreenhouseSalaryFromContent(j.content_html),
+                            job_type: parseJobType(j._jobposting?.employmentType || j.content_html),
+                            description: j.content_html || undefined,
                         };
                     });
                 }
@@ -1738,13 +1974,15 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
                     const country = item.find('tt\\:country').text().trim();
                     const ttLoc = [city, country].filter(Boolean).join(', ');
 
+                    const descriptionHtml = item.find('content\\:encoded').text() || item.find('description').text();
                     jobs.push({
                         title: item.find('title').text().trim(),
                         location: ttLoc || item.find('description').text().split('·')[1]?.trim() || '',
                         url: item.find('link').text().trim(),
                         department: item.find('category').first().text().trim(),
-                        salary: undefined,
-                        job_type: parseJobType(item.find('tt\\:role').text() || item.find('description').text())
+                        salary: extractGreenhouseSalaryFromContent(descriptionHtml),
+                        job_type: parseJobType(item.find('tt\\:role').text() || item.find('description').text()),
+                        description: descriptionHtml || undefined,
                     });
                 });
                 if (jobs.length > 0) return jobs;
@@ -1754,13 +1992,30 @@ async function fetchTeamtailor(token: string, company?: any): Promise<Job[]> {
     return [];
 }
 
+async function fetchBambooHRJobDetail(token: string, jobId: string): Promise<{ description?: string, salary?: string }> {
+    try {
+        const r = await fetchWithTimeout(`https://${token}.bamboohr.com/careers/${jobId}/detail`, {
+            headers: { 'Accept': 'application/json' },
+        });
+        if (!r.ok) return {};
+        const d = await r.json();
+        const job = d?.result?.jobOpening;
+        return {
+            description: job?.description || undefined,
+            salary: job?.compensation || undefined
+        };
+    } catch {
+        return {};
+    }
+}
+
 export async function fetchBambooHR(token: string): Promise<Job[]> {
     try {
         // Try the open /careers/list endpoint first
         const r = await fetchWithTimeout(`https://${token}.bamboohr.com/careers/list`);
         if (r.ok) {
             const d = await r.json();
-            return (d.result || []).map((j: any) => ({
+            const jobs = (d.result || []).map((j: any) => ({
                 title: j.jobOpeningName || '',
                 location: [
                     j.location?.city,
@@ -1768,13 +2023,21 @@ export async function fetchBambooHR(token: string): Promise<Job[]> {
                     j.location?.country
                 ].filter(Boolean).join(', '),
                 url: `https://${token}.bamboohr.com/careers/${j.id}`,
-                // The /careers/list endpoint returns a flat departmentLabel field
-                // (confirmed live) — this used to be hardcoded to '', which is
-                // being right there in the response.
                 department: j.departmentLabel || '',
                 salary: undefined,
-                job_type: parseJobType(j.employmentType || j.jobType || j.type || j.employmentStatusLabel)
+                job_type: parseJobType(j.employmentType || j.jobType || j.type || j.employmentStatusLabel),
+                _id: j.id as string | undefined,
             }));
+
+            const descLimit = pLimit(4);
+            await Promise.all(jobs.map((j: any) => descLimit(async () => {
+                if (!j._id) return;
+                const detail = await fetchBambooHRJobDetail(token, j._id);
+                j.description = detail.description;
+                if (detail.salary) j.salary = detail.salary;
+                await sleep(50);
+            })));
+            return jobs.map(({ _id, ...rest }: any) => rest);
         }
         // Fallback: applicant tracking API
         const r2 = await fetchWithTimeout(
@@ -1794,8 +2057,32 @@ export async function fetchBambooHR(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
+async function fetchSmartRecruitersDescription(token: string, jobId: string): Promise<string | undefined> {
+    try {
+        const r = await fetchWithTimeout(`https://api.smartrecruiters.com/v1/companies/${token}/postings/${jobId}`);
+        if (!r.ok) return undefined;
+        const d = await r.json();
+        const sections = d.jobAd?.sections;
+        if (!sections) return undefined;
+        const parts = ['jobDescription', 'qualifications', 'additionalInformation']
+            .map((key) => sections[key]?.text)
+            .filter(Boolean);
+        return parts.length ? parts.join('\n\n') : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function extractSmartRecruitersSalary(customField: any): string | undefined {
+    if (!Array.isArray(customField)) return undefined;
+    const parts = customField
+        .filter((f: any) => f?.fieldLabel && f?.valueLabel && /salary|pay|compensation|wage/i.test(f.fieldLabel))
+        .map((f: any) => `${f.fieldLabel}: ${f.valueLabel}`);
+    return parts.length ? parts.join(' | ') : undefined;
+}
+
 async function fetchSmartRecruiters(token: string): Promise<Job[]> {
-    const allJobs: Job[] = [];
+    const allJobs: Array<Job & { _id?: string }> = [];
     let offset = 0;
     while (true) {
         try {
@@ -1809,8 +2096,6 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
 
             allJobs.push(...content.map((j: any) => ({
                 title: j.name || '',
-                // fullLocation gives "London, England, United Kingdom" / "Saint Helier, Jersey"
-                // which catches Channel Islands and avoids 2-letter country code ambiguity
                 location: j.location?.fullLocation || `${j.location?.city || ''} ${j.location?.country || ''}`.trim(),
                 url: `https://jobs.smartrecruiters.com/${token}/${j.id}`,
                 department: j.department?.label || '',
@@ -1822,8 +2107,9 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
                     j.employmentType,
                     j.type
                 ]),
-                salary: undefined,
-                atsProvider: 'smartrecruiters'
+                salary: extractSmartRecruitersSalary(j.customField),
+                atsProvider: 'smartrecruiters',
+                _id: j.id as string | undefined,
             })));
 
             if (content.length < 100) break;
@@ -1831,7 +2117,14 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
             await sleep(500);
         } catch { break; }
     }
-    return allJobs;
+
+    const descLimit = pLimit(4);
+    await Promise.all(allJobs.map((j) => descLimit(async () => {
+        if (!j._id) return;
+        j.description = await fetchSmartRecruitersDescription(token, j._id);
+    })));
+
+    return allJobs.map(({ _id, ...rest }) => rest);
 }
 
 async function fetchPinpoint(token: string): Promise<Job[]> {
@@ -1850,36 +2143,92 @@ async function fetchPinpoint(token: string): Promise<Job[]> {
             } else {
                 location = String(locRaw || '');
             }
+
+            // All description sections are returned inline — no extra request needed
+            const descriptionParts = [j.description, j.key_responsibilities, j.skills_knowledge_expertise, j.benefits]
+                .filter(Boolean);
+
+            // Pinpoint has structured compensation fields
+            const salary = j.compensation_visible && (j.compensation_minimum || j.compensation_maximum)
+                ? [
+                    j.compensation_minimum && j.compensation_maximum
+                        ? `${j.compensation_minimum}-${j.compensation_maximum}`
+                        : String(j.compensation_minimum ?? j.compensation_maximum),
+                    j.compensation_currency,
+                    j.compensation_frequency ? `per ${j.compensation_frequency}` : null,
+                ].filter(Boolean).join(' ')
+                : undefined;
+
             return {
                 title: j.title || '',
                 location,
                 url: j.url || `https://${token}.pinpointhq.com${j.path || ''}`,
                 department: j.job_function || j.department || '',
-                salary: undefined,
+                description: descriptionParts.length ? descriptionParts.join('\n\n') : undefined,
+                salary,
                 job_type: parseJobType(j.employment_type || j.employment_type_text)
             };
         });
     } catch { return []; }
 }
 
+
+
+async function fetchBreezyJobDetail(jobUrl: string): Promise<{ description?: string, salary?: string }> {
+    try {
+        const res = await fetchWithTimeout(jobUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) return {};
+        const html = await res.text();
+        const $ = cheerio.load(html);
+
+        let desc = $('.description').html() || '';
+        let salary: string | undefined = undefined;
+
+        if (desc) {
+            salary = extractGreenhouseSalaryFromContent(desc);
+        }
+
+
+        return { description: desc || undefined, salary };
+    } catch {
+        return {};
+    }
+}
+
 export async function fetchBreezy(token: string): Promise<Job[]> {
+
     try {
         const r = await fetchWithTimeout(`https://${token}.breezy.hr/json`);
         if (!r.ok) return [];
         const d = await r.json();
-        return (d || []).map((j: any) => ({
+        const apiJobs = (d || []).map((j: any) => ({
             title: j.name || '',
             location: j.location?.name || '',
             url: j.url || '',
-            // Breezy's /json feed returns department as a flat string for most
-            // tenants (confirmed live, e.g. "Operations", "Technology") — the
-            // `.name` accessor here only matched a nested-object shape that
-            // doesn't actually occur, so every job silently fell through to ''.
             department: (typeof j.department === 'string' ? j.department : j.department?.name) || '',
-            salary: undefined,
-            job_type: parseJobType(j.type?.name || j.type || j.employmentType || j.jobType)
+            salary: (typeof j.salary === 'string' && j.salary.trim()) ? j.salary : undefined,
+            job_type: parseJobType(j.type?.name || j.type || j.employmentType || j.jobType),
+            description: undefined as string | undefined
         }));
+
+        const descLimit = pLimit(4);
+        await Promise.all(apiJobs.map((j: Job) => descLimit(async () => {
+            if (!j.url) return;
+            const detail = await fetchBreezyJobDetail(j.url);
+            j.description = detail.description;
+            if (!j.salary && detail.salary) j.salary = detail.salary;
+            await sleep(50);
+        })));
+        return apiJobs;
     } catch { return []; }
+}
+
+function formatRecruiteeSalary(salary: any): string | undefined {
+    if (!salary || (salary.min == null && salary.max == null)) return undefined;
+    const range = salary.min != null && salary.max != null
+        ? `${salary.min}-${salary.max}`
+        : String(salary.min ?? salary.max);
+    return [range, salary.currency, salary.period ? `per ${salary.period}` : null].filter(Boolean).join(' ');
 }
 
 async function fetchRecruitee(token: string): Promise<Job[]> {
@@ -1897,14 +2246,36 @@ async function fetchRecruitee(token: string): Promise<Job[]> {
             url: j.careers_url || '',
             department: j.department || '',
             job_type: parseJobType([j.title, j.department, j.employment_type_code]),
-            salary: undefined,
+            // Recruitee's listing API returns both description and requirements inline
+            description: [j.description, j.requirements].filter(Boolean).join('\n\n') || undefined,
+            salary: formatRecruiteeSalary(j.salary),
             country: j.country || '',
         }));
     } catch { return []; }
 }
 
+async function fetchJobviteJobDetail(url: string): Promise<{ description?: string, salary?: string }> {
+    try {
+        const res = await fetchWithTimeout(url, { headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) return {};
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        
+        let desc = $('.jv-job-detail-description').html() || '';
+        let salary: string | undefined = undefined;
+        
+        if (desc) {
+            salary = extractGreenhouseSalaryFromContent(desc);
+        }
+        
+        return { description: desc || undefined, salary };
+    } catch { return {}; }
+}
+
 async function fetchJobvite(token: string): Promise<Job[]> {
     try {
+        let allJobs: Job[] = [];
+        
         const r = await fetchWithTimeout(`https://jobs.jobvite.com/api/company/${token}/jobs`, {
             headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
         });
@@ -1912,53 +2283,89 @@ async function fetchJobvite(token: string): Promise<Job[]> {
             const text = await r.text();
             try {
                 const d = JSON.parse(text);
-                const apiJobs = (d.jobs || []).map((j: any) => ({
+                allJobs = (d.jobs || []).map((j: any) => ({
                     title: j.title || j.jobTitle || '',
                     location: j.location || '',
                     url: j.applyUrl || j.url || `https://jobs.jobvite.com/${token}/job/${j.id || ''}`,
                     department: j.category || j.department || '',
                     job_type: parseJobType([j.title, j.jobTitle, j.category, j.department, j.jobType]),
-                    salary: undefined
+                    salary: undefined,
+                    description: j.description || undefined
                 }));
-                if (apiJobs.length > 0) return apiJobs;
             } catch {
                 // Some Jobvite tenants return HTML from this endpoint.
             }
         }
 
-        const htmlRes = await fetchWithTimeout(`https://jobs.jobvite.com/${token}/jobs`, {
-            headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0' }
-        });
-        if (!htmlRes.ok) return [];
-        const html = await htmlRes.text();
-        const $ = cheerio.load(html);
-        const jobs: Job[] = [];
-
-        $('a[href*="/job/"]').each((_, el) => {
-            const href = $(el).attr('href') || '';
-            const title = $(el).text().trim();
-            if (!href || !isValidJobTitle(title)) return;
-
-            const row = $(el).closest('li, tr, div');
-            const location = row.find('[class*="location"], [data-qa*="location"]').first().text().trim();
-            const rowText = row.text();
-            jobs.push({
-                title,
-                location,
-                url: href.startsWith('http') ? href : `https://jobs.jobvite.com${href}`,
-                department: '',
-                job_type: parseJobType([title, rowText]),
-                salary: undefined,
+        if (allJobs.length === 0) {
+            const htmlRes = await fetchWithTimeout(`https://jobs.jobvite.com/${token}/jobs`, {
+                headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0' }
             });
-        });
+            if (!htmlRes.ok) return [];
+            const html = await htmlRes.text();
+            const $ = cheerio.load(html);
+            const jobs: Job[] = [];
 
-        return Array.from(new Map(jobs.map((j) => [j.url, j])).values());
+            $('a[href*="/job/"]').each((_, el) => {
+                const href = $(el).attr('href') || '';
+                const title = $(el).text().trim();
+                if (!href || !isValidJobTitle(title)) return;
+
+                const row = $(el).closest('li, tr, div');
+                const location = row.find('[class*="location"], [data-qa*="location"]').first().text().trim();
+                const rowText = row.text();
+                jobs.push({
+                    title,
+                    location,
+                    url: href.startsWith('http') ? href : `https://jobs.jobvite.com${href}`,
+                    department: '',
+                    job_type: parseJobType([title, rowText]),
+                    salary: undefined,
+                    description: undefined
+                });
+            });
+            allJobs = Array.from(new Map(jobs.map((j) => [j.url, j])).values());
+        }
+
+        const descLimit = pLimit(4);
+        await Promise.all(allJobs.map(j => descLimit(async () => {
+            if (!j.url || j.description) return;
+            const detail = await fetchJobviteJobDetail(j.url);
+            j.description = detail.description;
+            if (detail.salary) j.salary = detail.salary;
+            await sleep(50);
+        })));
+
+        return allJobs;
     } catch {
         return [];
     }
 }
 
+
+async function fetchAvatureJobDetail(jobUrl: string): Promise<{ description?: string, salary?: string }> {
+    try {
+        const res = await fetchWithTimeout(jobUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) return {};
+        const html = await res.text();
+        const $ = cheerio.load(html);
+
+        let desc = $('.article__content').map((_, el) => $(el).html()).get().join('<br/><br/>') || $('article').html() || $('.job-detail').html() || $('.main__wrapper').text() || '';
+        let salary: string | undefined = undefined;
+
+        const fullText = $('body').text();
+        const salaryMatch = fullText.match(/(?:£|\$|€|JPY|¥)\s*[\d,.]+[kKmM]?\s*(?:-|to|–|—)\s*(?:£|\$|€|JPY|¥)?\s*[\d,.]+[kKmM]?/i) ||
+            fullText.match(/(?:£|\$|€|JPY|¥)\s*[\d,.]+[kKmM]?/i);
+        if (salaryMatch) salary = salaryMatch[0].trim();
+
+        return { description: desc || undefined, salary };
+    } catch {
+        return {};
+    }
+}
+
 async function fetchAvature(token: string): Promise<Job[]> {
+
     try {
         const raw = String(token || '').trim();
         if (!raw) return [];
@@ -1989,7 +2396,7 @@ async function fetchAvature(token: string): Promise<Job[]> {
         });
         if (!r.ok) return [];
         const d = await r.json();
-        return (d.items || []).map((j: any) => ({
+        const apiJobs = (d.items || []).map((j: any) => ({
             title: j.jobTitle || j.title || '',
             location: j.location || '',
             url: j.detailUrl || j.url || `https://${subdomain}.avature.net/`,
@@ -1997,7 +2404,18 @@ async function fetchAvature(token: string): Promise<Job[]> {
             salary: undefined,
             job_type: parseJobType([j.jobTitle, j.title, j.category, j.department]),
             atsProvider: 'avature',
+            description: undefined as string | undefined
         }));
+
+        const descLimit = pLimit(4);
+        await Promise.all(apiJobs.map((j: Job) => descLimit(async () => {
+            if (!j.url) return;
+            const detail = await fetchAvatureJobDetail(j.url);
+            j.description = detail.description;
+            if (detail.salary) j.salary = detail.salary;
+            await sleep(50);
+        })));
+        return apiJobs;
     } catch {
         return [];
     }
@@ -2010,6 +2428,7 @@ async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
         '/en_US/careersmarketplace/SearchJobs/',
         '/careersmarketplace/SearchJobs/',
         '/en_GB/careersmarketplace/SearchJobs/',
+        '/careers/SearchJobs/',
     ];
 
     let searchPath = '';
@@ -2121,6 +2540,16 @@ async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
                             job.job_type = bodyType;
                         }
                     }
+
+                    // Extract description and salary
+                    const desc = $d('.article__content').map((_, el) => $d(el).html()).get().join('<br/><br/>') || $d('article').html() || $d('.job-detail').html() || $d('.main__wrapper').text() || '';
+                    if (desc.length > 50) job.description = desc;
+
+                    const fullText = $d('body').text();
+                    const salaryMatch = fullText.match(/(?:£|\$|€|JPY|¥)\s*[\d,.]+[kKmM]?\s*(?:-|to|–|—)\s*(?:£|\$|€|JPY|¥)?\s*[\d,.]+[kKmM]?/i) ||
+                        fullText.match(/(?:£|\$|€|JPY|¥)\s*[\d,.]+[kKmM]?/i);
+                    if (salaryMatch) job.salary = salaryMatch[0].trim();
+
                 } catch (e) {
                     // Ignore and keep the default title-based job_type
                 }
@@ -2200,6 +2629,18 @@ async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
     }
 }
 
+function extractPersonioDescription(block: string): string | undefined {
+    const descBlockMatch = block.match(/<jobDescriptions>([\s\S]*?)<\/jobDescriptions>/);
+    if (!descBlockMatch) return undefined;
+    const sections = descBlockMatch[1].match(/<jobDescription>([\s\S]*?)<\/jobDescription>/g) || [];
+    const parts = sections.map((section) => {
+        const name = section.match(/<name>([\s\S]*?)<\/name>/)?.[1]?.trim();
+        const value = section.match(/<value>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/value>/)?.[1]?.trim();
+        if (!value) return null;
+        return name ? `<strong>${name}</strong>\n${value}` : value;
+    }).filter(Boolean);
+    return parts.length ? parts.join('\n\n') : undefined;
+}
 async function fetchPersonio(token: string): Promise<Job[]> {
     try {
         const r = await fetchWithTimeout(`https://${token}.jobs.personio.de/xml?language=en`);
@@ -2208,15 +2649,23 @@ async function fetchPersonio(token: string): Promise<Job[]> {
         const posBlocks = xml.match(/<position>([\s\S]*?)<\/position>/g) || [];
         return posBlocks.map(block => {
             const get = (tag: string) => {
-                const m = block.match(new RegExp(`<${tag}[^>]*>([^<]*)<\/${tag}>`));
+                const m = block.match(new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`));
                 return m ? m[1].trim() : '';
             };
+
+            const description = extractPersonioDescription(block);
+
+            // Personio sometimes has salary in XML tags, otherwise extract from description
+            const salaryTag = get('salary') || get('compensation');
+            const salary = salaryTag || (description ? extractGreenhouseSalaryFromContent(description) : undefined);
+
             return {
                 title: get('name') || get('title'),
                 location: get('office') || get('location'),
                 url: get('jobUrl') || `https://${token}.jobs.personio.de/job/${get('id')}?display=en`,
                 department: get('department'),
-                salary: undefined,
+                salary: salary || undefined,
+                description,
                 job_type: parseJobType(get('schedule') || get('employmentType') || get('recruitingCategory'))
             };
         });
@@ -2550,6 +2999,24 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                     }
                 } catch { /* Ireland pass is best-effort — never block UK results */ }
 
+                // Workday's listing response has no description text — verified live:
+                // it lives behind a per-job detail call at the same cxs path plus the
+                // job's externalPath, in jobPostingInfo.jobDescription (real HTML).
+                const detailBase = apiUrl.replace(/\/jobs$/, '');
+                const descLimit = pLimit(4);
+                await Promise.all(allJobs.map((j) => descLimit(async () => {
+                    if (!j.url.startsWith(publicBase)) return;
+                    const externalPath = j.url.slice(publicBase.length);
+                    try {
+                        const detailRes = await fetchWithTimeout(`${detailBase}${externalPath}`, {
+                            headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
+                        });
+                        if (!detailRes.ok) return;
+                        const detailData = await detailRes.json();
+                        j.description = detailData?.jobPostingInfo?.jobDescription || undefined;
+                    } catch { /* description stays unset — not fatal to the job itself */ }
+                })));
+
                 return allJobs;
             } catch (err: any) {
                 // Silently ignore "fetch failed" as it's expected when brute-forcing subdomains
@@ -2836,7 +3303,26 @@ async function fetchSuccessFactorsJsonApi(csbBaseUrl: string): Promise<Job[]> {
     } catch {
         return [];
     }
+    await attachSuccessFactorsDescriptions(allJobs);
     return allJobs;
+}
+
+// Description isn't in the search/list response on either the JSON API or the
+// HTML search path — verified live (Reckitt): each job's own page is
+// server-rendered HTML with the full text in .jobdescription (no salary
+// anywhere on the page for this employer — checked, genuinely absent).
+async function attachSuccessFactorsDescriptions(jobs: Job[]): Promise<void> {
+    const descLimit = pLimit(4);
+    await Promise.all(jobs.map((j) => descLimit(async () => {
+        try {
+            const r = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!r.ok) return;
+            const html = await r.text();
+            const $$ = cheerio.load(html);
+            const text = $$('.jobdescription').first().text().replace(/\s+/g, ' ').trim();
+            if (text.length > 50) j.description = text;
+        } catch { /* description stays unset — not fatal to the job itself */ }
+    })));
 }
 
 /** HTML list scrape for SuccessFactors CSB boards when the JSON API is blocked. */
@@ -2931,7 +3417,9 @@ async function fetchSuccessFactorsHtmlSearch(
         if (byUrl.size > 0) break;
     }
 
-    return Array.from(byUrl.values());
+    const jobs = Array.from(byUrl.values());
+    await attachSuccessFactorsDescriptions(jobs);
+    return jobs;
 }
 
 async function fetchHibob(token: string): Promise<Job[]> {
@@ -2949,15 +3437,72 @@ async function fetchHibob(token: string): Promise<Job[]> {
         });
         if (!r.ok) return [];
         const d = await r.json();
-        return (d.jobAdDetails || []).map((j: any) => ({
-            title: j.title || '',
-            location: `${j.site || ''} ${j.country || ''}`.trim(),
-            url: `https://${domain}/jobs/${j.id}`,
-            department: typeof j.department === 'string' ? j.department : (j.department?.name || ''),
-            salary: undefined,
-            job_type: parseJobType(j.employmentType || j.type),
-        }));
+        return (d.jobAdDetails || []).map((j: any) => {
+            const combinedDesc = [
+                j.description,
+                j.responsibilities,
+                j.requirements,
+                j.benefits
+            ].filter(Boolean).join('<br><br>');
+            
+            let salary: string | undefined = undefined;
+            if (j.payTransparencyMinSalary) {
+                const cur = j.payTransparencySalaryCurrency || '£';
+                salary = `${cur}${j.payTransparencyMinSalary}`;
+                if (j.payTransparencyMaxSalary) {
+                    salary += ` - ${cur}${j.payTransparencyMaxSalary}`;
+                }
+                if (j.payTransparencySalaryPayPeriod === 'YEARLY') {
+                    salary += ' per year';
+                }
+            }
+            if (!salary && combinedDesc) {
+                salary = extractGreenhouseSalaryFromContent(combinedDesc);
+            }
+
+            return {
+                title: j.title || '',
+                location: `${j.site || ''} ${j.country || ''}`.trim(),
+                url: `https://${domain}/jobs/${j.id}`,
+                department: typeof j.department === 'string' ? j.department : (j.department?.name || ''),
+                salary,
+                description: combinedDesc || undefined,
+                job_type: parseJobType(j.employmentType || j.type),
+            };
+        });
     } catch { return []; }
+}
+
+async function fetchEightfoldJobDetail(host: string, apiDomain: string, pId: string): Promise<{ description?: string, salary?: string }> {
+    try {
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0',
+            'Accept': 'application/json'
+        };
+
+        let res = await fetchWithTimeout(`https://${host}/api/apply/v2/jobs/${pId}?domain=${apiDomain}`, { headers });
+        let d;
+        
+        if (res.ok) {
+            d = await res.json();
+        } else {
+            // Fallback for companies (like Boston Scientific) that disable the apply API
+            res = await fetchWithTimeout(`https://${host}/api/pcs/position?domain=${apiDomain}&position=${pId}`, { headers });
+            if (!res.ok) return {};
+            d = await res.json();
+        }
+        
+        let desc = d.job_description || d.jobDescription || '';
+        let salary: string | undefined = undefined;
+        
+        if (desc) {
+            salary = extractGreenhouseSalaryFromContent(desc);
+        }
+        
+        return { description: desc || undefined, salary };
+    } catch {
+        return {};
+    }
 }
 
 export async function fetchEightfold(token: string): Promise<Job[]> {
@@ -3012,11 +3557,13 @@ export async function fetchEightfold(token: string): Promise<Job[]> {
 
             allJobs.push(...positions.map((p: any) => ({
                 title: p.name || '',
-                location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
+                location: (Array.isArray(p.locations) ? p.locations[0] : p.locations) || (Array.isArray(p.standardizedLocations) ? p.standardizedLocations[0] : p.standardizedLocations) || '',
                 url: `https://${host}${p.positionUrl}${apiDomain !== host.split('.')[0] + '.com' && apiDomain !== host ? '?domain=' + apiDomain : ''}`,
                 department: p.department || '',
                 job_type: parseJobType([p.name, p.department, p.employmentType, p.workType, p.type]),
-                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
+                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined,
+                _id: p.id as string | undefined,
+                description: undefined as string | undefined
             })));
 
             if (positions.length < PAGE_SIZE) break;
@@ -3024,7 +3571,40 @@ export async function fetchEightfold(token: string): Promise<Job[]> {
             await sleep(500);
         } catch { break; }
     }
-    return allJobs;
+    
+    const descLimit = pLimit(4);
+    await Promise.all(allJobs.map((j: any) => descLimit(async () => {
+        if (!j._id) return;
+        const detail = await fetchEightfoldJobDetail(host, apiDomain, j._id);
+        j.description = detail.description;
+        if (!j.salary && detail.salary) j.salary = detail.salary;
+        await sleep(50);
+    })));
+
+    return allJobs.map(({ _id, ...rest }: any) => rest);
+}
+
+async function fetchICIMSJobDetail(jobUrl: string): Promise<{ description?: string, salary?: string }> {
+    try {
+        // Ensure we use the iframe version which is server-side rendered with the full description
+        const url = jobUrl.includes('in_iframe=1') ? jobUrl : `${jobUrl}${jobUrl.includes('?') ? '&' : '?'}in_iframe=1`;
+        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) return {};
+        const html = await res.text();
+        const $ = cheerio.load(html);
+        
+        // iCIMS splits the JD into multiple sections, each in .iCIMS_InfoMsg_Job
+        const parts: string[] = [];
+        $('.iCIMS_InfoMsg_Job').each((_, el) => {
+            const h = $(el).html();
+            if (h) parts.push(h);
+        });
+        
+        if (parts.length === 0) return {};
+        const desc = parts.join('<br><br>');
+        const salary = extractGreenhouseSalaryFromContent(desc);
+        return { description: desc, salary };
+    } catch { return {}; }
 }
 
 async function fetchICIMS(token: string): Promise<Job[]> {
@@ -3069,6 +3649,7 @@ async function fetchICIMS(token: string): Promise<Job[]> {
                         url: jobUrl.split('?')[0],
                         department,
                         salary: undefined,
+                        description: undefined,
                         job_type: parseJobType(jobTypeRaw)
                     });
                 }
@@ -3077,6 +3658,16 @@ async function fetchICIMS(token: string): Promise<Job[]> {
             if (cards.length < 5) break;
             pr++;
         }
+
+        const descLimit = pLimit(4);
+        await Promise.all(allJobs.map(j => descLimit(async () => {
+            if (!j.url) return;
+            const detail = await fetchICIMSJobDetail(j.url);
+            j.description = detail.description;
+            if (detail.salary) j.salary = detail.salary;
+            await sleep(100);
+        })));
+
         return allJobs;
     } catch (e: any) {
         console.error(`[iCIMS] ${token} error: ${e.message}`);
@@ -3128,14 +3719,56 @@ async function fetchRippling(token: string): Promise<Job[]> {
             }
         }
 
-        return allItems.map((j: any) => ({
+        const jobs: (Job & { _workplaceTypes?: string })[] = allItems.map((j: any) => ({
             title: j.name || '',
             location: (j.locations || []).map((l: any) => l.name || l.city || '').join(', '),
             url: j.url || `https://ats.rippling.com/${token}/jobs/${j.id}`,
             department: j.department?.name || '',
             salary: undefined,
-            job_type: parseJobType(j.workType || j.employmentType || j.type)
+            job_type: parseJobType(j.workType || j.employmentType || j.type),
+            // ON_SITE/HYBRID/REMOTE per location
+            _workplaceTypes: [...new Set((j.locations || []).map((l: any) => l.workplaceType).filter(Boolean))].join(', '),
         }));
+
+        const descLimit = pLimit(4);
+        await Promise.all(jobs.map((j) => descLimit(async () => {
+            try {
+                const r = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' } });
+                if (!r.ok) return;
+                const html = await r.text();
+                const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+                if (!m) return;
+                const apiData = JSON.parse(m[1])?.props?.pageProps?.apiData;
+                const post = apiData?.jobPost;
+                if (!post) return;
+
+                const companyHtml = post.description?.company || '';
+                const roleHtml = post.description?.role || '';
+                const employmentType = post.employmentType?.id || post.employmentType?.label || '';
+                const ranges = Array.isArray(apiData?.payRangeDetails) ? apiData.payRangeDetails : [];
+                const salaryParts = ranges.map((rg: any) => {
+                    const min = rg?.minAmount ?? rg?.min ?? rg?.minValue;
+                    const max = rg?.maxAmount ?? rg?.max ?? rg?.maxValue;
+                    const currency = rg?.currency || rg?.currencyCode || '';
+                    if (min == null && max == null) return '';
+                    return [min != null && max != null ? `${min}-${max}` : String(min ?? max), currency].filter(Boolean).join(' ');
+                }).filter(Boolean);
+
+                const metaLines = [
+                    employmentType ? `Employment type: ${employmentType}` : null,
+                    j._workplaceTypes ? `Workplace: ${j._workplaceTypes}` : null,
+                    post.createdOn ? `Posted: ${String(post.createdOn).slice(0, 10)}` : null,
+                ].filter(Boolean);
+                const description = [companyHtml, roleHtml, metaLines.length ? metaLines.join(' · ') : null]
+                    .filter(Boolean).join('\n\n') || undefined;
+
+                if (description) j.description = description;
+                if (salaryParts.length) j.salary = salaryParts.join(' | ');
+            } catch { /* description stays unset */ }
+        })));
+
+        for (const j of jobs) delete j._workplaceTypes;
+        return jobs;
     } catch { return []; }
 }
 
@@ -6159,7 +6792,9 @@ export async function syncAll() {
                         const stripSource = /source/i.test(jobErr.message);
                         const stripSeen = /last_seen_at/i.test(jobErr.message);
                         const stripJobType = /job_type/i.test(jobErr.message);
-                        if (stripSector || stripSectorEmbedding || stripSource || stripSeen || stripJobType) {
+                        const stripDesc = /description/i.test(jobErr.message);
+                        const stripSalary = /salary/i.test(jobErr.message);
+                        if (stripSector || stripSectorEmbedding || stripSource || stripSeen || stripJobType || stripDesc || stripSalary) {
                             const stripped = rows.map((row) => {
                                 const next: Record<string, unknown> = {
                                     company_id: row.company_id,
@@ -6177,6 +6812,8 @@ export async function syncAll() {
                                 if (!stripSource && row.source) next.source = row.source;
                                 if (!stripSeen) next.last_seen_at = row.last_seen_at;
                                 if (!stripJobType) next.job_type = row.job_type;
+                                if (!stripDesc && row.description !== undefined) next.description = row.description;
+                                if (!stripSalary && row.salary !== undefined) next.salary = row.salary;
                                 return next;
                             });
                             const { error: fallbackErr } = await supabase
