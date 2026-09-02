@@ -2,7 +2,7 @@
  * Smoke tests for Phase 1 title-reject reason codes.
  * Run: npx tsx src/scripts/syncAll.titleReject.test.ts
  */
-import { getJobTitleRejectReason, isValidJobTitle, parseAstraZenecaResultsHtml, resolveProviderAndToken } from './syncAll';
+import { getJobTitleRejectReason, isValidJobTitle, parseAstraZenecaResultsHtml, parseHseJobSearchHtml, parseRadancyResultsHtml, resolveProviderAndToken } from './syncAll';
 
 function assert(cond: boolean, msg: string) {
     if (!cond) throw new Error(msg);
@@ -35,6 +35,35 @@ assert(isValidJobTitle('Security Guard') === false, 'isValid false for low profi
     assert(parsed[0].title === 'Medical Affairs Manager', parsed[0].title);
     assert(parsed[0].location.includes('Cambridge'), parsed[0].location);
     assert(parsed[0].url.includes('careers.astrazeneca.com/job/cambridge'), parsed[0].url);
+}
+
+{
+    const tk = resolveProviderAndToken('avature', 'takeda', 'https://www.takedajobs.com');
+    assert(tk?.provider === 'takeda', `Takeda avature routes to takeda, got ${tk?.provider}`);
+    const parsed = parseRadancyResultsHtml(`
+        <ul id="search-results-list">
+          <li><a href="/job/london/market-research-lead/1113/1">
+            <h2>Market Research Lead</h2>
+            <span class="job-location">London, England</span>
+          </a></li>
+        </ul>`, 'https://jobs.takeda.com', 'takeda');
+    assert(parsed.length === 1, `Takeda html parse count ${parsed.length}`);
+    assert(parsed[0].url.includes('jobs.takeda.com/job/london'), parsed[0].url);
+}
+
+{
+    const hse = parseHseJobSearchHtml(`
+        <div>
+          <a href="/jobs/job-search/staff-nurse-limerick-hsemw25926/">Staff Nurse - Limerick HSEMW25926</a>
+          Category: Nursing and Midwifery County: Limerick Date posted: 1 September 2026
+        </div>
+        <div>
+          <a href="/jobs/job-search/grade-vi-internal-nrs15574/">Grade VI Data Analyst NRS15574</a>
+          Advertisement Type: Confined competition Category: Management County: Dublin Date posted: 1 September 2026
+        </div>`);
+    assert(hse.length === 1, `HSE parse should skip confined, got ${hse.length}`);
+    assert(hse[0].location.includes('Limerick'), hse[0].location);
+    assert(hse[0].url.includes('about.hse.ie/jobs/job-search/staff-nurse'), hse[0].url);
 }
 
 console.log('syncAll.titleReject.test.ts — all passed');
