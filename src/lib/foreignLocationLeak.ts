@@ -43,8 +43,9 @@ function locationIsExplicitlyForeign(location: string): boolean {
     const l = location.toLowerCase().trim();
     if (!l) return false;
     if (/^(multiple locations?|\d+\s+locations?)$/i.test(l)) return false;
+    if (/^(van|mtl|tor)$/i.test(l)) return true;
     if (
-        /\b(united states|\busa\b|u\.s\.a?|north carolina|california|menlo park|ontario|canada|australia|netherlands|germany|france|spain|singapore|india|jamaica|manchester parish)\b/i.test(
+        /\b(united states|\busa\b|u\.s\.a?|north carolina|california|menlo park|ontario|canada|australia|netherlands|germany|france|spain|singapore|india|jamaica|manchester parish|abbotsford|\bvic,?\s*au\b)\b/i.test(
             l,
         )
     ) {
@@ -74,6 +75,10 @@ export function isForeignLocationLeak(
 
     if (locationIsExplicitlyForeign(location)) return true;
 
+    // North America office-code dumps (LON/VAN/MTL/TOR) and CIS+Remote hybrids.
+    if (/\b(lon|van|mtl|tor)\s*\/\s*(lon|van|mtl|tor)/i.test(title)) return true;
+    if (/\b(kyiv|kiev|dnipro)\b/i.test(title) && /\bremote\b/i.test(location)) return true;
+
     if (market === 'uk') {
         if (
             COLLISION_CITY.test(location) &&
@@ -88,6 +93,17 @@ export function isForeignLocationLeak(
     if (
         /\b(dublin|cork|galway|westport|limerick)\b/i.test(location) &&
         (urlSignalsForeignWorkLocation(url) || /[-_/](ca|oh|ct|ny)[-_/]/i.test(String(url || '').toLowerCase()))
+    ) {
+        return true;
+    }
+    // Recruiter ads that park an Australia/Canada role on an Irish city.
+    if (
+        /\b(dublin|cork|galway|limerick|ireland)\b/i.test(location) &&
+        ((/\baustralia\b/i.test(title) &&
+            /\b(gp|general practitioner|anaesthetist|anesthetist|paediatrician|pediatrician|fast[-\s]?track|pathway)\b/i.test(
+                title,
+            )) ||
+            (/\bcanada\b/i.test(title) && /\b(construction worker|roads and bridges)\b/i.test(title)))
     ) {
         return true;
     }

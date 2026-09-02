@@ -58,6 +58,21 @@ test('sanitizeJobLocation replaces N Locations / Multiple locations placeholders
     );
 });
 
+test('sanitizeJobLocation treats Home / N / digits as placeholders', () => {
+    assert.strictEqual(
+        sanitizeJobLocation('Home', 'uk', 'Business Development Director - Invoice Finance - North West'),
+        'North West',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('N', 'uk', 'Neuromodulation Clinical Sales Representative Graduate - London'),
+        'London',
+    );
+    assert.strictEqual(
+        sanitizeJobLocation('28', 'uk', 'Customer Service Representative - Traveline Scotland'),
+        'Scotland',
+    );
+});
+
 test('sanitizeJobLocation maps codes and strips N/A', () => {
     assert.strictEqual(sanitizeJobLocation('GBR', 'uk'), 'United Kingdom');
     assert.strictEqual(sanitizeJobLocation('R062179', 'ireland'), 'Ireland');
