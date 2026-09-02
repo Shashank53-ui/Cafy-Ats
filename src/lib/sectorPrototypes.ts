@@ -228,6 +228,10 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Home Manager',
       'Unit Manager',
       'Clinical Unit Manager',
+      'Biomedical Scientist',
+      'Specialist Biomedical Scientist',
+      'Histology BMS',
+      'Registered Nursing Associate',
     ],
   },
   'Healthcare & Social Care': {
@@ -360,6 +364,8 @@ export const SECTOR_PROTOTYPES: Record<AllowedSector, SectorPrototype> = {
       'Organic Chemist',
       'Production Chemist',
       'Medical Device Regulatory Specialist',
+      'Principal Scientist, Pharmaceutical Development',
+      'Scientist II, Biopharma',
     ],
   },
   'Product Management': {

@@ -35,7 +35,8 @@ import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import { sanitizeJobTitle } from '../lib/sanitizeJobTitle';
-import { getIngestRejectReason } from '../lib/jobIngestGuards';
+import { getIngestRejectReason, isForeignEmployerJobUrl, isRelocateAbroadTitle } from '../lib/jobIngestGuards';
+import { isLicenceTruthy, resolveSyncMarket } from '../lib/syncMarket';
 import { isForeignLocationLeak } from '../lib/foreignLocationLeak';
 import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
@@ -157,18 +158,7 @@ export interface CompanyRow {
     ireland_permit_employer?: boolean | null;
 }
 
-function isLicenceTruthy(v: unknown): boolean {
-    return v === true || v === 'true' || v === 't' || v === 1 || v === '1';
-}
-
-/**
- * Infer sync market when companies.sync_market is missing.
- * Ireland permit seeds: 900000–959999. Phase-4 UK gap companies: 960000+.
- */
-export function inferDefaultSyncMarket(id: number): 'uk' | 'ireland' {
-    if (id >= 900000 && id < 960000) return 'ireland';
-    return 'uk';
-}
+export { inferDefaultSyncMarket, resolveSyncMarket, isLicenceTruthy } from '../lib/syncMarket';
 
 interface FilterLogEntry {
     company_id: string;
@@ -662,11 +652,7 @@ export function getJobTitleRejectReason(title: string): string | null {
     if (junk.includes(lower)) return 'title_junk';
     if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return 'title_junk';
     // AECOM/Canva/Airwallex etc. post "Relocate to Australia/Singapore" with a UK interview city
-    if (
-        /\brelocate to (australia|singapore|usa|united states|canada|india|germany|france|spain|poland|netherlands|dubai|uae|hong kong|japan|china)\b/i.test(
-            title,
-        )
-    ) {
+    if (isRelocateAbroadTitle(title)) {
         return 'title_relocate_abroad';
     }
     if (LOW_PROFILE_TITLE_PATTERN.test(title)) return 'title_low_profile';
@@ -709,6 +695,11 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /vorboss\.com/i, fetcher: 'vorboss' },
     { pattern: /jobs\.gxo\.com|gxo\.com/i, fetcher: 'gxo' },
     { pattern: /royalmailgroup\.com|royal.?mail/i, fetcher: 'royalmail' },
+    { pattern: /astrazeneca\.com|astrazeneca/i, fetcher: 'astrazeneca' },
+    { pattern: /careers\.lilly\.com/i, fetcher: 'phenom' },
+    { pattern: /jobs\.takeda\.com|takedajobs\.com/i, fetcher: 'takeda' },
+    { pattern: /novonordisk|careers\.novonordisk\.com/i, fetcher: 'successfactors' },
+    { pattern: /about\.hse\.ie|hse\.ie\/.*jobs/i, fetcher: 'hse' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
@@ -741,6 +732,20 @@ export function resolveProviderAndToken(
 
     // Normalize provider and apply alias
     const provider = normalizeProviderName(rawProvider) || '';
+
+    if (
+        (provider === 'pinpoint' || provider === 'custom') &&
+        /astrazeneca/i.test(`${rawToken} ${rawUrl}`)
+    ) {
+        return { provider: 'astrazeneca', token: rawToken || rawUrl || 'astrazeneca' };
+    }
+
+    if (
+        (provider === 'avature' || provider === 'custom') &&
+        /takeda/i.test(`${rawToken} ${rawUrl}`)
+    ) {
+        return { provider: 'takeda', token: rawToken || rawUrl || 'https://jobs.takeda.com' };
+    }
 
     // Workday: if token is just a subdomain (no '/'), build token from URL
     if (provider === 'workday' && rawToken && !rawToken.includes('/')) {
@@ -989,7 +994,9 @@ function isLikelyCareersDiscoveryUrl(url: string, company: CompanyRow): boolean 
             host.includes('myworkdayjobs.com') ||
             host.includes('jobvite.com')
         ) {
-            return true;
+            // Any Greenhouse/Lever/etc. URL is not automatically this company.
+            // Serper once attached Pulse Healthcare's entire board to Digital Autopsy UK.
+            return !isForeignEmployerJobUrl(url, company);
         }
 
         if (company.url) {
@@ -1343,7 +1350,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
                 const base = {
                     ...company,
                     careers_url: company.careers_url || company.url,
-                    sync_market: company.sync_market || inferDefaultSyncMarket(company.id),
+                    sync_market: resolveSyncMarket(company),
                 };
                 if (!override) return base;
 
@@ -1422,7 +1429,7 @@ export async function loadAllCompanies(specificIds: number[] | null): Promise<Co
             const base = {
                 ...company,
                 careers_url: company.careers_url || company.url,
-                sync_market: company.sync_market || inferDefaultSyncMarket(company.id),
+                sync_market: resolveSyncMarket(company),
             };
             if (!override) return base;
 
@@ -3372,6 +3379,7 @@ async function fetchSuccessFactorsHtmlSearch(
     const queries = opts?.preferUk
         ? [
             `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('GB')}`,
+            `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('Ireland')}`,
             `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('United Kingdom')}`,
             `${csbBaseUrl}/search/?q=`,
         ]
@@ -3406,7 +3414,8 @@ async function fetchSuccessFactorsHtmlSearch(
                         isRemote: /\bremote\b/i.test(location),
                         isTrustedSource: false,
                     });
-                    if (!uk) return;
+                    const ie = isIrelandJob(location, location ? [location] : []);
+                    if (!uk && !ie) return;
                     pageUk++;
                 }
 
@@ -4852,9 +4861,114 @@ async function fetchNetworkRail(_token: string): Promise<Job[]> {
     }
 }
 
-// ─── AstraZeneca (Playwright / TalentBrew SPA) ───────────────────────────────
-// Token: "astrazeneca" — JS-rendered careers.astrazeneca.com
-async function fetchAstraZeneca(_token: string): Promise<Job[]> {
+/** Radancy/TalentBrew results HTML → jobs. Exported for tests. */
+export function parseRadancyResultsHtml(html: string, origin: string, atsProvider: string): Job[] {
+    const $ = cheerio.load(html);
+    const jobs: Job[] = [];
+    const seen = new Set<string>();
+    const base = origin.replace(/\/$/, '');
+    $('a[href*="/job/"]').each((_, el) => {
+        const href = String($(el).attr('href') || '').trim();
+        if (!href || href.includes('#') || seen.has(href)) return;
+        const title = $(el).find('h2, h3').first().text().replace(/\s+/g, ' ').trim()
+            || $(el).text().replace(/\s+/g, ' ').trim();
+        if (!title || title.length < 3) return;
+        const loc = $(el).find('.job-location, [class*="location"]').first().text().replace(/\s+/g, ' ').trim()
+            || $(el).parent().find('.job-location, [class*="location"]').first().text().replace(/\s+/g, ' ').trim();
+        const url = href.startsWith('http') ? href : `${base}${href.startsWith('/') ? '' : '/'}${href}`;
+        seen.add(href);
+        jobs.push({
+            title,
+            location: loc || '',
+            url,
+            department: '',
+            salary: undefined,
+            atsProvider,
+        });
+    });
+    return jobs;
+}
+
+export function parseAstraZenecaResultsHtml(html: string): Job[] {
+    return parseRadancyResultsHtml(html, 'https://careers.astrazeneca.com', 'astrazeneca');
+}
+
+// LocationPath 2635167 = GeoNames United Kingdom; 2963597 = Ireland.
+async function fetchRadancyJobs(origin: string, atsProvider: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    const seen = new Set<string>();
+    const base = origin.replace(/\/$/, '');
+    const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+        Referer: `${base}/search-jobs`,
+    };
+    const regions: Array<{ path: string; location: string }> = [
+        { path: '2635167', location: 'United Kingdom' },
+        { path: '2963597', location: 'Ireland' },
+    ];
+
+    for (const region of regions) {
+        for (let page = 1; page <= 30; page++) {
+            const params = new URLSearchParams({
+                ActiveFacetID: '0',
+                CurrentPage: String(page),
+                RecordsPerPage: '50',
+                Distance: '50',
+                RadiusUnitType: '0',
+                Keywords: '',
+                Location: region.location,
+                ShowRadius: 'False',
+                CustomFacetName: '',
+                FacetTerm: '',
+                FacetType: '0',
+                SearchResultsModuleName: 'Search Results',
+                SearchFiltersModuleName: 'Search Filters',
+                SortCriteria: '0',
+                SortDirection: '1',
+                SearchType: '5',
+                LocationType: '2',
+                LocationPath: region.path,
+                OrganizationIds: '',
+                PostalCode: '',
+                fc: '',
+                fl: '',
+                fcf: '',
+                afc: '',
+                afl: '',
+                afcf: '',
+            });
+            try {
+                const res = await fetchWithTimeout(
+                    `${base}/search-jobs/results?${params.toString()}`,
+                    { headers },
+                    30000,
+                );
+                if (!res.ok) break;
+                const data = await res.json();
+                if (data?.hasJobs === false) break;
+                const html = String(data?.results || '');
+                const pageJobs = parseRadancyResultsHtml(html, base, atsProvider);
+                let added = 0;
+                for (const j of pageJobs) {
+                    if (seen.has(j.url)) continue;
+                    seen.add(j.url);
+                    allJobs.push(j);
+                    added++;
+                }
+                if (!pageJobs.length || added === 0) break;
+            } catch (e: any) {
+                console.error(`[${atsProvider}] page ${page} ${region.location}:`, e.message);
+                break;
+            }
+        }
+    }
+    console.log(`[${atsProvider}] ${allJobs.length} jobs (UK+Ireland boards)`);
+    return allJobs;
+}
+
+async function fetchAstraZenecaLegacy(_token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     let browser: Browser | undefined;
     let context: BrowserContext | undefined;
@@ -4913,6 +5027,77 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
 }
 
 
+
+//
+
+async function fetchAstraZeneca(_token: string): Promise<Job[]> {
+    return fetchRadancyJobs('https://careers.astrazeneca.com', 'astrazeneca');
+}
+
+async function fetchTakeda(_token: string): Promise<Job[]> {
+    return fetchRadancyJobs('https://jobs.takeda.com', 'takeda');
+}
+
+/** HSE job-search HTML → jobs. Exported for tests. */
+export function parseHseJobSearchHtml(html: string): Job[] {
+    const $ = cheerio.load(html);
+    const jobs: Job[] = [];
+    const seen = new Set<string>();
+    $('a[href*="/jobs/job-search/"]').each((_, el) => {
+        const href = String($(el).attr('href') || '').trim();
+        if (!/\/jobs\/job-search\/[a-z0-9][a-z0-9-]{8,}/i.test(href)) return;
+        const parentText = $(el).closest('article, li, div').text().replace(/\s+/g, ' ').trim();
+        if (/confined competition/i.test(parentText)) return;
+        const title = $(el).text().replace(/\s+/g, ' ').trim();
+        if (!title || title.length < 3) return;
+        const url = href.startsWith('http') ? href.split('?')[0] : `https://about.hse.ie${href.split('?')[0]}`;
+        if (seen.has(url)) return;
+        seen.add(url);
+        const county = parentText.match(/County:\s*(.+?)(?:Date posted|$)/i)?.[1]?.replace(/\s+/g, ' ').trim() || '';
+        const category = parentText.match(/Category:\s*(.+?)(?:County:|$)/i)?.[1]?.replace(/\s+/g, ' ').trim() || '';
+        jobs.push({
+            title,
+            location: county || 'Ireland',
+            url,
+            department: category,
+            salary: undefined,
+            verified: true,
+            atsProvider: 'hse',
+        });
+    });
+    return jobs;
+}
+
+async function fetchHse(token: string): Promise<Job[]> {
+    const startUrl = token.startsWith('http')
+        ? token.replace(/#.*$/, '').replace(/\?page=\d+$/i, '')
+        : 'https://about.hse.ie/jobs/job-search/';
+    const allJobs: Job[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= 40; page++) {
+        const pageUrl = page === 1
+            ? startUrl
+            : `${startUrl}${startUrl.includes('?') ? '&' : '?'}page=${page}`;
+        try {
+            const res = await fetchWithTimeout(pageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 30000);
+            if (!res.ok) break;
+            const pageJobs = parseHseJobSearchHtml(await res.text());
+            let added = 0;
+            for (const j of pageJobs) {
+                if (seen.has(j.url)) continue;
+                seen.add(j.url);
+                allJobs.push(j);
+                added++;
+            }
+            if (!pageJobs.length || added === 0) break;
+        } catch (e: any) {
+            console.error(`[HSE] page ${page}:`, e.message);
+            break;
+        }
+    }
+    console.log(`[HSE] ${allJobs.length} jobs`);
+    return allJobs;
+}
 
 // ─── EasyJet (Playwright / easyjet.taleo.net) ────────────────────────────────
 // Token: "easyjet"
@@ -5844,7 +6029,15 @@ async function fetchMercor(token: string): Promise<Job[]> {
 // --- Phenom ---
 export async function fetchPhenom(token: string): Promise<Job[]> {
     try {
-        const baseUrl = token.replace(/\/$/, '');
+        let baseUrl = token.replace(/\/$/, '');
+        try {
+            const parsed = new URL(/^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`);
+            if (/search-results/i.test(parsed.pathname)) {
+                baseUrl = parsed.origin;
+            } else {
+                baseUrl = `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+            }
+        } catch { /* keep token as-is */ }
         // DHL and many global Phenom boards use /global/en, not /us/en.
         const localePaths = [
             '/global/en/search-results',
@@ -6111,6 +6304,8 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
 
     // Company-specific scrapers
     astrazeneca: fetchAstraZeneca,
+    takeda: fetchTakeda,
+    hse: fetchHse,
     easyjet: fetchEasyJet,
     btgroup: fetchBTGroup,
     siemens: fetchSiemens,
@@ -6405,6 +6600,57 @@ export async function syncAll() {
         }
         if (includeLinkedin) {
             console.log('LinkedIn companies are INCLUDED in this run (use --exclude-linkedin to skip)');
+    if (specificIds) {
+        console.log(`Filtering for ${specificIds.length} specific IDs: ${specificIds.join(', ')}`);
+    }
+
+    let companies: CompanyRow[] = [];
+    try {
+        companies = await loadAllCompanies(specificIds);
+    } catch (e: any) {
+        console.error('❌ Could not load companies from DB:', e.message);
+        return;
+    }
+
+    if (targetMarket === 'ireland') {
+        companies = companies.filter((c) => {
+            const market = resolveSyncMarket(c);
+            const provider = String(c.ats_provider || '').toLowerCase();
+            return market === 'ireland' || market === 'both' || provider === 'linkedin';
+        });
+        console.log(`Ireland-market companies: ${companies.length}`);
+    } else if (targetMarket === 'uk') {
+        companies = companies.filter((c) => {
+            const market = resolveSyncMarket(c);
+            return market === 'uk' || market === 'both';
+        });
+        console.log(`UK-market companies: ${companies.length}`);
+    }
+
+    const { count: statusCount, error: statusCountError } = await supabase
+        .from('companies')
+        .select('*', { count: 'exact', head: true })
+        .not('ats_status', 'is', null);
+
+    if (statusCountError) {
+        console.warn(`Could not determine health tracking state: ${statusCountError.message}`);
+    }
+    const healthTrackingEnabled = !!statusCount && statusCount > 0;
+    if (!healthTrackingEnabled) {
+        console.warn('Health tracking disabled - run validateAtsTokens.ts and repairBadTokens.ts first');
+    }
+
+    let companies: any[] = [];
+    if (targetProvider) {
+        companies = companies.filter(c => normalizeProviderName(c.ats_provider) === targetProvider || String(c.ats_provider).toLowerCase() === targetProvider);
+        console.log(`Filtering for provider: ${targetProvider} (${companies.length} companies)`);
+    }
+
+    if (startFromProvider) {
+        const index = companies.findIndex(c => normalizeProviderName(c.ats_provider) === startFromProvider || String(c.ats_provider).toLowerCase() === startFromProvider);
+        if (index !== -1) {
+            companies = companies.slice(index);
+            console.log(`Starting from first ${startFromProvider} company: ${companies[0].trading_name} (${companies.length} remaining)`);
         } else {
             console.log('LinkedIn companies will be SKIPPED');
         }
@@ -6426,14 +6672,14 @@ export async function syncAll() {
 
         if (targetMarket === 'ireland') {
             companies = companies.filter((c) => {
-                const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
+                const market = String(c.sync_market || resolveSyncMarket(c)).toLowerCase();
                 const provider = String(c.ats_provider || '').toLowerCase();
                 return market === 'ireland' || market === 'both' || provider === 'linkedin';
             });
             console.log(`Ireland-market companies: ${companies.length}`);
         } else if (targetMarket === 'uk') {
             companies = companies.filter((c) => {
-                const market = String(c.sync_market || inferDefaultSyncMarket(c.id)).toLowerCase();
+                const market = String(c.sync_market || resolveSyncMarket(c)).toLowerCase();
                 return market === 'uk' || market === 'both';
             });
             console.log(`UK-market companies: ${companies.length}`);
@@ -6550,6 +6796,12 @@ export async function syncAll() {
             const isNHS = /\bnhs\b/i.test(trading_name);
             // Trusted UK-only companies where location may be missing from ATS data
             const isTrustedUKCompany = isNHS || /\baddison lee\b/i.test(trading_name);
+            const ukJobs: Job[] = [];
+            const irelandJobs: Job[] = [];
+            let rejectedCount = 0;
+            let needsReviewCount = 0;
+            const syncMarket = resolveSyncMarket(company);
+            const irelandOnlyMarket = syncMarket === 'ireland';
 
             const result: SyncResult = {
                 company: trading_name,
@@ -7029,7 +7281,7 @@ export async function syncAll() {
                 .forEach(r => console.log(`     ${r.company.padEnd(35)} ${r.saved} jobs  [${r.provider}]`));
         }
         console.log('════════════════════════════════════════════════════\n');
-    } finally {
+    } } } finally {
         await closeSharedBrowser();
         await closePythonWorker();
     }
