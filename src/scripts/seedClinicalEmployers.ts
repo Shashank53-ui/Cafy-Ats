@@ -73,6 +73,48 @@ const INSERTS: NewCompany[] = [
     company_sector: 'Healthcare',
     open_to_sponsorship: 0,
   },
+  {
+    id: '970002',
+    trading_name: 'Boehringer Ingelheim',
+    ats_provider: 'successfactors',
+    ats_board_token: 'https://jobs.boehringer-ingelheim.com',
+    careers_url: 'https://jobs.boehringer-ingelheim.com/search/?q=&locationsearch=GB',
+    url: 'https://www.boehringer-ingelheim.com',
+    licensed_sponsor: true,
+    ireland_permit_employer: true,
+    sync_market: 'both',
+    ats_status: 'ok',
+    company_sector: PHARMA_SECTOR,
+    open_to_sponsorship: 1,
+  },
+  {
+    id: '970003',
+    trading_name: 'Merck Life Science',
+    ats_provider: 'phenom',
+    ats_board_token: 'https://careers.emdgroup.com',
+    careers_url: 'https://careers.emdgroup.com/us/en/search-results',
+    url: 'https://www.emdgroup.com',
+    licensed_sponsor: true,
+    ireland_permit_employer: true,
+    sync_market: 'both',
+    ats_status: 'ok',
+    company_sector: PHARMA_SECTOR,
+    open_to_sponsorship: 1,
+  },
+  {
+    id: '970004',
+    trading_name: 'Spire Healthcare',
+    ats_provider: 'oracle_cloud',
+    ats_board_token: 'elij.fa.em2.oraclecloud.com|CX',
+    careers_url: 'https://elij.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/',
+    url: 'https://www.spirehealthcare.com',
+    licensed_sponsor: true,
+    ireland_permit_employer: false,
+    sync_market: 'uk',
+    ats_status: 'ok',
+    company_sector: 'Healthcare',
+    open_to_sponsorship: 1,
+  },
 ];
 
 async function findByName(name: string) {
@@ -136,6 +178,66 @@ async function main() {
     if (APPLY) {
       const { error } = await sb.from('companies').update({ company_sector: PHARMA_SECTOR }).eq('id', msd.id);
       if (error) throw new Error(`MSD: ${error.message}`);
+    }
+  }
+
+  const tokenPatches: Array<{
+    match: string;
+    exact?: boolean;
+    patch: Record<string, unknown>;
+  }> = [
+    {
+      match: 'Labcorp',
+      exact: true,
+      patch: {
+        ats_provider: 'workday',
+        ats_board_token: 'labcorp/External',
+        careers_url: 'https://labcorp.wd1.myworkdayjobs.com/External',
+        ats_status: 'ok',
+        licensed_sponsor: true,
+        company_sector: PHARMA_SECTOR,
+        sync_market: 'uk',
+      },
+    },
+    {
+      match: 'Amgen',
+      exact: true,
+      patch: {
+        ats_provider: 'workday',
+        ats_board_token: 'amgen/Careers',
+        careers_url: 'https://amgen.wd1.myworkdayjobs.com/Careers',
+        ats_status: 'ok',
+        licensed_sponsor: true,
+        ireland_permit_employer: true,
+        company_sector: PHARMA_SECTOR,
+        sync_market: 'both',
+      },
+    },
+    {
+      match: 'HCA Healthcare UK',
+      exact: true,
+      patch: {
+        ats_provider: 'workday',
+        ats_board_token: 'https://wd3.myworkdaysite.com/recruiting/hcahealthcare/hcacareers/',
+        careers_url: 'https://wd3.myworkdaysite.com/recruiting/hcahealthcare/hcacareers/',
+        ats_status: 'ok',
+        licensed_sponsor: true,
+        company_sector: 'Healthcare',
+        sync_market: 'uk',
+      },
+    },
+  ];
+
+  for (const spec of tokenPatches) {
+    const hits = await findByName(spec.match);
+    const hit = spec.exact
+      ? hits.find((h) => String(h.trading_name).trim().toLowerCase() === spec.match.toLowerCase())
+      : hits[0];
+    if (!hit) continue;
+    planned.push({ action: 'patch', id: hit.id, name: hit.trading_name, to: spec.patch.ats_board_token || spec.patch.sync_market });
+    if (APPLY) {
+      const { error } = await sb.from('companies').update(spec.patch).eq('id', hit.id);
+      if (error) throw new Error(`${hit.trading_name}: ${error.message}`);
     }
   }
 

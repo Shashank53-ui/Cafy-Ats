@@ -634,6 +634,9 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /jobs\.takeda\.com|takedajobs\.com/i, fetcher: 'takeda' },
     { pattern: /novonordisk|careers\.novonordisk\.com/i, fetcher: 'successfactors' },
     { pattern: /about\.hse\.ie|hse\.ie\/.*jobs/i, fetcher: 'hse' },
+    { pattern: /boehringer-ingelheim/i, fetcher: 'successfactors' },
+    { pattern: /careers\.emdgroup\.com/i, fetcher: 'phenom' },
+    { pattern: /elij\.fa\.em2\.oraclecloud|spirehealthcare\.com/i, fetcher: 'oracle_cloud' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
