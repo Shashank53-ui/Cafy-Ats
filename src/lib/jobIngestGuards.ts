@@ -23,8 +23,13 @@ const SHARED_ATS_HOST_RE =
 const RELOCATE_ABROAD_RE =
   /\brelocate to (australia|singapore|usa|united states|canada|india|germany|france|spain|poland|netherlands|dubai|uae|hong kong|japan|china)\b/i;
 
+/** Recruiter headlines that place the worksite abroad without "relocate to". */
+const RELOCATE_ABROAD_EXTRA =
+  /\b(fast[-\s]?track.{0,50}australia|move to australia|australia.{0,40}(fast[-\s]?track|pathway)|(?:gp|general practitioners?|anaesthetists?|anesthetists?|paediatricians?|pediatricians?).{0,40}australia|construction worker.{0,80}canada|roads and bridges.{0,40}canada)\b/i;
+
 export function isRelocateAbroadTitle(title: string): boolean {
-  return RELOCATE_ABROAD_RE.test(String(title || ''));
+  const t = String(title || '');
+  return RELOCATE_ABROAD_RE.test(t) || RELOCATE_ABROAD_EXTRA.test(t);
 }
 
 /** Strip weak function labels so they cannot poison sector inference. */

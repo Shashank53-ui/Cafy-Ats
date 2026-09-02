@@ -23,9 +23,9 @@ const UK_COUNTRY_ONLY =
 const IE_COUNTRY_ONLY =
     /^(ireland|republic of ireland|eire|éire)$/i;
 
-/** ATS count placeholders — not a real worksite. */
+/** ATS count placeholders and scraped junk — not a real worksite. */
 const PLACEHOLDER_LOCATION =
-    /^(\d+\s+locations?|multiple locations?|multi[- ]?locations?)$/i;
+    /^(\d+\s+locations?|multiple locations?|multi[- ]?locations?|home|n|\d{1,3})$/i;
 
 /** Regions / area labels longer than a single city — checked before London etc. */
 const UK_REGIONS = [

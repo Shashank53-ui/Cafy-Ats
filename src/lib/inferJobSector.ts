@@ -10,7 +10,7 @@ const NON_PHARMA_ROLE_OVERRIDE =
 
 /** Job *functions* that are pharmaceutical (lab / GMP / drug development). */
 const PHARMA_ROLE_SIGNAL =
-    /\b(pharmacovigilance|drug discovery|drug development|medicinal chemistry|organic chemists?|production chemists?|process chemists?|medicinal chemists?|bioprocess|biomanufacturing|biotechnician|formulation scientists?|process development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
+    /\b(pharmacovigilance|drug discovery|drug development|medicinal chemistry|organic chemists?|production chemists?|process chemists?|medicinal chemists?|bioprocess|biomanufacturing|biotechnician|formulation scientists?|process development|pharmaceutical development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
 
 /** Industry domain tags — must not beat sales/engineering/finance job functions. */
 const PHARMA_DOMAIN_TAG =
@@ -55,7 +55,7 @@ export const RULES: [RegExp, string][] = [
     // Includes NHS "Consultant [Specialty]" clinical grade titles — without these,
     // titles like "Consultant Psychiatrist" fall through to the bare `consultant`
     // catch-all below and land in Business & Strategy (found via audit, ~400+ jobs).
-    [/\b(health|medical|clinical|nurses?|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|physiologists?|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|clinical psycholog(?:y|ist)|echocardiograph(?:er|y)|audiolog(?:y|ist)|pathology|\ba\s*&\s*e\b|accident\s*&\s*emergency|home managers?|computed tomography|prescribers?|theatre practitioners?|scrub practitioners?|clinicians?)\b/, 'Healthcare'],
+    [/\b(health|medical|clinical|biomedical|nurses?|nursing|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|physiologists?|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|histolog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|hematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|serolog(?:y|ist)|biochemistr(?:y|ies)|blood sciences?|blood transfusions?|clinical psycholog(?:y|ist)|echocardiograph(?:er|y)|audiolog(?:y|ist)|pathology|dosimetrists?|healthcare scientists?|clinical scientists?|\ba\s*&\s*e\b|accident\s*&\s*emergency|home managers?|computed tomography|prescribers?|theatre practitioners?|scrub practitioners?|clinicians?)\b/, 'Healthcare'],
     // Healthcare & Social Care
     [/\b(dietitian|social worker|ward manager|carer|care worker|care home|social care|community care|matron|sonographer|podiatrist|care assistant|general practitioner|veterinary|practice manager|nursery|early years|after.?school|breakfast club|holiday club|childcare|childminder)\b/, 'Healthcare & Social Care'],
     // Legal
@@ -76,7 +76,7 @@ export const RULES: [RegExp, string][] = [
     // HR / People — \bpeople\b catches ATS depts named "People"
     [/\b(hr|human resources|people ops|talent|recruiter|recruiting|resourcer|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people|workday analysts?|training advisors?)\b/, 'HR / People'],
     // Construction & Infrastructure
-    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contracts? managers?|contract management|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town plann(?:er|ers|ing)|site managers?|building inspectors?|groundworkers?|\bbim\b|bms|\bmep\b|hydraulic|flood (risk|model|modeller|modeler|forecast)|vertical transportation|highways?|hydrologist|hydrogeologists?|wastewater|arborist|ecologists?|ornithologists?|climate resilience)\b/, 'Construction & Infrastructure'],
+    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contracts? managers?|contract management|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town plann(?:er|ers|ing)|site managers?|building inspectors?|groundworkers?|\bbim\b|bms (service|controls?|consultants?|engineers?|technicians?|leads?|managers?)|building management systems?|\bmep\b|hydraulic|flood (risk|model|modeller|modeler|forecast)|vertical transportation|highways?|hydrologist|hydrogeologists?|wastewater|arborist|ecologists?|ornithologists?|climate resilience)\b/, 'Construction & Infrastructure'],
     // Retail & Hospitality
     [/\b(beauty|chef|retail|store manager|hospitality|barista|restaurant|hotel|catering|cook|merchandisers?|buyer|nandoca|back of house|front of house|fitness coach|fitness manager|gym instructor|personal trainer|padel coach|online trading|trading assistant|trading manager|stores? operative|fashion assistant|customer service agent|customer care agent|deli assistant|\brunners?\b|receptionist|housekeeping|concierge|area manager|butchers?|\bcafe\b|kitchen (managers?|team leaders?|team)|skincare|sommeliers?|leisure|bar (&|and)? waiting|waiting staff|stock managers?|shift lead.{0,30}food|lounge managers?|breakfast (&|and) afternoon|visual.?commercial|\bgap\b.{0,20}team members?)\b/, 'Retail & Hospitality'],
     // Logistics & Transport — before Operations to claim warehouse/logistics/supply chain
@@ -520,6 +520,37 @@ function inferJobSectorUnclamped(
 
     if (/\b(anti-?doping|sports anti-?doping)\b/.test(combined)) {
         return 'Research (Technical)';
+    }
+
+    // NHS laboratory BMS (biomedical scientist) — not building-management BMS.
+    const BUILDING_BMS =
+        /\b(elv|bms (service|controls?|consultants?|engineers?|technicians?|leads?|managers?)|building management systems?|controls engineers?)\b/;
+    const LAB_BMS_CONTEXT =
+        /\b(histolog|haematolog|hematolog|biochem|blood sciences?|blood transfusions?|serolog|cytolog|microbiolog|virolog|immunolog|patholog|coagulation|locum|band\s*[4-8])\b/;
+    if (
+        (/\b(biomedical scientists?|clinical scientists?|healthcare scientists?)\b/.test(t) ||
+            (/\bbms\b/.test(t) && LAB_BMS_CONTEXT.test(t))) &&
+        !BUILDING_BMS.test(t)
+    ) {
+        return 'Healthcare';
+    }
+
+    // Clinical nursing phrases that otherwise lose to HR "people" / Finance "audit" / Ops.
+    if (
+        /\b(nursing associates?|nursing services?|registered nursing|audit nurses?|nurse auditors?)\b/.test(t) ||
+        (/\b(rmn|rgn|rnld)\b/.test(t) && /\b(director|manager|hospital|nurse|nursing)\b/.test(t))
+    ) {
+        return 'Healthcare';
+    }
+
+    // Industry scientists at pharma/biopharma — not Research (Technical).
+    if (
+        /\bscientists?\b/.test(t) &&
+        /\b(biopharma|biopharmaceutical|pharmaceutical development|pharmaceuticals?)\b/.test(t) &&
+        !/\b(data scientists?|computer scientists?|engineers?|developers?)\b/.test(t) &&
+        !PATIENT_FACING_PHARMACY_OR_CARE.test(combined)
+    ) {
+        return 'Pharmaceutical';
     }
 
     if (PHARMA_ROLE_SIGNAL.test(combined) && !PATIENT_FACING_PHARMACY_OR_CARE.test(combined)) {

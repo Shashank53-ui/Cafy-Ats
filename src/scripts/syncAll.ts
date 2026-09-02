@@ -35,7 +35,7 @@ import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
 import { sanitizeJobTitle } from '../lib/sanitizeJobTitle';
-import { getIngestRejectReason, isForeignEmployerJobUrl } from '../lib/jobIngestGuards';
+import { getIngestRejectReason, isForeignEmployerJobUrl, isRelocateAbroadTitle } from '../lib/jobIngestGuards';
 import { isLicenceTruthy, resolveSyncMarket } from '../lib/syncMarket';
 import { isForeignLocationLeak } from '../lib/foreignLocationLeak';
 import * as Adapters from '../lib/ukFilterAdapters';
@@ -586,11 +586,7 @@ export function getJobTitleRejectReason(title: string): string | null {
     if (junk.includes(lower)) return 'title_junk';
     if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return 'title_junk';
     // AECOM/Canva/Airwallex etc. post "Relocate to Australia/Singapore" with a UK interview city
-    if (
-        /\brelocate to (australia|singapore|usa|united states|canada|india|germany|france|spain|poland|netherlands|dubai|uae|hong kong|japan|china)\b/i.test(
-            title,
-        )
-    ) {
+    if (isRelocateAbroadTitle(title)) {
         return 'title_relocate_abroad';
     }
     if (LOW_PROFILE_TITLE_PATTERN.test(title)) return 'title_low_profile';

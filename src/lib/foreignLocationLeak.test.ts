@@ -125,3 +125,68 @@ test('Leak: Jamaica Manchester Parish is not UK Manchester', () => {
         true,
     );
 });
+
+test('Leak: Ambulance Victoria Australia stored as Vic Au', () => {
+    assert.equal(
+        isForeignLocationLeak(
+            {
+                location: 'Abbotsford, Vic, Au',
+                title: 'Expressions of Interest- Aircrew Officers- Ambulance Victoria',
+            },
+            'uk',
+        ),
+        true,
+    );
+});
+
+test('Leak: VAN/MTL/TOR office-code dump', () => {
+    assert.equal(
+        isForeignLocationLeak(
+            {
+                location: 'VAN',
+                title: "Software Developer, Performance Western Site's (LON/VAN/MTL/TOR), United Kingdom",
+            },
+            'uk',
+        ),
+        true,
+    );
+});
+
+test('Leak: Kyiv plus Remote is not a UK remote job', () => {
+    assert.equal(
+        isForeignLocationLeak(
+            {
+                location: 'Remote',
+                title: 'Senior Data Scientist Global IT Kyiv Remote Dnipro London',
+            },
+            'uk',
+        ),
+        true,
+    );
+});
+
+test('Leak: Australia GP parked on Dublin', () => {
+    assert.equal(
+        isForeignLocationLeak(
+            {
+                location: 'Dublin',
+                title: 'General Practitioner (GP) - Australia',
+            },
+            'ireland',
+        ),
+        true,
+    );
+});
+
+test('Keep: Dublin sales role covering France is not a leak', () => {
+    assert.equal(
+        isForeignLocationLeak(
+            {
+                location: 'Dublin',
+                title: 'Sales Development Representative (France)',
+            },
+            'ireland',
+        ),
+        false,
+    );
+});

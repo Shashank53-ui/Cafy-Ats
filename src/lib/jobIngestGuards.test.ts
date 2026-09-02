@@ -35,6 +35,18 @@ check(
 // Relocate abroad
 check('relocate Australia detected', isRelocateAbroadTitle('Relocate to Australia: Principal Engineer'));
 check(
+  'fast-track Australia GP detected',
+  isRelocateAbroadTitle('General Practitioner | Irish GPs | Fast-Track Your Move to Australia'),
+);
+check(
+  'Canada construction headline detected',
+  isRelocateAbroadTitle('Construction Worker - Roads and Bridges - Canada'),
+);
+check(
+  'UK nurse is not relocate-abroad',
+  isRelocateAbroadTitle('Staff Nurse - London') === false,
+);
+check(
   'relocate rejected by UK filter even with London',
   isUKJob({
     locations: ['London', 'Relocate to Australia: Principal Engineer'],
