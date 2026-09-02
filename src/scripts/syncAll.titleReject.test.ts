@@ -2,7 +2,7 @@
  * Smoke tests for Phase 1 title-reject reason codes.
  * Run: npx tsx src/scripts/syncAll.titleReject.test.ts
  */
-import { getJobTitleRejectReason, isValidJobTitle } from './syncAll';
+import { getJobTitleRejectReason, isValidJobTitle, parseAstraZenecaResultsHtml, resolveProviderAndToken } from './syncAll';
 
 function assert(cond: boolean, msg: string) {
     if (!cond) throw new Error(msg);
@@ -18,5 +18,23 @@ assert(getJobTitleRejectReason('Relocate to Australia: Principal Engineer') === 
 assert(getJobTitleRejectReason('General Practitioner | Fast-Track Your Move to Australia') === 'title_relocate_abroad', 'fast-track AU → title_relocate_abroad');
 assert(isValidJobTitle('Staff Nurse - London') === true, 'nurse is valid');
 assert(isValidJobTitle('Security Guard') === false, 'isValid false for low profile');
+
+{
+    const az = resolveProviderAndToken('pinpoint', 'astrazeneca', 'https://careers.astrazeneca.com');
+    assert(az?.provider === 'astrazeneca', `AZ pinpoint routes to astrazeneca, got ${az?.provider}`);
+    const pf = resolveProviderAndToken('workday', 'pfizer', 'https://pfizer.wd1.myworkdayjobs.com/PfizerCareers/');
+    assert(pf?.token === 'pfizer/PfizerCareers', `Pfizer token from URL, got ${pf?.token}`);
+    const parsed = parseAstraZenecaResultsHtml(`
+        <ul id="search-results-list">
+          <li><a href="/job/cambridge/medical-affairs-manager/7684/1">
+            <h2>Medical Affairs Manager</h2>
+            <span class="job-location">Cambridge, England, United Kingdom</span>
+          </a></li>
+        </ul>`);
+    assert(parsed.length === 1, `AZ html parse count ${parsed.length}`);
+    assert(parsed[0].title === 'Medical Affairs Manager', parsed[0].title);
+    assert(parsed[0].location.includes('Cambridge'), parsed[0].location);
+    assert(parsed[0].url.includes('careers.astrazeneca.com/job/cambridge'), parsed[0].url);
+}
 
 console.log('syncAll.titleReject.test.ts — all passed');

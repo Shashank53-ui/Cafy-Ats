@@ -629,6 +629,8 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /vorboss\.com/i, fetcher: 'vorboss' },
     { pattern: /jobs\.gxo\.com|gxo\.com/i, fetcher: 'gxo' },
     { pattern: /royalmailgroup\.com|royal.?mail/i, fetcher: 'royalmail' },
+    { pattern: /astrazeneca\.com|astrazeneca/i, fetcher: 'astrazeneca' },
+    { pattern: /careers\.lilly\.com/i, fetcher: 'phenom' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
@@ -661,6 +663,13 @@ export function resolveProviderAndToken(
 
     // Normalize provider and apply alias
     const provider = normalizeProviderName(rawProvider) || '';
+
+    if (
+        (provider === 'pinpoint' || provider === 'custom') &&
+        /astrazeneca/i.test(`${rawToken} ${rawUrl}`)
+    ) {
+        return { provider: 'astrazeneca', token: rawToken || rawUrl || 'astrazeneca' };
+    }
 
     // Workday: if token is just a subdomain (no '/'), build token from URL
     if (provider === 'workday' && rawToken && !rawToken.includes('/')) {
@@ -4157,63 +4166,106 @@ async function fetchNetworkRail(_token: string): Promise<Job[]> {
     }
 }
 
-// ─── AstraZeneca (Playwright / TalentBrew SPA) ───────────────────────────────
-// Token: "astrazeneca" — JS-rendered careers.astrazeneca.com
+/** Radancy/TalentBrew results HTML → jobs. Exported for tests. */
+export function parseAstraZenecaResultsHtml(html: string): Job[] {
+    const $ = cheerio.load(html);
+    const jobs: Job[] = [];
+    const seen = new Set<string>();
+    $('a[href*="/job/"]').each((_, el) => {
+        const href = String($(el).attr('href') || '').trim();
+        if (!href || href.includes('#') || seen.has(href)) return;
+        const title = $(el).find('h2, h3').first().text().replace(/\s+/g, ' ').trim()
+            || $(el).text().replace(/\s+/g, ' ').trim();
+        if (!title || title.length < 3) return;
+        const loc = $(el).find('.job-location, [class*="location"]').first().text().replace(/\s+/g, ' ').trim()
+            || $(el).parent().find('.job-location, [class*="location"]').first().text().replace(/\s+/g, ' ').trim();
+        const url = href.startsWith('http') ? href : `https://careers.astrazeneca.com${href}`;
+        seen.add(href);
+        jobs.push({
+            title,
+            location: loc || '',
+            url,
+            department: '',
+            salary: undefined,
+            atsProvider: 'astrazeneca',
+        });
+    });
+    return jobs;
+}
+
+// ─── AstraZeneca (Radancy / TalentBrew JSON results) ─────────────────────────
+// Token: "astrazeneca". Do not use Playwright — the public results API is JSON+HTML.
+// LocationPath 2635167 = GeoNames United Kingdom; 2963597 = Ireland.
 async function fetchAstraZeneca(_token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
-    let browser: Browser | undefined;
-    let context: BrowserContext | undefined;
-    try {
-        browser = await getSharedBrowser();
-        context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1280, height: 900 },
-        });
-        const page = await context.newPage();
+    const seen = new Set<string>();
+    const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+        Referer: 'https://careers.astrazeneca.com/search-jobs',
+    };
+    const regions: Array<{ path: string; location: string }> = [
+        { path: '2635167', location: 'United Kingdom' },
+        { path: '2963597', location: 'Ireland' },
+    ];
 
-        // Intercept JSON API responses from TalentBrew / Radancy backend
-        const apiJobs: Job[] = [];
-        page.on('response', async (response) => {
-            const url = response.url();
-            if ((url.includes('position') || url.includes('jobs') || url.includes('search')) &&
-                response.headers()['content-type']?.includes('json')) {
-                try {
-                    const data = await response.json();
-                    const positions = data?.positions || data?.jobs || data?.results || data?.reqs || [];
-                    for (const j of positions) {
-                        const title = j.title || j.jobTitle || j.Title || '';
-                        const loc = j.jobLocation || j.location || j.primaryLocation || '';
-                        const url = j.applyUrl || j.url || j.jobUrl || j.detailUrl || '';
-                        if (title && url) apiJobs.push({ title, location: typeof loc === 'string' ? loc : (loc.city || loc.country || ''), url, department: j.category || '', salary: undefined });
-                    }
-                } catch { /* not JSON or wrong format */ }
+    for (const region of regions) {
+        for (let page = 1; page <= 30; page++) {
+            const params = new URLSearchParams({
+                ActiveFacetID: '0',
+                CurrentPage: String(page),
+                RecordsPerPage: '50',
+                Distance: '50',
+                RadiusUnitType: '0',
+                Keywords: '',
+                Location: region.location,
+                ShowRadius: 'False',
+                CustomFacetName: '',
+                FacetTerm: '',
+                FacetType: '0',
+                SearchResultsModuleName: 'Search Results',
+                SearchFiltersModuleName: 'Search Filters',
+                SortCriteria: '0',
+                SortDirection: '1',
+                SearchType: '5',
+                LocationType: '2',
+                LocationPath: region.path,
+                OrganizationIds: '',
+                PostalCode: '',
+                fc: '',
+                fl: '',
+                fcf: '',
+                afc: '',
+                afl: '',
+                afcf: '',
+            });
+            try {
+                const res = await fetchWithTimeout(
+                    `https://careers.astrazeneca.com/search-jobs/results?${params.toString()}`,
+                    { headers },
+                    30000,
+                );
+                if (!res.ok) break;
+                const data = await res.json();
+                if (data?.hasJobs === false) break;
+                const html = String(data?.results || '');
+                const pageJobs = parseAstraZenecaResultsHtml(html);
+                let added = 0;
+                for (const j of pageJobs) {
+                    if (seen.has(j.url)) continue;
+                    seen.add(j.url);
+                    allJobs.push(j);
+                    added++;
+                }
+                if (!pageJobs.length || added === 0) break;
+            } catch (e: any) {
+                console.error(`[AstraZeneca] page ${page} ${region.location}:`, e.message);
+                break;
             }
-        });
-
-        await page.goto('https://careers.astrazeneca.com/search-jobs?k=&l=United+Kingdom', { waitUntil: 'networkidle', timeout: 60000 });
-        await page.waitForTimeout(5000);
-
-        // Use API-intercepted jobs if available
-        if (apiJobs.length > 0) { allJobs.push(...apiJobs); }
-        else {
-            // Fallback: parse rendered HTML
-            const jobs = await page.$$eval(
-                'a[href*="job"], li[class*="job"], .job-result, article[class*="job"]',
-                els => els.map(el => ({
-                    title: el.querySelector('[class*="title"], h2, h3')?.textContent?.trim() || el.textContent?.trim() || '',
-                    url:   (el as HTMLAnchorElement).href || el.querySelector('a')?.href || '',
-                    location: el.querySelector('[class*="location"], [class*="city"]')?.textContent?.trim() || '',
-                    department: '', salary: undefined as any,
-                })).filter(j => j.title && j.url)
-            );
-            allJobs.push(...jobs);
         }
-
-        await context.close();
-    } catch (e: any) {
-        console.error('[AstraZeneca] scraper error:', e.message);
-        if (context) await context.close().catch(() => {});
     }
+    console.log(`[AstraZeneca] ${allJobs.length} jobs (UK+Ireland boards)`);
     return allJobs;
 }
 
@@ -5149,7 +5201,15 @@ async function fetchMercor(token: string): Promise<Job[]> {
 // --- Phenom ---
 export async function fetchPhenom(token: string): Promise<Job[]> {
     try {
-        const baseUrl = token.replace(/\/$/, '');
+        let baseUrl = token.replace(/\/$/, '');
+        try {
+            const parsed = new URL(/^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`);
+            if (/search-results/i.test(parsed.pathname)) {
+                baseUrl = parsed.origin;
+            } else {
+                baseUrl = `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+            }
+        } catch { /* keep token as-is */ }
         // DHL and many global Phenom boards use /global/en, not /us/en.
         const localePaths = [
             '/global/en/search-results',
