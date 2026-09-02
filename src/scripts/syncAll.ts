@@ -7231,8 +7231,6 @@ export async function syncAll() {
                 .forEach(r => console.log(`     ${r.company.padEnd(35)} ${r.saved} jobs  [${r.provider}]`));
         }
         console.log('════════════════════════════════════════════════════\n');
-    } }         }
-    }
     } finally {
         await closeSharedBrowser();
         await closePythonWorker();
