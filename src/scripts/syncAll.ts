@@ -631,6 +631,9 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /royalmailgroup\.com|royal.?mail/i, fetcher: 'royalmail' },
     { pattern: /astrazeneca\.com|astrazeneca/i, fetcher: 'astrazeneca' },
     { pattern: /careers\.lilly\.com/i, fetcher: 'phenom' },
+    { pattern: /jobs\.takeda\.com|takedajobs\.com/i, fetcher: 'takeda' },
+    { pattern: /novonordisk|careers\.novonordisk\.com/i, fetcher: 'successfactors' },
+    { pattern: /about\.hse\.ie|hse\.ie\/.*jobs/i, fetcher: 'hse' },
 ];
 
 function normalizeProviderName(value: string | null | undefined): string | null {
@@ -669,6 +672,13 @@ export function resolveProviderAndToken(
         /astrazeneca/i.test(`${rawToken} ${rawUrl}`)
     ) {
         return { provider: 'astrazeneca', token: rawToken || rawUrl || 'astrazeneca' };
+    }
+
+    if (
+        (provider === 'avature' || provider === 'custom') &&
+        /takeda/i.test(`${rawToken} ${rawUrl}`)
+    ) {
+        return { provider: 'takeda', token: rawToken || rawUrl || 'https://jobs.takeda.com' };
     }
 
     // Workday: if token is just a subdomain (no '/'), build token from URL
@@ -2838,6 +2848,7 @@ async function fetchSuccessFactorsHtmlSearch(
     const queries = opts?.preferUk
         ? [
             `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('GB')}`,
+            `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('Ireland')}`,
             `${csbBaseUrl}/search/?q=&locationsearch=${encodeURIComponent('United Kingdom')}`,
             `${csbBaseUrl}/search/?q=`,
           ]
@@ -2872,7 +2883,8 @@ async function fetchSuccessFactorsHtmlSearch(
                         isRemote: /\bremote\b/i.test(location),
                         isTrustedSource: false,
                     });
-                    if (!uk) return;
+                    const ie = isIrelandJob(location, location ? [location] : []);
+                    if (!uk && !ie) return;
                     pageUk++;
                 }
 
@@ -4167,10 +4179,11 @@ async function fetchNetworkRail(_token: string): Promise<Job[]> {
 }
 
 /** Radancy/TalentBrew results HTML → jobs. Exported for tests. */
-export function parseAstraZenecaResultsHtml(html: string): Job[] {
+export function parseRadancyResultsHtml(html: string, origin: string, atsProvider: string): Job[] {
     const $ = cheerio.load(html);
     const jobs: Job[] = [];
     const seen = new Set<string>();
+    const base = origin.replace(/\/$/, '');
     $('a[href*="/job/"]').each((_, el) => {
         const href = String($(el).attr('href') || '').trim();
         if (!href || href.includes('#') || seen.has(href)) return;
@@ -4179,7 +4192,7 @@ export function parseAstraZenecaResultsHtml(html: string): Job[] {
         if (!title || title.length < 3) return;
         const loc = $(el).find('.job-location, [class*="location"]').first().text().replace(/\s+/g, ' ').trim()
             || $(el).parent().find('.job-location, [class*="location"]').first().text().replace(/\s+/g, ' ').trim();
-        const url = href.startsWith('http') ? href : `https://careers.astrazeneca.com${href}`;
+        const url = href.startsWith('http') ? href : `${base}${href.startsWith('/') ? '' : '/'}${href}`;
         seen.add(href);
         jobs.push({
             title,
@@ -4187,23 +4200,26 @@ export function parseAstraZenecaResultsHtml(html: string): Job[] {
             url,
             department: '',
             salary: undefined,
-            atsProvider: 'astrazeneca',
+            atsProvider,
         });
     });
     return jobs;
 }
 
-// ─── AstraZeneca (Radancy / TalentBrew JSON results) ─────────────────────────
-// Token: "astrazeneca". Do not use Playwright — the public results API is JSON+HTML.
+export function parseAstraZenecaResultsHtml(html: string): Job[] {
+    return parseRadancyResultsHtml(html, 'https://careers.astrazeneca.com', 'astrazeneca');
+}
+
 // LocationPath 2635167 = GeoNames United Kingdom; 2963597 = Ireland.
-async function fetchAstraZeneca(_token: string): Promise<Job[]> {
+async function fetchRadancyJobs(origin: string, atsProvider: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     const seen = new Set<string>();
+    const base = origin.replace(/\/$/, '');
     const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         Accept: 'application/json, text/javascript, */*; q=0.01',
         'X-Requested-With': 'XMLHttpRequest',
-        Referer: 'https://careers.astrazeneca.com/search-jobs',
+        Referer: `${base}/search-jobs`,
     };
     const regions: Array<{ path: string; location: string }> = [
         { path: '2635167', location: 'United Kingdom' },
@@ -4242,7 +4258,7 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
             });
             try {
                 const res = await fetchWithTimeout(
-                    `https://careers.astrazeneca.com/search-jobs/results?${params.toString()}`,
+                    `${base}/search-jobs/results?${params.toString()}`,
                     { headers },
                     30000,
                 );
@@ -4250,7 +4266,7 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
                 const data = await res.json();
                 if (data?.hasJobs === false) break;
                 const html = String(data?.results || '');
-                const pageJobs = parseAstraZenecaResultsHtml(html);
+                const pageJobs = parseRadancyResultsHtml(html, base, atsProvider);
                 let added = 0;
                 for (const j of pageJobs) {
                     if (seen.has(j.url)) continue;
@@ -4260,16 +4276,83 @@ async function fetchAstraZeneca(_token: string): Promise<Job[]> {
                 }
                 if (!pageJobs.length || added === 0) break;
             } catch (e: any) {
-                console.error(`[AstraZeneca] page ${page} ${region.location}:`, e.message);
+                console.error(`[${atsProvider}] page ${page} ${region.location}:`, e.message);
                 break;
             }
         }
     }
-    console.log(`[AstraZeneca] ${allJobs.length} jobs (UK+Ireland boards)`);
+    console.log(`[${atsProvider}] ${allJobs.length} jobs (UK+Ireland boards)`);
     return allJobs;
 }
 
+async function fetchAstraZeneca(_token: string): Promise<Job[]> {
+    return fetchRadancyJobs('https://careers.astrazeneca.com', 'astrazeneca');
+}
 
+async function fetchTakeda(_token: string): Promise<Job[]> {
+    return fetchRadancyJobs('https://jobs.takeda.com', 'takeda');
+}
+
+/** HSE job-search HTML → jobs. Exported for tests. */
+export function parseHseJobSearchHtml(html: string): Job[] {
+    const $ = cheerio.load(html);
+    const jobs: Job[] = [];
+    const seen = new Set<string>();
+    $('a[href*="/jobs/job-search/"]').each((_, el) => {
+        const href = String($(el).attr('href') || '').trim();
+        if (!/\/jobs\/job-search\/[a-z0-9][a-z0-9-]{8,}/i.test(href)) return;
+        const parentText = $(el).closest('article, li, div').text().replace(/\s+/g, ' ').trim();
+        if (/confined competition/i.test(parentText)) return;
+        const title = $(el).text().replace(/\s+/g, ' ').trim();
+        if (!title || title.length < 3) return;
+        const url = href.startsWith('http') ? href.split('?')[0] : `https://about.hse.ie${href.split('?')[0]}`;
+        if (seen.has(url)) return;
+        seen.add(url);
+        const county = parentText.match(/County:\s*(.+?)(?:Date posted|$)/i)?.[1]?.replace(/\s+/g, ' ').trim() || '';
+        const category = parentText.match(/Category:\s*(.+?)(?:County:|$)/i)?.[1]?.replace(/\s+/g, ' ').trim() || '';
+        jobs.push({
+            title,
+            location: county || 'Ireland',
+            url,
+            department: category,
+            salary: undefined,
+            verified: true,
+            atsProvider: 'hse',
+        });
+    });
+    return jobs;
+}
+
+async function fetchHse(token: string): Promise<Job[]> {
+    const startUrl = token.startsWith('http')
+        ? token.replace(/#.*$/, '').replace(/\?page=\d+$/i, '')
+        : 'https://about.hse.ie/jobs/job-search/';
+    const allJobs: Job[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= 40; page++) {
+        const pageUrl = page === 1
+            ? startUrl
+            : `${startUrl}${startUrl.includes('?') ? '&' : '?'}page=${page}`;
+        try {
+            const res = await fetchWithTimeout(pageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 30000);
+            if (!res.ok) break;
+            const pageJobs = parseHseJobSearchHtml(await res.text());
+            let added = 0;
+            for (const j of pageJobs) {
+                if (seen.has(j.url)) continue;
+                seen.add(j.url);
+                allJobs.push(j);
+                added++;
+            }
+            if (!pageJobs.length || added === 0) break;
+        } catch (e: any) {
+            console.error(`[HSE] page ${page}:`, e.message);
+            break;
+        }
+    }
+    console.log(`[HSE] ${allJobs.length} jobs`);
+    return allJobs;
+}
 
 // ─── EasyJet (Playwright / easyjet.taleo.net) ────────────────────────────────
 // Token: "easyjet"
@@ -5476,6 +5559,8 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => P
 
     // Company-specific scrapers
     astrazeneca: fetchAstraZeneca,
+    takeda: fetchTakeda,
+    hse: fetchHse,
     easyjet: fetchEasyJet,
     btgroup: fetchBTGroup,
     siemens: fetchSiemens,
