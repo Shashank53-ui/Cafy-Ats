@@ -157,11 +157,18 @@ async function main() {
         r.department,
         sanitizeCompanySectorForInference(co?.company_sector),
       );
+      const FORCE_RECLASS =
+        /\bnurs(?:e|es|ing)\b/i.test(r.title) ||
+        /\b(\behs\b|health and safety|health & safety)\b/i.test(r.title) ||
+        /\baudio designers?\b/i.test(r.title) ||
+        (/\barchitects?\b/i.test(r.title) && /\bhealthcare\b/i.test(r.title)) ||
+        /\bdrug substance\b/i.test(r.title);
+
       const stored = String(r.sector || '').trim();
       if (
         sector !== stored &&
-        (sector === 'Healthcare' || sector === 'Pharmaceutical') &&
-        CLINICAL_FROM.has(stored)
+        (FORCE_RECLASS ||
+          ((sector === 'Healthcare' || sector === 'Pharmaceutical') && CLINICAL_FROM.has(stored)))
       ) {
         remap.push({
           id: r.id,

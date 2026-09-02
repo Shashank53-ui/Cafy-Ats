@@ -10,7 +10,7 @@ const NON_PHARMA_ROLE_OVERRIDE =
 
 /** Job *functions* that are pharmaceutical (lab / GMP / drug development). */
 const PHARMA_ROLE_SIGNAL =
-    /\b(pharmacovigilance|drug discovery|drug development|medicinal chemistry|organic chemists?|production chemists?|process chemists?|medicinal chemists?|bioprocess|biomanufacturing|biotechnician|formulation scientists?|process development|pharmaceutical development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
+    /\b(pharmacovigilance|drug discovery|drug development|drug substance|drug product|medicinal chemistry|organic chemists?|production chemists?|process chemists?|medicinal chemists?|bioprocess|biomanufacturing|biotechnician|formulation scientists?|process development|pharmaceutical development|clinical research associate|\bcra\b|gxp|\bgmp\b|cmc|toxicolog(y|ist)?)\b/;
 
 /** Industry domain tags — must not beat sales/engineering/finance job functions. */
 const PHARMA_DOMAIN_TAG =
@@ -535,12 +535,40 @@ function inferJobSectorUnclamped(
         return 'Healthcare';
     }
 
-    // Clinical nursing phrases that otherwise lose to HR "people" / Finance "audit" / Ops.
+    // Clinical nursing — beats Finance "insurance", HR "people", Ops.
+    if (
+        /\bnurs(?:e|es|ing)\b/.test(t) &&
+        !/\bnursery\b/.test(t)
+    ) {
+        return 'Healthcare';
+    }
     if (
         /\b(nursing associates?|nursing services?|registered nursing|audit nurses?|nurse auditors?)\b/.test(t) ||
         (/\b(rmn|rgn|rnld)\b/.test(t) && /\b(director|manager|hospital|nurse|nursing)\b/.test(t))
     ) {
         return 'Healthcare';
+    }
+
+    // Hospital/healthcare *building* architects — not software, not clinical.
+    if (
+        /\barchitects?\b/.test(t) &&
+        /\bhealthcare\b/.test(t) &&
+        !/\b(software|solution|data|cloud|systems?|platform|security|technical|enterprise)\s+architects?\b/.test(t)
+    ) {
+        return 'Construction & Infrastructure';
+    }
+
+    // EHS / H&S is workplace safety, not clinical Healthcare (\bhealth\b).
+    if (
+        /\b(\behs\b|health and safety|health & safety|occupational health and safety)\b/.test(t) &&
+        !/\bnurs(?:e|es|ing)\b/.test(t)
+    ) {
+        return 'Operations';
+    }
+
+    // Game / media audio is not audiology.
+    if (/\baudio designers?\b/.test(t) || (/\baudio\b/.test(t) && /\b(games?|sound|foley|composer)\b/.test(t))) {
+        return 'Media & Journalism';
     }
 
     // Industry scientists at pharma/biopharma — not Research (Technical).
