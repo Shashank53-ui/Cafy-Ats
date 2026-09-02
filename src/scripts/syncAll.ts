@@ -6600,60 +6600,10 @@ export async function syncAll() {
         }
         if (includeLinkedin) {
             console.log('LinkedIn companies are INCLUDED in this run (use --exclude-linkedin to skip)');
-    if (specificIds) {
-        console.log(`Filtering for ${specificIds.length} specific IDs: ${specificIds.join(', ')}`);
-    }
-
-    let companies: CompanyRow[] = [];
-    try {
-        companies = await loadAllCompanies(specificIds);
-    } catch (e: any) {
-        console.error('❌ Could not load companies from DB:', e.message);
-        return;
-    }
-
-    if (targetMarket === 'ireland') {
-        companies = companies.filter((c) => {
-            const market = resolveSyncMarket(c);
-            const provider = String(c.ats_provider || '').toLowerCase();
-            return market === 'ireland' || market === 'both' || provider === 'linkedin';
-        });
-        console.log(`Ireland-market companies: ${companies.length}`);
-    } else if (targetMarket === 'uk') {
-        companies = companies.filter((c) => {
-            const market = resolveSyncMarket(c);
-            return market === 'uk' || market === 'both';
-        });
-        console.log(`UK-market companies: ${companies.length}`);
-    }
-
-    const { count: statusCount, error: statusCountError } = await supabase
-        .from('companies')
-        .select('*', { count: 'exact', head: true })
-        .not('ats_status', 'is', null);
-
-    if (statusCountError) {
-        console.warn(`Could not determine health tracking state: ${statusCountError.message}`);
-    }
-    const healthTrackingEnabled = !!statusCount && statusCount > 0;
-    if (!healthTrackingEnabled) {
-        console.warn('Health tracking disabled - run validateAtsTokens.ts and repairBadTokens.ts first');
-    }
-
-    let companies: any[] = [];
-    if (targetProvider) {
-        companies = companies.filter(c => normalizeProviderName(c.ats_provider) === targetProvider || String(c.ats_provider).toLowerCase() === targetProvider);
-        console.log(`Filtering for provider: ${targetProvider} (${companies.length} companies)`);
-    }
-
-    if (startFromProvider) {
-        const index = companies.findIndex(c => normalizeProviderName(c.ats_provider) === startFromProvider || String(c.ats_provider).toLowerCase() === startFromProvider);
-        if (index !== -1) {
-            companies = companies.slice(index);
-            console.log(`Starting from first ${startFromProvider} company: ${companies[0].trading_name} (${companies.length} remaining)`);
         } else {
             console.log('LinkedIn companies will be SKIPPED');
         }
+
         if (targetMarket) {
             console.log(`Filtering companies by sync_market=${targetMarket}`);
         }
@@ -6672,14 +6622,14 @@ export async function syncAll() {
 
         if (targetMarket === 'ireland') {
             companies = companies.filter((c) => {
-                const market = String(c.sync_market || resolveSyncMarket(c)).toLowerCase();
+                const market = resolveSyncMarket(c);
                 const provider = String(c.ats_provider || '').toLowerCase();
                 return market === 'ireland' || market === 'both' || provider === 'linkedin';
             });
             console.log(`Ireland-market companies: ${companies.length}`);
         } else if (targetMarket === 'uk') {
             companies = companies.filter((c) => {
-                const market = String(c.sync_market || resolveSyncMarket(c)).toLowerCase();
+                const market = resolveSyncMarket(c);
                 return market === 'uk' || market === 'both';
             });
             console.log(`UK-market companies: ${companies.length}`);
@@ -7281,7 +7231,9 @@ export async function syncAll() {
                 .forEach(r => console.log(`     ${r.company.padEnd(35)} ${r.saved} jobs  [${r.provider}]`));
         }
         console.log('════════════════════════════════════════════════════\n');
-    } } } finally {
+    } }         }
+    }
+    } finally {
         await closeSharedBrowser();
         await closePythonWorker();
     }
