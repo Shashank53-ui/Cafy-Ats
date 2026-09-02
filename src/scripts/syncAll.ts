@@ -591,7 +591,14 @@ function cleanJobDescription(raw: string | null | undefined): string | null {
 
     for (let pass = 0; pass < 2 && /[<&]/.test(text); pass++) {
         try {
-            text = cheerio.load(`<div>${text}</div>`).text();
+            // Replace block elements with spacing to avoid "missing spaces" bug when stripping tags
+            let htmlForParsing = text
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<p[^>]*>/gi, '\n\n')
+                .replace(/<div[^>]*>/gi, '\n')
+                .replace(/<li[^>]*>/gi, '\n- ')
+                .replace(/<h[1-6][^>]*>/gi, '\n\n');
+            text = cheerio.load(`<div>${htmlForParsing}</div>`).text();
         } catch {
             text = text.replace(/<[^>]+>/g, ' ');
             break;
@@ -600,8 +607,16 @@ function cleanJobDescription(raw: string | null | undefined): string | null {
 
     text = text
         .replace(/\r\n/g, '\n')
-        .replace(/[ \t]+/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]+/g, ' ') // Collapse horizontal whitespace
+        .replace(/\n[ \t]+/g, '\n') // Remove leading spaces on each line
+        .replace(/[ \t]+\n/g, '\n') // Remove trailing spaces on each line
+        .replace(/\n{3,}/g, '\n\n') // Collapse excessive vertical whitespace
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
         .trim();
 
     if (!text) return null;
@@ -1055,6 +1070,7 @@ async function fetchGenericCareersPage(url: string): Promise<Job[]> {
                         location: String(location || '').trim(),
                         url: String(entry.url || target).trim(),
                         department: '',
+                        description: entry.description || undefined,
                         salary: undefined,
                         job_type: parseJobType(entry.employmentType || entry.jobLocationType)
                     });
@@ -1792,14 +1808,15 @@ async function fetchLever(token: string): Promise<Job[]> {
 async function fetchWorkable(token: string): Promise<Job[]> {
     const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0';
 
-    const workableFetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3): Promise<Response | null> => {
+    const workableFetchWithRetry = async (url: string, options: RequestInit, maxRetries = 10): Promise<Response | null> => {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
                 const r = await fetchWithTimeout(url, options);
                 if (r.status === 429) {
                     const rawRetry = parseInt(r.headers.get('retry-after') || '0') || (2 ** attempt) * 2;
                     const retryAfter = Math.min(rawRetry, 30); // cap at 30s so one company can't stall the whole run
-                    await sleep(retryAfter * 1000);
+                    // Add random jitter to avoid thundering herd on retry
+                    await sleep(retryAfter * 1000 + Math.random() * 2000);
                     continue;
                 }
                 return r;
@@ -1811,7 +1828,7 @@ async function fetchWorkable(token: string): Promise<Job[]> {
     // Workable's listing endpoints (?detail=true included) do NOT return description
     // text despite the name — verified against a live account. The real description
     // lives behind a per-job detail call, so it costs one extra request per job.
-    const descriptionLimit = pLimit(4);
+    const descriptionLimit = pLimit(2);
     async function attachDescriptions(jobs: Array<Job & { _shortcode?: string }>): Promise<Job[]> {
         await Promise.all(jobs.map((j) => descriptionLimit(async () => {
             if (!j._shortcode) return;
@@ -2064,9 +2081,16 @@ async function fetchSmartRecruitersDescription(token: string, jobId: string): Pr
         const d = await r.json();
         const sections = d.jobAd?.sections;
         if (!sections) return undefined;
-        const parts = ['jobDescription', 'qualifications', 'additionalInformation']
+        let parts = ['jobDescription', 'qualifications', 'additionalInformation']
             .map((key) => sections[key]?.text)
             .filter(Boolean);
+            
+        // Fallback for recruiter input error: if the description is completely empty, 
+        // they likely pasted the whole job ad into the companyDescription field.
+        if (parts.length === 0 && sections.companyDescription?.text) {
+            parts = [sections.companyDescription.text];
+        }
+            
         return parts.length ? parts.join('\n\n') : undefined;
     } catch {
         return undefined;
@@ -2634,8 +2658,13 @@ function extractPersonioDescription(block: string): string | undefined {
     if (!descBlockMatch) return undefined;
     const sections = descBlockMatch[1].match(/<jobDescription>([\s\S]*?)<\/jobDescription>/g) || [];
     const parts = sections.map((section) => {
-        const name = section.match(/<name>([\s\S]*?)<\/name>/)?.[1]?.trim();
-        const value = section.match(/<value>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/value>/)?.[1]?.trim();
+        let name = section.match(/<name>([\s\S]*?)<\/name>/)?.[1]?.trim() || '';
+        let value = section.match(/<value>([\s\S]*?)<\/value>/)?.[1]?.trim() || '';
+        
+        // Explicitly strip CDATA tags that can appear anywhere in the string
+        name = name.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+        value = value.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+        
         if (!value) return null;
         return name ? `<strong>${name}</strong>\n${value}` : value;
     }).filter(Boolean);
@@ -2907,22 +2936,28 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
 
                     if (currentPosts.length === 0) break;
 
-                    const limitDetails = pLimit(10);
+                    const limitDetails = pLimit(2);
                     const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
                         let job_type_val = j.timeType || j.bulletFields;
-                        if (!job_type_val || !parseJobType(job_type_val)) {
-                            try {
-                                const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
-                                const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-                                if (dRes.ok) {
-                                    const dData = await dRes.json();
+                        let description = undefined;
+                        try {
+                            const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
+                            const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                            if (dRes.ok) {
+                                const dData = await dRes.json();
+                                if (dData.jobPostingInfo?.jobDescription) {
+                                    description = dData.jobPostingInfo.jobDescription;
+                                }
+                                if (!job_type_val || !parseJobType(job_type_val)) {
                                     if (dData.jobPostingInfo?.timeType) {
                                         job_type_val = dData.jobPostingInfo.timeType;
                                     }
                                 }
-                            } catch { /* ignore */ }
-                        }
-                        return { ...j, resolvedJobType: job_type_val };
+                            }
+                            // Add a small delay to prevent rate limits
+                            await sleep(50);
+                        } catch { /* ignore */ }
+                        return { ...j, resolvedJobType: job_type_val, description };
                     })));
 
                     allJobs.push(...enrichedPosts.map((j: any) => ({
@@ -2932,6 +2967,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                         department: '',
                         salary: undefined,
                         job_type: parseJobType(j.resolvedJobType),
+                        description: j.description,
                         verified: facetIsTrusted,
                         atsProvider: 'workday',
                         locationsText: j.locationsText || j.bulletFields?.[0] || ''

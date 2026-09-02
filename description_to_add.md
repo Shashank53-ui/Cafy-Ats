@@ -5,37 +5,18 @@ This is the comprehensive list of all ATS providers and custom company scrapers 
 ## ATS Providers (Generic Platforms)
 We have dedicated fetchers to pull jobs from these Applicant Tracking Systems:
 
-1. **Ashby** -> Implemented
-2. **Avature** -> Implemented
-3. **BambooHR** -> Implemented
-4. **Breezy** -> Implemented
-5. **Cornerstone** -> To be implemented
-6. **Eightfold** -> Implemented
-7. **Eploy** -> To be implemented
-8. **Gem** -> To be Implemented
-9. **Greenhouse** -> Implemented
-10. **Hibob** -> Implemented
-11. **iCIMS** -> Implemented
-12. **JazzHR** -> To be implemented
-13. **Jibe** -> To be implemented
-14. **Jobvite** -> Implemented
-15. **Join.com** -> To be implemented
-16. **Lever** -> Implemented
-17. **Oracle Cloud** -> To be implemented
-18. **Oracle Taleo** -> To be implemented
-19. **Personio** -> Implemented
-20. **Phenom** -> To be implemented
-21. **Pinpoint** -> Implemented
-22. **Recruitee** -> Implemented
-23. **Recruiterbox** -> To be implemented
-24. **Rippling** -> Implemented
-25. **SmartRecruiters** -> Implemented
-26. **Softscape** -> To be implemented
-27. **SuccessFactors** -> Implemented
-28. **TalentTrack** -> To be implemented
-29. **Teamtailor** -> Implemented
-30. **Workable** -> Implemented
-31. **Workday** -> Implemented
+1. **Cornerstone** -> To be implemented
+2. **Eploy** -> To be implemented
+3. **Gem** -> To be Implemented
+4. **JazzHR** -> To be implemented
+5. **Jibe** -> To be implemented
+6. **Join.com** -> To be implemented
+7. **Oracle Cloud** -> To be implemented
+8. **Oracle Taleo** -> To be implemented
+9. **Phenom** -> To be implemented
+10. **Recruiterbox** -> To be implemented
+11. **Softscape** -> To be implemented
+12. **TalentTrack** -> To be implemented
 
 ---
 
