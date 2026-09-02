@@ -184,6 +184,11 @@ export async function fetchCustom(url: string, company?: CompanyRow): Promise<Jo
     // ID 2695 = Ampa (custom / Pinpoint)
     if (company?.id === 2695 || url.includes('ampa.co.uk')) { return fetchAmpa(url); }
 
+    // ID 4011 = Eli Lilly (Phenom)
+    if (company?.id === 4011 || url.includes('careers.lilly.com')) {
+        return fetchPhenom('https://careers.lilly.com');
+    }
+
     // ID 4015 = Sanofi (custom)
     if (company?.id === 4015 || url.includes('jobs.sanofi.com')) { return fetchSanofi(url); }
 
