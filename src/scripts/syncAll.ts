@@ -6894,6 +6894,16 @@ export async function syncAll() {
         const startIdIndex = args.indexOf('--start-from-id');
         const startFromId = startIdIndex !== -1 ? parseInt(args[startIdIndex + 1]) : null;
 
+        const sliceIndex = args.indexOf('--slice');
+        const sliceStr = sliceIndex !== -1 ? args[sliceIndex + 1] : null;
+        let sliceStart = 0;
+        let sliceEnd = 0;
+        if (sliceStr) {
+            const parts = sliceStr.split(',').map(Number);
+            sliceStart = parts[0] || 0;
+            sliceEnd = parts[1] || 0;
+        }
+
         const fallbackOnlyDryRun = args.includes('--dry-run-custom-fallback');
 
         const includeLinkedin = !args.includes('--exclude-linkedin');
@@ -7012,6 +7022,12 @@ export async function syncAll() {
         }
 
         console.log(`Found ${companies.length} companies with configured ATS\n`);
+
+        if (sliceStr) {
+            companies = companies.slice(sliceStart, sliceEnd);
+            console.log(`Sliced list to ${companies.length} companies (from index ${sliceStart} to ${sliceEnd})\n`);
+        }
+
 
         if (fallbackOnlyDryRun && !specificIds) {
             companies = companies.filter((company) => {
