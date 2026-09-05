@@ -24,10 +24,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run ATS Sync – Part 4 (index 1719 → end)
+      - name: Run ATS Sync – Part 4 (index 2439 → end)
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: npx tsx src/scripts/syncAll.ts --exclude-linkedin --slice 1719,9999
+        run: npx tsx src/scripts/syncAll.ts --exclude-linkedin --include-dead-ats --slice 2439,9999
