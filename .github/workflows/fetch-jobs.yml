@@ -1,10 +1,9 @@
 name: Fetch Jobs & Sync ATS
 
+# DISABLED – replaced by sync-part1/2/3/4.yml which slice companies into equal batches.
+# Keep workflow_dispatch so you can still trigger a full run manually if needed.
 on:
-  schedule:
-    # Runs everyday at midnight UTC
-    - cron: '0 0 * * *'
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   sync:

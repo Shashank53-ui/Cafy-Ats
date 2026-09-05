@@ -1,11 +1,9 @@
 name: Daily ATS Sync
 
 on:
-  schedule:
-    # Runs at 06:00 UTC every day
-    - cron: '0 6 * * *'
+  # DISABLED – replaced by sync-part1/2/3/4.yml
+  # Keep workflow_dispatch for manual full-run if needed.
   workflow_dispatch:
-    # Allows manual triggering from the GitHub Actions UI
 
 jobs:
   sync:

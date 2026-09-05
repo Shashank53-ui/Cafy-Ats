@@ -1,9 +1,9 @@
-name: "ATS Sync · Part 2 (Companies 651–1300)"
+name: "ATS Sync · Part 3 (Companies 1301–1950)"
 
 on:
   schedule:
-    # 08:00 UTC daily  (6 h after Part 1)
-    - cron: '0 8 * * *'
+    # 14:00 UTC daily  (6 h after Part 2)
+    - cron: '0 14 * * *'
   workflow_dispatch:
 
 jobs:
@@ -24,10 +24,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run ATS Sync – Part 2 (index 650 → 1300)
+      - name: Run ATS Sync – Part 3 (index 1300 → 1950)
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: npx tsx src/scripts/syncAll.ts --exclude-linkedin --slice 650,1300
+        run: npx tsx src/scripts/syncAll.ts --exclude-linkedin --slice 1300,1950

@@ -1,16 +1,16 @@
-name: Daily ATS Sync (Part 1 - First Half)
+name: "ATS Sync · Part 1 (Companies 1–650)"
 
 on:
   schedule:
-    # Runs at 06:00 UTC every day
-    - cron: '0 6 * * *'
+    # 02:00 UTC daily
+    - cron: '0 2 * * *'
   workflow_dispatch:
-    # Allows manual triggering from the GitHub Actions UI
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 350
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,17 +21,13 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install dependencies
         run: npm ci
-        
-      - name: Run ATS Sync Script (First 1626 companies)
+
+      - name: Run ATS Sync – Part 1 (index 0 → 650)
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
-        run: npx tsx src/scripts/syncAll.ts --exclude-linkedin --slice 0,1626
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: npx tsx src/scripts/syncAll.ts --exclude-linkedin --slice 0,650
