@@ -50,7 +50,7 @@ export const RULES: [RegExp, string][] = [
     // "Trading Assistant" / "Customer and Trading Manager" for shop-floor
     // staff (found via audit, 155 jobs), which isn't financial trading at
     // all. Require a specific financial-trading phrase instead.
-    [/\b(finance|accounting|tax|\bvat\b|audit(?:or|ors|ing)?|financial|quant|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|bankers?|accountant|accounts|regulatory reporting|trading (floor|desk|strategy|systems?)|(equities?|fx|commodit(y|ies)|quantitative|electronic|algo(rithmic)?|proprietary|derivatives?|credit|securities) trading|\btraders?\b|cost analysts?|\bkyc\b|\baml\b|payments? analysts?|transfer pricing|private bankers?|claims handlers?|asset (management|servicing)|asset custody|mid-?market funds?|\bfunds?\b)\b/, 'Finance'],
+    [/\b(finance|accounting|tax|\bvat\b|audit(?:or|ors|ing)?|financial|quant|investment|treasury|actuary|actuarial|underwriter|insurance|wealth|risk|banking|bankers?|accountant|accounts|regulatory reporting|trading (floor|desk|strategy|systems?)|(equities?|fx|commodit(y|ies)|quantitative|electronic|algo(rithmic)?|proprietary|derivatives?|credit|securities) trading|\btraders?\b|cost analysts?|\bkyc\b|\baml\b|payments? analysts?|transfer pricing|transfer agency|private bankers?|claims handlers?|asset (management|servicing)|asset custody|mid-?market funds?|\bfunds?\b)\b/, 'Finance'],
     // Healthcare (clinical/medical) — patient-facing care; before Healthcare & Social Care
     // Includes NHS "Consultant [Specialty]" clinical grade titles — without these,
     // titles like "Consultant Psychiatrist" fall through to the bare `consultant`
@@ -558,12 +558,30 @@ function inferJobSectorUnclamped(
         return 'Construction & Infrastructure';
     }
 
-    // EHS / H&S is workplace safety, not clinical Healthcare (\bhealth\b).
+    // EHS / H&S / warehouse WHS is workplace safety, not clinical Healthcare (`\bhealth\b`
+    // in department "Workplace Health and Safety", or title "Safety Technician").
     if (
-        /\b(\behs\b|health and safety|health & safety|occupational health and safety)\b/.test(t) &&
-        !/\bnurs(?:e|es|ing)\b/.test(t)
+        (/\b(\behs\b|health and safety|health & safety|occupational health and safety|workplace health)\b/.test(
+            combined,
+        ) ||
+            /\bsafety technicians?\b/.test(t)) &&
+        !/\bnurs(?:e|es|ing)\b/.test(t) &&
+        !/\bpatient safety\b/.test(t)
     ) {
         return 'Operations';
+    }
+
+    // Insurance / employee-benefits brokers — not clinical Healthcare.
+    if (
+        /\b(healthcare brokers?|employee benefits)\b/.test(t) &&
+        /\b(brokers?|consultants?|advisers?|advisors?|account executives?)\b/.test(t)
+    ) {
+        return 'Finance';
+    }
+
+    // Spa / members-club wellness is hospitality, not clinical.
+    if (/\b(head of spa|spa (supervisors?|managers?|therapists?)|assistant spa)\b/.test(t)) {
+        return 'Retail & Hospitality';
     }
 
     // Game / media audio is not audiology.

@@ -134,6 +134,17 @@ function roughNameSlug(name: string): string {
     .trim();
 }
 
+/** True when an ATS board slug is this company's board, not a poisoned shared URL. */
+export function atsBoardTokenMatchesCompany(token: string, tradingName: string): boolean {
+  const t = roughNameSlug(token);
+  const n = roughNameSlug(tradingName);
+  if (t.length < 4 || n.length < 3) return false;
+  if (t === n) return true;
+  if (n.includes(t) && t.length >= 5) return true;
+  if (t.includes(n) && n.length >= 4) return true;
+  return false;
+}
+
 /**
  * True when the job URL clearly belongs to another employer than `company`
  * (e.g. Molten portfolio page → revolut.com / greenhouse.io/graphcore links).
@@ -201,6 +212,18 @@ export function isForeignEmployerJobUrl(
     /(^|\.)glassdoor\./i.test(jobHost)
   ) {
     return true;
+  }
+
+  // Greenhouse/Workable often wrap apply URLs on the employer's own domain
+  // (circleci.com/careers, pinterestcareers.com). That is not a foreign board.
+  const hostLabels = jobHost.split('.');
+  const hostCore = roughNameSlug(hostLabels[0] || '');
+  const hostCompact = roughNameSlug(hostLabels.slice(0, -1).join(' ')).replace(/careers|jobs|apply/g, '');
+  if (
+    atsBoardTokenMatchesCompany(hostCore, company.trading_name || '') ||
+    atsBoardTokenMatchesCompany(hostCompact, company.trading_name || '')
+  ) {
+    return false;
   }
 
   return true;
