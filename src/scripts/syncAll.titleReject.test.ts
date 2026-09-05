@@ -2,7 +2,7 @@
  * Smoke tests for Phase 1 title-reject reason codes.
  * Run: npx tsx src/scripts/syncAll.titleReject.test.ts
  */
-import { getJobTitleRejectReason, isValidJobTitle, parseAstraZenecaResultsHtml, parseHseJobSearchHtml, parseRadancyResultsHtml, resolveProviderAndToken } from './syncAll';
+import { getJobTitleRejectReason, inferAtsFromCareersUrl, isValidJobTitle, parseAstraZenecaResultsHtml, parseHseJobSearchHtml, parseNhsSearchHtml, parseRadancyResultsHtml, resolveProviderAndToken } from './syncAll';
 
 function assert(cond: boolean, msg: string) {
     if (!cond) throw new Error(msg);
@@ -64,6 +64,28 @@ assert(isValidJobTitle('Security Guard') === false, 'isValid false for low profi
     assert(hse.length === 1, `HSE parse should skip confined, got ${hse.length}`);
     assert(hse[0].location.includes('Limerick'), hse[0].location);
     assert(hse[0].url.includes('about.hse.ie/jobs/job-search/staff-nurse'), hse[0].url);
+}
+
+{
+    const nhs = parseNhsSearchHtml(`
+        <ul>
+          <li>
+            <a href="/candidate/jobadvert/C1234-26-0001">Staff Nurse - A&amp;E</a>
+            NHS Professionals Limited Torquay TQ2 7AA
+          </li>
+        </ul>`);
+    assert(nhs.length === 1, `NHS parse count ${nhs.length}`);
+    assert(nhs[0].title.includes('Staff Nurse'), nhs[0].title);
+    assert(nhs[0].url.includes('/candidate/jobadvert/C1234-26-0001'), nhs[0].url);
+}
+
+{
+    const gh = inferAtsFromCareersUrl('https://job-boards.greenhouse.io/fanduel');
+    assert(gh?.provider === 'greenhouse' && gh.token === 'fanduel', `greenhouse infer ${JSON.stringify(gh)}`);
+    const wk = inferAtsFromCareersUrl('https://apply.workable.com/resi');
+    assert(wk?.provider === 'workable' && wk.token === 'resi', `workable infer ${JSON.stringify(wk)}`);
+    const as = inferAtsFromCareersUrl('https://jobs.ashbyhq.com/altruistiq');
+    assert(as?.provider === 'ashby' && as.token === 'altruistiq', `ashby infer ${JSON.stringify(as)}`);
 }
 
 console.log('syncAll.titleReject.test.ts — all passed');

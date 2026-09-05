@@ -7,6 +7,7 @@ import {
   getIngestRejectReason,
   isForeignEmployerJobUrl,
   extractSharedAtsBoardSlug,
+  atsBoardTokenMatchesCompany,
   isRelocateAbroadTitle,
   sanitizeCompanySectorForInference,
 } from './jobIngestGuards';
@@ -63,6 +64,24 @@ check(
     url: 'https://www.moltenventures.com/opportunities',
     careers_url: 'https://www.moltenventures.com/opportunities',
   }) === true,
+);
+check(
+  'circleci.com apply URL is not foreign to CircleCI',
+  isForeignEmployerJobUrl('http://www.circleci.com/careers/jobs/8608742002/?gh_jid=8608742002', {
+    trading_name: 'CircleCI',
+    url: 'https://circleci.com',
+    careers_url: 'https://boards.greenhouse.io/circleci',
+    ats_board_token: 'circleci',
+  }) === false,
+);
+check(
+  'pinterestcareers.com is not foreign to Pinterest',
+  isForeignEmployerJobUrl('https://www.pinterestcareers.com/jobs/123', {
+    trading_name: 'Pinterest',
+    url: 'https://www.pinterest.com',
+    careers_url: 'https://boards.greenhouse.io/pinterest',
+    ats_board_token: 'pinterest',
+  }) === false,
 );
 check(
   'greenhouse/graphcore foreign to Molten',
@@ -155,6 +174,22 @@ check(
 check(
   'extractSharedAtsBoardSlug keeps Pulse greenhouse path',
   extractSharedAtsBoardSlug('https://job-boards.greenhouse.io/pulse/jobs/6088758003') === 'pulse',
+);
+check(
+  'board slug matches FanDuel greenhouse',
+  atsBoardTokenMatchesCompany('fanduel', 'FanDuel') === true,
+);
+check(
+  'board slug matches Ocado Group',
+  atsBoardTokenMatchesCompany('ocadogroup', 'Ocado Group') === true,
+);
+check(
+  'poisoned Luminos breezy does not match Transreport',
+  atsBoardTokenMatchesCompany('the-luminos-fund', 'Transreport') === false,
+);
+check(
+  'generic lever/blue does not match Blue Light Card',
+  atsBoardTokenMatchesCompany('blue', 'Blue Light Card') === false,
 );
 
 check(

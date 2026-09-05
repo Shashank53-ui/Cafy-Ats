@@ -15,10 +15,11 @@ UPDATE public.jobs
 SET last_seen_at = COALESCE(updated_at, created_at, NOW())
 WHERE last_seen_at IS NULL;
 
--- Soft-delete is wired in syncAll.ts (STALE_JOB_RETENTION_HOURS = 48):
+-- Soft-delete is wired in syncAll.ts:
 --   1. Upserts set last_seen_at = NOW()
---   2. Empty UK/Ireland filter results no longer wipe the company job set
---   3. Rows with last_seen_at older than 48h are purged per company
+--   2. Empty UK/Ireland filter results never wipe the company job set
+--   3. After a successful fetch, rows missing from today's payload are purged
+-- Manual sweep: npx tsx src/scripts/purgeExpiredJobs.ts --apply
 -- Also ensure jobs_IR has the column (create_jobs_ir.sql / schema already include it):
 ALTER TABLE public."jobs_IR"
 ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
@@ -28,4 +29,4 @@ SET last_seen_at = COALESCE(updated_at, created_at, NOW())
 WHERE last_seen_at IS NULL;
 
 -- Manual equivalent:
--- DELETE FROM public.jobs WHERE last_seen_at < NOW() - INTERVAL '48 hours';
+-- npx tsx src/scripts/purgeExpiredJobs.ts --apply

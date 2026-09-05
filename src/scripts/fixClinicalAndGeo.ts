@@ -157,14 +157,22 @@ async function main() {
         r.department,
         sanitizeCompanySectorForInference(co?.company_sector),
       );
+      const stored = String(r.sector || '').trim();
       const FORCE_RECLASS =
         /\bnurs(?:e|es|ing)\b/i.test(r.title) ||
         /\b(\behs\b|health and safety|health & safety)\b/i.test(r.title) ||
         /\baudio designers?\b/i.test(r.title) ||
         (/\barchitects?\b/i.test(r.title) && /\bhealthcare\b/i.test(r.title)) ||
-        /\bdrug substance\b/i.test(r.title);
-
-      const stored = String(r.sector || '').trim();
+        /\bdrug substance\b/i.test(r.title) ||
+        (stored === 'Healthcare' &&
+          (/\b(workplace health|safety technicians?)\b/i.test(r.title) ||
+            /\b(head of spa|spa (supervisors?|managers?|therapists?)|assistant spa)\b/i.test(r.title) ||
+            /\bhealthcare brokers?\b/i.test(r.title) ||
+            /\bemployee benefits\b/i.test(r.title) ||
+            /\btransfer agency\b/i.test(r.title) ||
+            /\b(emissions monitoring|air & emissions)\b/i.test(r.title) ||
+            (/\bmaintenance assistant\b/i.test(r.title) && /\b(house|soho)\b/i.test(r.title)) ||
+            /\bit system specialist\b/i.test(r.title)));
       if (
         sector !== stored &&
         (FORCE_RECLASS ||
