@@ -1137,7 +1137,7 @@ async function fetchGenericCareersPage(url: string): Promise<Job[]> {
     }
 }
 
-async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOnly?: boolean }): Promise<{
+async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOnly?: boolean, existingJobsMap?: Map<string, string> }): Promise<{
     jobs: Job[];
     provider: string;
     token: string;
@@ -1195,7 +1195,7 @@ async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOn
 
         try {
             console.log(`Trying fetcher: ${attempt.provider} (token: ${attempt.token})`);
-            let jobs = await fetcher(attempt.token, company);
+            let jobs = await fetcher(attempt.token, company, options?.existingJobsMap);
             jobs = jobs.filter(j => isValidJobTitle(j.title));
             console.log(`Fetcher ${attempt.provider} returned ${jobs.length} valid jobs`);
             if (jobs.length > 0) {
@@ -1222,7 +1222,7 @@ async function fetchJobsWithFallback(company: CompanyRow, options?: { fallbackOn
         if (!fetcher) continue;
 
         try {
-            let jobs = await fetcher(inferred.token);
+            let jobs = await fetcher(inferred.token, company, options?.existingJobsMap);
             jobs = jobs.filter(j => isValidJobTitle(j.title));
             if (jobs.length > 0) {
                 return {
@@ -1565,7 +1565,7 @@ async function fetchGreenhouse(token: string): Promise<Job[]> {
     return [];
 }
 
-async function fetchAshby(token: string): Promise<Job[]> {
+async function fetchAshby(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     let jobsFromApi: any[] = [];
     let jobsFromHtml: any[] = [];
 
@@ -1619,6 +1619,7 @@ async function fetchAshby(token: string): Promise<Job[]> {
 
         const descLimit = pLimit(4);
         await Promise.all(jobs.map((j: Job) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             try {
                 const pr = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
                 if (!pr.ok) return;
@@ -1751,7 +1752,7 @@ async function fetchLever(token: string): Promise<Job[]> {
     return [];
 }
 
-async function fetchWorkable(token: string): Promise<Job[]> {
+async function fetchWorkable(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/122.0.0.0';
 
     const workableFetchWithRetry = async (url: string, options: RequestInit, maxRetries = 10): Promise<Response | null> => {
@@ -1777,6 +1778,7 @@ async function fetchWorkable(token: string): Promise<Job[]> {
     const descriptionLimit = pLimit(2);
     async function attachDescriptions(jobs: Array<Job & { _shortcode?: string }>): Promise<Job[]> {
         await Promise.all(jobs.map((j) => descriptionLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             if (!j._shortcode) return;
             try {
                 const r = await workableFetchWithRetry(
@@ -1972,7 +1974,7 @@ async function fetchBambooHRJobDetail(token: string, jobId: string): Promise<{ d
     }
 }
 
-export async function fetchBambooHR(token: string): Promise<Job[]> {
+export async function fetchBambooHR(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         // Try the open /careers/list endpoint first
         const r = await fetchWithTimeout(`https://${token}.bamboohr.com/careers/list`);
@@ -1994,6 +1996,7 @@ export async function fetchBambooHR(token: string): Promise<Job[]> {
 
             const descLimit = pLimit(4);
             await Promise.all(jobs.map((j: any) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
                 if (!j._id) return;
                 const detail = await fetchBambooHRJobDetail(token, j._id);
                 j.description = detail.description;
@@ -2051,7 +2054,7 @@ function extractSmartRecruitersSalary(customField: any): string | undefined {
     return parts.length ? parts.join(' | ') : undefined;
 }
 
-async function fetchSmartRecruiters(token: string): Promise<Job[]> {
+async function fetchSmartRecruiters(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const allJobs: Array<Job & { _id?: string }> = [];
     let offset = 0;
     while (true) {
@@ -2090,6 +2093,7 @@ async function fetchSmartRecruiters(token: string): Promise<Job[]> {
 
     const descLimit = pLimit(4);
     await Promise.all(allJobs.map((j) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
         if (!j._id) return;
         j.description = await fetchSmartRecruitersDescription(token, j._id);
     })));
@@ -2165,7 +2169,7 @@ async function fetchBreezyJobDetail(jobUrl: string): Promise<{ description?: str
     }
 }
 
-export async function fetchBreezy(token: string): Promise<Job[]> {
+export async function fetchBreezy(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
 
     try {
         const r = await fetchWithTimeout(`https://${token}.breezy.hr/json`);
@@ -2183,6 +2187,7 @@ export async function fetchBreezy(token: string): Promise<Job[]> {
 
         const descLimit = pLimit(4);
         await Promise.all(apiJobs.map((j: Job) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             if (!j.url) return;
             const detail = await fetchBreezyJobDetail(j.url);
             j.description = detail.description;
@@ -2242,7 +2247,7 @@ async function fetchJobviteJobDetail(url: string): Promise<{ description?: strin
     } catch { return {}; }
 }
 
-async function fetchJobvite(token: string): Promise<Job[]> {
+async function fetchJobvite(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         let allJobs: Job[] = [];
 
@@ -2299,6 +2304,7 @@ async function fetchJobvite(token: string): Promise<Job[]> {
 
         const descLimit = pLimit(4);
         await Promise.all(allJobs.map(j => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             if (!j.url || j.description) return;
             const detail = await fetchJobviteJobDetail(j.url);
             j.description = detail.description;
@@ -2334,7 +2340,7 @@ async function fetchAvatureJobDetail(jobUrl: string): Promise<{ description?: st
     }
 }
 
-async function fetchAvature(token: string): Promise<Job[]> {
+async function fetchAvature(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
 
     try {
         const raw = String(token || '').trim();
@@ -2379,6 +2385,7 @@ async function fetchAvature(token: string): Promise<Job[]> {
 
         const descLimit = pLimit(4);
         await Promise.all(apiJobs.map((j: Job) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             if (!j.url) return;
             const detail = await fetchAvatureJobDetail(j.url);
             j.description = detail.description;
@@ -2392,7 +2399,7 @@ async function fetchAvature(token: string): Promise<Job[]> {
 }
 
 /** Paginate Avature careersmarketplace SearchJobs HTML (public, no API key). */
-async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
+async function fetchAvatureSearchJobsHtml(portalBase: string, _company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const base = portalBase.replace(/\/$/, '');
     const searchPaths = [
         '/en_US/careersmarketplace/SearchJobs/',
@@ -2482,6 +2489,7 @@ async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
     await Promise.all(
         jobs.map((job) =>
             limit(async () => {
+                    if (existingJobsMap?.has(job.url) && (existingJobsMap.get(job.url)?.trim().length || 0) > 10) { job.description = existingJobsMap.get(job.url); return; }
                 try {
                     const detailRes = await fetchWithTimeout(job.url, {
                         headers: { 'User-Agent': 'Mozilla/5.0' },
@@ -2530,7 +2538,7 @@ async function fetchAvatureSearchJobsHtml(portalBase: string): Promise<Job[]> {
     return jobs;
 }
 
-async function fetchTeamtailorHtml(token: string): Promise<Job[]> {
+async function fetchTeamtailorHtml(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const startUrl = normalizeTeamtailorHtmlToken(token);
     if (!startUrl) return [];
 
@@ -2647,7 +2655,7 @@ async function fetchPersonio(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]> {
+export async function fetchWorkday(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     let slug = '';
     let board = '';
     let detectedWd = '';
@@ -2884,6 +2892,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
 
                     const limitDetails = pLimit(2);
                     const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
                         let job_type_val = j.timeType || j.bulletFields;
                         let description = undefined;
                         try {
@@ -2944,6 +2953,7 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                         irTotal = Math.min(irData.total || irTotal, 200); // cap at 200 safety limit
                         const limitDetails = pLimit(10);
                         const enrichedIrPosts = await Promise.all(irPosts.map((j: any) => limitDetails(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
                             let job_type_val = j.timeType || j.bulletFields;
                             if (!job_type_val || !parseJobType(job_type_val)) {
                                 try {
@@ -2988,10 +2998,14 @@ async function fetchWorkday(token: string, company?: CompanyRow): Promise<Job[]>
                 const descLimit = pLimit(4);
                 await Promise.all(allJobs.map((j) => descLimit(async () => {
                     if (!j.url.startsWith(publicBase)) return;
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) {
+                        j.description = existingJobsMap.get(j.url);
+                        return;
+                    }
                     const externalPath = j.url.slice(publicBase.length);
                     try {
                         const detailRes = await fetchWithTimeout(`${detailBase}${externalPath}`, {
-                            headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
+                            headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0', 'Referer': publicBase },
                         });
                         if (!detailRes.ok) return;
                         const detailData = await detailRes.json();
@@ -3109,7 +3123,7 @@ async function fetchSuccessFactors(token: string): Promise<Job[]> {
     }
 }
 
-async function fetchSuccessFactorsJsonApi(csbBaseUrl: string): Promise<Job[]> {
+async function fetchSuccessFactorsJsonApi(csbBaseUrl: string, _company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const allJobs: Job[] = [];
     try {
         const searchUrl = `${csbBaseUrl}/search/?q=`;
@@ -3188,7 +3202,7 @@ async function fetchSuccessFactorsJsonApi(csbBaseUrl: string): Promise<Job[]> {
     } catch {
         return [];
     }
-    await attachSuccessFactorsDescriptions(allJobs);
+    await attachSuccessFactorsDescriptions(allJobs, existingJobsMap);
     return allJobs;
 }
 
@@ -3196,9 +3210,10 @@ async function fetchSuccessFactorsJsonApi(csbBaseUrl: string): Promise<Job[]> {
 // HTML search path — verified live (Reckitt): each job's own page is
 // server-rendered HTML with the full text in .jobdescription (no salary
 // anywhere on the page for this employer — checked, genuinely absent).
-async function attachSuccessFactorsDescriptions(jobs: Job[]): Promise<void> {
+async function attachSuccessFactorsDescriptions(jobs: Job[], existingJobsMap?: Map<string, string>): Promise<void> {
     const descLimit = pLimit(4);
     await Promise.all(jobs.map((j) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
         try {
             const r = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
             if (!r.ok) return;
@@ -3213,7 +3228,8 @@ async function attachSuccessFactorsDescriptions(jobs: Job[]): Promise<void> {
 /** HTML list scrape for SuccessFactors CSB boards when the JSON API is blocked. */
 async function fetchSuccessFactorsHtmlSearch(
     csbBaseUrl: string,
-    opts?: { preferUk?: boolean }
+    opts?: { preferUk?: boolean },
+    existingJobsMap?: Map<string, string>
 ): Promise<Job[]> {
     const byUrl = new Map<string, Job>();
     const pageSize = 10; // SF classic search pages typically show 10 rows
@@ -3305,7 +3321,7 @@ async function fetchSuccessFactorsHtmlSearch(
     }
 
     const jobs = Array.from(byUrl.values());
-    await attachSuccessFactorsDescriptions(jobs);
+    await attachSuccessFactorsDescriptions(jobs, existingJobsMap);
     return jobs;
 }
 
@@ -3392,7 +3408,7 @@ async function fetchEightfoldJobDetail(host: string, apiDomain: string, pId: str
     }
 }
 
-export async function fetchEightfold(token: string): Promise<Job[]> {
+export async function fetchEightfold(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     let host = '';
     let apiDomain = '';
     let country = '';
@@ -3461,6 +3477,7 @@ export async function fetchEightfold(token: string): Promise<Job[]> {
 
     const descLimit = pLimit(4);
     await Promise.all(allJobs.map((j: any) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
         if (!j._id) return;
         const detail = await fetchEightfoldJobDetail(host, apiDomain, j._id);
         j.description = detail.description;
@@ -3494,7 +3511,7 @@ async function fetchICIMSJobDetail(jobUrl: string): Promise<{ description?: stri
     } catch { return {}; }
 }
 
-async function fetchICIMS(token: string): Promise<Job[]> {
+async function fetchICIMS(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         const allJobs: Job[] = [];
         let pr = 0;
@@ -3548,6 +3565,7 @@ async function fetchICIMS(token: string): Promise<Job[]> {
 
         const descLimit = pLimit(4);
         await Promise.all(allJobs.map(j => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             if (!j.url) return;
             const detail = await fetchICIMSJobDetail(j.url);
             j.description = detail.description;
@@ -3562,7 +3580,7 @@ async function fetchICIMS(token: string): Promise<Job[]> {
     }
 }
 
-async function fetchRippling(token: string): Promise<Job[]> {
+async function fetchRippling(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     // Rippling uses Next.js - job data is embedded in __NEXT_DATA__ script tag
     try {
         const url = `https://ats.rippling.com/${token}/jobs`;
@@ -3619,6 +3637,7 @@ async function fetchRippling(token: string): Promise<Job[]> {
 
         const descLimit = pLimit(4);
         await Promise.all(jobs.map((j) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             try {
                 const r = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' } });
                 if (!r.ok) return;
@@ -3836,7 +3855,7 @@ async function fetchGoogle(token: string): Promise<Job[]> {
 
 // ─── Meta / Facebook Jobs Fetcher ─────────────────────────────────────────────
 // Scrapes metacareers.com using Playwright since it is a heavy React SPA
-async function fetchMeta(token: string): Promise<Job[]> {
+async function fetchMeta(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const allJobs: Job[] = [];
     let browser: Browser | undefined;
     let context: BrowserContext | undefined;
@@ -3904,7 +3923,7 @@ async function fetchMeta(token: string): Promise<Job[]> {
 
 // ─── LinkedIn Jobs Fetcher ────────────────────────────────────────────────────
 // Scrapes public LinkedIn job search pages to bypass login walls
-async function fetchLinkedin(token: string): Promise<Job[]> {
+async function fetchLinkedin(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const allJobs: Job[] = [];
 
     // Normalize URL: convert /company/SLUG/jobs/ to /jobs/SLUG-jobs-worldwide/
@@ -3976,7 +3995,7 @@ async function fetchLinkedin(token: string): Promise<Job[]> {
 
 // ─── Publicis Groupe Fetcher ──────────────────────────────────────────────────
 // Scrapes Publicis using Playwright to handle its Angular SPA
-async function fetchPublicis(token: string): Promise<Job[]> {
+async function fetchPublicis(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const allJobs: Job[] = [];
     const targetUrl = token.startsWith('http') ? token : 'https://careers.publicisgroupe.com/jobs';
     let browser: Browser | undefined;
@@ -4028,7 +4047,7 @@ async function fetchPublicis(token: string): Promise<Job[]> {
     return allJobs;
 }
 
-async function fetchNHS(token: string): Promise<Job[]> {
+async function fetchNHS(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const startUrl = token.startsWith('http') ? token : `https://www.jobs.nhs.uk/candidate/search/results?keyword=${encodeURIComponent(token)}`;
     const allJobs: Job[] = [];
     let browser: Browser | undefined;
@@ -4632,7 +4651,7 @@ async function fetchHse(token: string): Promise<Job[]> {
 
 // ─── EasyJet (Playwright / easyjet.taleo.net) ────────────────────────────────
 // Token: "easyjet"
-async function fetchEasyJet(token: string): Promise<Job[]> {
+async function fetchEasyJet(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const tenant = token || 'easyjet';
     const allJobs: Job[] = [];
     let browser: Browser | undefined;
@@ -5060,7 +5079,7 @@ async function fetchRoyalMail(_token: string): Promise<Job[]> {
 
 // ─── Standard Chartered (Playwright + Workday fallback) ──────────────────────
 // Token: "standardchartered"
-async function fetchStandardChartered(token: string): Promise<Job[]> {
+async function fetchStandardChartered(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const slug = token || 'standardchartered';
 
     // First: try Workday API (fastest)
@@ -5614,7 +5633,7 @@ async function fetchOracleCloudDescription(
     return undefined;
 }
 
-export async function fetchOracleCloud(token: string): Promise<Job[]> {
+export async function fetchOracleCloud(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const allJobs: Array<Job & { _id?: string }> = [];
     try {
         let domain = '';
@@ -5684,6 +5703,7 @@ export async function fetchOracleCloud(token: string): Promise<Job[]> {
 
         const descLimit = pLimit(10);
         await Promise.all(allJobs.map((j) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             if (!j._id) return;
             const detail = await fetchOracleCloudDescription(domain, site, j._id);
             if (!detail) return;
@@ -5714,7 +5734,7 @@ async function fetchJazzHRDescription(jobUrl: string): Promise<string | undefine
     }
 }
 
-export async function fetchJazzHR(token: string): Promise<Job[]> {
+export async function fetchJazzHR(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         const url = `https://${token}.applytojob.com/apply`;
         const r = await fetchWithTimeout(url, {
@@ -5741,6 +5761,7 @@ export async function fetchJazzHR(token: string): Promise<Job[]> {
 
         const descLimit = pLimit(4);
         await Promise.all(jobs.map((j) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             j.description = await fetchJazzHRDescription(j.url);
         })));
 
@@ -5822,7 +5843,7 @@ export async function fetchEploy(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-export async function fetchTalentTrack(token: string): Promise<Job[]> {
+export async function fetchTalentTrack(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const allJobs: Job[] = [];
     try {
         const parts = String(token || '').split('|').map((p) => p.trim()).filter(Boolean);
@@ -5929,6 +5950,7 @@ export async function fetchTalentTrack(token: string): Promise<Job[]> {
         // endpoint the site's own Angular app calls. Verified live (Barchester).
         const detailLimit = pLimit(5);
         await Promise.all(deduped.map((j) => detailLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             if (!j.__jobId) return;
             try {
                 const dr = await fetchWithTimeout(
@@ -5971,7 +5993,7 @@ export async function fetchTalentTrack(token: string): Promise<Job[]> {
     }
 }
 
-export async function fetchSoftscape(token: string): Promise<Job[]> {
+export async function fetchSoftscape(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         let base = String(token || '').trim().replace(/\/+$/, '');
         if (!base) return [];
@@ -6051,6 +6073,7 @@ export async function fetchSoftscape(token: string): Promise<Job[]> {
         // (+ cleaner location / salary / category) — verified live (HC-One).
         const detailLimit = pLimit(5);
         await Promise.all(deduped.map((j) => detailLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             const d = await fetchEployJsonLdJob(j.url);
             if (!d) return;
             if (d.description) j.description = d.description;
@@ -6199,7 +6222,7 @@ async function fetchGemJobSections(token: string, extId: string): Promise<{ intr
     }
 }
 
-export async function fetchGem(token: string): Promise<Job[]> {
+export async function fetchGem(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         const data = await gemGraphql(
             'query Q($boardId: String!) { oatsExternalJobPostings(boardId: $boardId) { jobPostings { id extId title descriptionHtml compensationHtml locations { name city isoCountry isRemote } job { department { name } employmentType locationType } } } }',
@@ -6210,6 +6233,7 @@ export async function fetchGem(token: string): Promise<Job[]> {
 
         const sectionLimit = pLimit(5);
         const jobs = await Promise.all(postings.map((j: any) => sectionLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             const extId = j.extId || j.id;
             const sections = extId ? await fetchGemJobSections(token, String(extId)) : null;
 
@@ -6236,11 +6260,11 @@ export async function fetchGem(token: string): Promise<Job[]> {
             };
         })));
 
-        return jobs.filter((j) => j.title && j.url);
+        return (jobs.filter(Boolean) as any[]).filter((j) => j.title && j.url);
     } catch { return []; }
 }
 
-export async function fetchJoinCom(token: string): Promise<Job[]> {
+export async function fetchJoinCom(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         const homeRes = await fetchWithTimeout(`https://join.com/companies/${token}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!homeRes.ok) return [];
@@ -6273,6 +6297,7 @@ export async function fetchJoinCom(token: string): Promise<Job[]> {
         // the single-job endpoint as `description` (markdown). Verified live.
         const descLimit = pLimit(4);
         await Promise.all(allJobs.map((j) => descLimit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
             try {
                 const r = await fetchWithTimeout(`https://join.com/api/public/jobs/${j.id}?locale=en-us`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
                 if (r.ok) j.__detail = await r.json();
@@ -6323,7 +6348,7 @@ export async function fetchJoinCom(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-export async function fetchPhenom(token: string): Promise<Job[]> {
+export async function fetchPhenom(token: string, _company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         const baseUrl = token.replace(/\/$/, '');
         // DHL and many global Phenom boards use /global/en, not /us/en.
@@ -6387,14 +6412,15 @@ export async function fetchPhenom(token: string): Promise<Job[]> {
                 baseUrl,
                 searchPath,
                 ukSeedHtml,
-                { keywords: 'United Kingdom', maxJobs: 2500, csrf, cookieHeader }
+                { keywords: 'United Kingdom', maxJobs: 2500, csrf, cookieHeader },
+                existingJobsMap
             );
             if (ukJobs.length) return ukJobs;
         }
 
         const htmlJobs = await fetchPhenomHtmlPages(baseUrl, searchPath, seedHtml, {
             maxJobs: 1500, csrf, cookieHeader,
-        });
+        }, existingJobsMap);
         if (htmlJobs.length) return htmlJobs;
 
         // Widgets API fallback (works on some Phenom tenants)
@@ -6437,7 +6463,7 @@ export async function fetchPhenom(token: string): Promise<Job[]> {
             if (!total || from >= total) break;
         }
 
-        await enrichPhenomDescriptions(allJobs, baseUrl, csrf, cookieHeader);
+        await enrichPhenomDescriptions(allJobs, baseUrl, csrf, cookieHeader, existingJobsMap);
         return mapPhenomJobs(allJobs, baseUrl);
     } catch { return []; }
 }
@@ -6477,9 +6503,11 @@ async function enrichPhenomDescriptions(
     baseUrl: string,
     csrf: string,
     cookieHeader: string,
+    existingJobsMap?: Map<string, string>,
 ): Promise<void> {
     const limit = pLimit(5);
     await Promise.all(rawJobs.map((j) => limit(async () => {
+                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
         if (j.description && String(j.description).length > 400) return; // widgets API already gave a real body
         const seq = j.jobSeqNo || j.jobseqno;
         if (!seq) return;
@@ -6492,7 +6520,8 @@ async function fetchPhenomHtmlPages(
     baseUrl: string,
     searchPath: string,
     seedHtml: string,
-    opts?: { keywords?: string; maxJobs?: number; csrf?: string; cookieHeader?: string }
+    opts?: { keywords?: string; maxJobs?: number; csrf?: string; cookieHeader?: string },
+    existingJobsMap?: Map<string, string>
 ): Promise<Job[]> {
     const pageSize = 100;
     const maxJobs = opts?.maxJobs ?? 2000;
@@ -6526,7 +6555,7 @@ async function fetchPhenomHtmlPages(
     }
 
     const sliced = all.slice(0, maxJobs);
-    await enrichPhenomDescriptions(sliced, baseUrl, opts?.csrf || '', opts?.cookieHeader || '');
+    await enrichPhenomDescriptions(sliced, baseUrl, opts?.csrf || '', opts?.cookieHeader || '', existingJobsMap);
     return mapPhenomJobs(sliced, baseUrl);
 }
 
@@ -6569,7 +6598,7 @@ export async function fetchRecruiterbox(token: string): Promise<Job[]> {
     } catch { return []; }
 }
 
-export const FETCHERS: Record<string, (token: string, company?: CompanyRow) => Promise<Job[]>> = {
+export const FETCHERS: Record<string, (token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>) => Promise<Job[]>> = {
     custom: fetchCustom,
     apple: fetchCustom,
     greenhouse: fetchGreenhouse,
@@ -7088,7 +7117,13 @@ export async function syncAll() {
             };
 
             try {
-                const fetchOutcome = await fetchJobsWithFallback(company, { fallbackOnly: fallbackOnlyDryRun });
+                                const { data: existingJobsUK } = await supabase.from('jobs').select('url, description').eq('company_id', id);
+                const { data: existingJobsIR } = await supabase.from('jobs_IR').select('url, description').eq('company_id', id);
+                const existingJobsMap = new Map<string, string>();
+                if (existingJobsUK) existingJobsUK.forEach(j => existingJobsMap.set(j.url, j.description));
+                if (existingJobsIR) existingJobsIR.forEach(j => existingJobsMap.set(j.url, j.description));
+
+                const fetchOutcome = await fetchJobsWithFallback(company, { fallbackOnly: fallbackOnlyDryRun, existingJobsMap });
                 const providerKey = (resolved?.provider || normalizeProviderName(ats_provider) || ats_provider || 'custom').toLowerCase();
                 const allJobs = stampAtsProvider(fetchOutcome.jobs, providerKey);
                 result.fetched = allJobs.length;
