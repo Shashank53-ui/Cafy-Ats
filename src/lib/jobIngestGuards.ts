@@ -233,7 +233,18 @@ export type IngestRejectReason =
   | 'title_relocate_abroad'
   | 'foreign_employer_url'
   | 'foreign_url_geo'
+  | 'listing_page_url'
   | null;
+
+/** City/hub pages scraped as if they were a single vacancy. */
+export function isJobListingPageUrl(url: string | null | undefined): boolean {
+  const u = String(url || '').toLowerCase();
+  if (!u) return false;
+  if (/jobtoday\.com\//i.test(u)) return true;
+  if (/\/careers\/locations\//i.test(u)) return true;
+  if (/\/company\/careers\/job-listing\/?(\?|$)/i.test(u)) return true;
+  return false;
+}
 
 /** Single gate used by sync after title sanitize. */
 export function getIngestRejectReason(
@@ -246,6 +257,7 @@ export function getIngestRejectReason(
   },
 ): IngestRejectReason {
   if (isRelocateAbroadTitle(job.title || '')) return 'title_relocate_abroad';
+  if (isJobListingPageUrl(job.url)) return 'listing_page_url';
   if (job.url && isForeignEmployerJobUrl(job.url, company)) return 'foreign_employer_url';
   if (urlSignalsForeignWorkLocation(job.url)) return 'foreign_url_geo';
   return null;

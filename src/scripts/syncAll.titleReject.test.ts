@@ -11,6 +11,8 @@ function assert(cond: boolean, msg: string) {
 assert(getJobTitleRejectReason('') === 'title_too_short', 'empty → title_too_short');
 assert(getJobTitleRejectReason('ab') === 'title_too_short', 'short → title_too_short');
 assert(getJobTitleRejectReason('Careers') === 'title_junk', 'junk → title_junk');
+assert(getJobTitleRejectReason('Edinburgh') === 'title_junk', 'city-only → title_junk');
+assert(getJobTitleRejectReason('jobs in greenwich, london') === 'title_junk', 'jobs in → title_junk');
 assert(getJobTitleRejectReason('Retail Assistant') === 'title_low_profile', 'retail → title_low_profile');
 assert(getJobTitleRejectReason('Warehouse Operative') === 'title_low_profile', 'warehouse → title_low_profile');
 assert(getJobTitleRejectReason('Senior Software Engineer') === null, 'real title → null');
