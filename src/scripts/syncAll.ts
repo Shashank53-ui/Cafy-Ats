@@ -617,6 +617,14 @@ export function getJobTitleRejectReason(title: string): string | null {
     ];
     if (junk.includes(lower)) return 'title_junk';
     if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return 'title_junk';
+    if (
+        /^(london|edinburgh|manchester|birmingham|bristol|glasgow|dublin|cork|galway|leeds|reading|sheffield|cardiff|coventry|exeter|nottingham|liverpool|brighton|watford|remote|united kingdom|ireland)$/i.test(
+            title.trim(),
+        )
+    ) {
+        return 'title_junk';
+    }
+    if (/^jobs in /i.test(lower)) return 'title_junk';
     // AECOM/Canva/Airwallex etc. post "Relocate to Australia/Singapore" with a UK interview city
     if (isRelocateAbroadTitle(title)) {
         return 'title_relocate_abroad';

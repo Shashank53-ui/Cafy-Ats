@@ -213,6 +213,13 @@ check(
     { trading_name: 'Acme', url: 'https://www.acme.com', ats_board_token: 'acme' },
   ) === null,
 );
+check(
+  'jobtoday city page is a listing URL',
+  getIngestRejectReason(
+    { title: 'Edinburgh', url: 'https://jobtoday.com/gb/jobs/edinburgh' },
+    { trading_name: 'Acme', url: 'https://www.acme.com' },
+  ) === 'listing_page_url',
+);
 
 // company_sector poison
 check(
