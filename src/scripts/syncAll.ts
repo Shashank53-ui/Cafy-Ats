@@ -2030,9 +2030,13 @@ async function fetchSmartRecruitersDescription(token: string, jobId: string): Pr
         const d = await r.json();
         const sections = d.jobAd?.sections;
         if (!sections) return undefined;
-        let parts = ['jobDescription', 'qualifications', 'additionalInformation']
-            .map((key) => sections[key]?.text)
-            .filter(Boolean);
+        const jobDesc = sections.jobDescription?.text || '';
+        const qualifications = sections.qualifications?.text || '';
+        const hasRealContent = (jobDesc.length + qualifications.length) >= 100;
+        // Only include additionalInformation when the main content is absent or very short.
+        // Many companies stuff hashtags/metadata there (e.g. "#TalanUK").
+        const additionalInfo = !hasRealContent ? (sections.additionalInformation?.text || '') : '';
+        let parts = [jobDesc, qualifications, additionalInfo].filter(s => s.trim().length > 0);
 
         // Fallback for recruiter input error: if the description is completely empty, 
         // they likely pasted the whole job ad into the companyDescription field.
