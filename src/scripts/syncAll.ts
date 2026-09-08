@@ -42,6 +42,7 @@ import * as Adapters from '../lib/ukFilterAdapters';
 import { isIrelandJob } from '../lib/irelandFilter';
 import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
 import { inferJobTypeFromListing, parseJobType, resolveJobType } from '../lib/parseJobType';
+import { runClosedAtsSweep } from './purgeClosedAtsJobs';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -86,7 +87,7 @@ export interface Job {
     url: string;
     department?: string;
     salary?: string;
-    job_type?: string;
+    job_type?: string | null;
     verified?: boolean;
     needs_review?: boolean;
     rejection_reason?: string;
@@ -6566,6 +6567,20 @@ export async function syncAll() {
     }
 
     await Promise.all(companies.map((company) => limit(() => processCompany(company))));
+
+    if (!fallbackOnlyDryRun && !targetProvider && !specificIds) {
+        try {
+            const atsClosed = await runClosedAtsSweep({
+                apply: true,
+                skip: ['smartrecruiters'],
+            });
+            console.log(
+                `  🧹 Closed ATS posts: ${atsClosed.jobs} UK + ${atsClosed.jobs_IR} IE (live board ID mismatch)`,
+            );
+        } catch (err: any) {
+            console.warn(`  ⚠ Closed ATS sweep failed: ${err?.message || err}`);
+        }
+    }
 
     // ─── Summary ─────────────────────────────────────────────────────────────
     const finishedAt = new Date();

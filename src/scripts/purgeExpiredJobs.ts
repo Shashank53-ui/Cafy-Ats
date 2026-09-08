@@ -19,7 +19,8 @@ const sb = createClient(
 );
 
 const APPLY = process.argv.includes('--apply');
-const CUTOFF_HOURS = 48;
+const hoursArg = process.argv.find((a) => a.startsWith('--hours='));
+const CUTOFF_HOURS = hoursArg ? Number(hoursArg.slice('--hours='.length)) : 48;
 
 type StaleRow = {
   id: number;

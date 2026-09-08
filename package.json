@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "sync": "tsx src/scripts/syncAll.ts",
+    "purge:closed-gh": "tsx src/scripts/purgeClosedGreenhouseJobs.ts --apply",
+    "purge:closed-ats": "tsx src/scripts/purgeClosedAtsJobs.ts --apply",
     "sync:linkedin": "tsx src/scripts/scrapeLinkedinIreland.ts",
     "sync:ireland": "tsx src/scripts/syncAll.ts --market ireland --exclude-linkedin",
     "validate:ats": "tsx src/scripts/validateAtsTokens.ts",
