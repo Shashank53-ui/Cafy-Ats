@@ -41,6 +41,42 @@ const cases: [string, string][] = [
     'Escalator Engineers in London',
   ],
   [
+    'Join Our Talent Network: Software Engineers',
+    'Software Engineers',
+  ],
+  [
+    'Join Our Talent Bank: Electrician',
+    'Electrician',
+  ],
+  [
+    'Join Our Talent Pipeline: Data Analysts',
+    'Data Analysts',
+  ],
+  [
+    'Join Our Team: Lift Engineers',
+    'Lift Engineers',
+  ],
+  [
+    'Candidate Pool: Nurses London',
+    'Nurses London',
+  ],
+  [
+    "Join AECOM's Quantity Surveyor Talent Network",
+    'Quantity Surveyor',
+  ],
+  [
+    "Join Scissero’s Talent Network",
+    '',
+  ],
+  [
+    'We are growing - join our Tax Talent Community - London',
+    '',
+  ],
+  [
+    'Future Medical Affairs Leadership Opportunities – Join Our Medical Affairs Talent Leaders Pipeline',
+    '',
+  ],
+  [
     'Game Producer - Talent Pool (EU)',
     'Game Producer',
   ],

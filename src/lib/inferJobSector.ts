@@ -74,8 +74,8 @@ export const RULES: [RegExp, string][] = [
     // Customer Success
     [/\b(customer success|customer support|customer service|account manager|client success|call handlers?)\b/, 'Customer Success'],
     // HR / People — \bpeople\b catches ATS depts named "People".
-    // Do not treat "talent pool/community" as HR (those are open-role headlines).
-    [/\b(hr|human resources|people ops|talent(?![\s-]+(pool|community))|recruiter|recruiting|resourcer|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people|workday analysts?|training advisors?)\b/, 'HR / People'],
+    // Do not treat "talent pool/community/network/pipeline/bank" as HR (open-role headlines).
+    [/\b(hr|human resources|people ops|talent(?![\s-]+(pool|community|network|pipeline|bank))|recruiter|recruiting|resourcer|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people|workday analysts?|training advisors?)\b/, 'HR / People'],
     // Construction & Infrastructure
     [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contracts? managers?|contract management|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town plann(?:er|ers|ing)|site managers?|building inspectors?|groundworkers?|\bbim\b|bms (service|controls?|consultants?|engineers?|technicians?|leads?|managers?)|building management systems?|\bmep\b|hydraulic|flood (risk|model|modeller|modeler|forecast)|vertical transportation|lift engineers?|escalator engineers?|door engineers?|lift installers?|highways?|hydrologist|hydrogeologists?|wastewater|arborist|ecologists?|ornithologists?|climate resilience)\b/, 'Construction & Infrastructure'],
     // Retail & Hospitality
@@ -220,8 +220,9 @@ function applyPharmaCompanyOverride(
 /** Open-application headlines are not HR jobs — keep the real role words. */
 function stripTalentPoolBoilerplate(text: string): string {
     return text
-        .replace(/\bjoin(?:ing)? our talent[\s-]+(pool|community)\b:?/g, ' ')
-        .replace(/\btalent[\s-]+(pool|community)\b:?/g, ' ')
+        .replace(/\bjoin(?:ing)? our talent[\s-]+(pool|community|network|pipeline|bank)\b:?/g, ' ')
+        .replace(/\btalent[\s-]+(pool|community|network|pipeline|bank)\b:?/g, ' ')
+        .replace(/\bjoin(?:ing)? our team\b:?/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }

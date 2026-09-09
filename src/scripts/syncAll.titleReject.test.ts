@@ -18,6 +18,9 @@ assert(getJobTitleRejectReason('Warehouse Operative') === 'title_low_profile', '
 assert(getJobTitleRejectReason('Join our Talent Pool') === 'title_junk', 'talent pool → title_junk');
 assert(getJobTitleRejectReason('Future Talent Pool') === 'title_junk', 'future talent pool → title_junk');
 assert(getJobTitleRejectReason('Sales Talent Pool') === 'title_junk', 'sales talent pool → title_junk');
+assert(getJobTitleRejectReason('Talent Bank') === 'title_junk', 'talent bank → title_junk');
+assert(getJobTitleRejectReason('Speculative Application') === 'title_junk', 'speculative → title_junk');
+assert(getJobTitleRejectReason('CV Library') === 'title_junk', 'cv library → title_junk');
 assert(getJobTitleRejectReason('Lift Engineers in Southern England') === null, 'lift engineer → null');
 assert(getJobTitleRejectReason('Relocate to Australia: Principal Engineer') === 'title_relocate_abroad', 'relocate → title_relocate_abroad');
 assert(getJobTitleRejectReason('General Practitioner | Fast-Track Your Move to Australia') === 'title_relocate_abroad', 'fast-track AU → title_relocate_abroad');

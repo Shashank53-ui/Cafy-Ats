@@ -34,7 +34,7 @@ import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { isUKJob } from '../lib/ukFilter';
-import { sanitizeJobTitle } from '../lib/sanitizeJobTitle';
+import { isUnusableJobTitle, sanitizeJobTitle } from '../lib/sanitizeJobTitle';
 import { atsBoardTokenMatchesCompany, extractSharedAtsBoardSlug, getIngestRejectReason, isForeignEmployerJobUrl, isRelocateAbroadTitle } from '../lib/jobIngestGuards';
 import { isLicenceTruthy, resolveSyncMarket } from '../lib/syncMarket';
 import { isForeignLocationLeak } from '../lib/foreignLocationLeak';
@@ -604,6 +604,7 @@ const LOW_PROFILE_TITLE_PATTERN = /\b(customer (assistant|team member|colleague|
 /** Returns a reject reason code, or null if the title is acceptable. */
 export function getJobTitleRejectReason(title: string): string | null {
     if (!title || title.length < 3) return 'title_too_short';
+    if (isUnusableJobTitle(title)) return 'title_junk';
     const lower = title.toLowerCase().trim();
     const junk = [
         'see all jobs', 'view all jobs', 'all jobs', 'all openings', 'join our team',
@@ -617,22 +618,30 @@ export function getJobTitleRejectReason(title: string): string | null {
         'view role ↗', 'more detail',
         'join our talent pool', 'joining our talent pool', 'talent pool', 'future talent pool',
         'join our talent community', 'talent community', 'join our talent community!',
+        'join our talent network', 'talent network', 'join our talent pipeline', 'talent pipeline',
+        'join our talent bank', 'talent bank',
         'future opportunities',
+        'speculative application', 'general application', 'open application',
+        'cv library', 'keep in touch', 'submit your cv', 'candidate pool',
     ];
     if (junk.includes(lower)) return 'title_junk';
     if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return 'title_junk';
-    if (/^join(?:ing)?\s+(?:our\s+)?talent[\s-]+(?:pool|community)\s*!?\s*$/i.test(lower)) return 'title_junk';
-    if (/^(?:future\s+)?talent[\s-]+(?:pool|community)\s*$/i.test(lower)) return 'title_junk';
+    if (/^join(?:ing)?\s+(?:our\s+)?talent[\s-]+(?:pool|community|network|pipeline|bank)\s*!?\s*$/i.test(lower)) return 'title_junk';
+    if (/^(?:future\s+)?talent[\s-]+(?:pool|community|network|pipeline|bank)\s*$/i.test(lower)) return 'title_junk';
     // "Sales Talent Pool" marketing bucket — not a real vacancy title
-    if (/^[a-z0-9&/.,\s-]{1,40}\s+talent[\s-]+(?:pool|community)\s*$/i.test(lower)) return 'title_junk';
+    if (/^[a-z0-9&/.,\s-]{1,40}\s+talent[\s-]+(?:pool|community|network|pipeline|bank)\s*$/i.test(lower)) return 'title_junk';
     if (/^sales$/i.test(lower)) return 'title_junk';
     // Early-careers / EOI community pages with no concrete role
-    if (/\b(early careers|expression of interest|eoi)\b.*\btalent[\s-]+(?:pool|community)\b/i.test(lower)) {
+    if (/\b(early careers|expression of interest|eoi)\b.*\btalent[\s-]+(?:pool|community|network|pipeline|bank)\b/i.test(lower)) {
         return 'title_junk';
     }
-    if (/\btalent[\s-]+(?:pool|community)\b.*\b(early careers|expression of interest|eoi)\b/i.test(lower)) {
+    if (/\btalent[\s-]+(?:pool|community|network|pipeline|bank)\b.*\b(early careers|expression of interest|eoi)\b/i.test(lower)) {
         return 'title_junk';
-    }    if (
+    }
+    if (/^(expression of interest|eoi)(\s*[-–|:]\s*)?(graduate scheme)?$/i.test(lower)) {
+        return 'title_junk';
+    }
+    if (
         /^(london|edinburgh|manchester|birmingham|bristol|glasgow|dublin|cork|galway|leeds|reading|sheffield|cardiff|coventry|exeter|nottingham|liverpool|brighton|watford|remote|united kingdom|ireland)$/i.test(
             title.trim(),
         )
