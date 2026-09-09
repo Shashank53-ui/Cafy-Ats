@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local', quiet: true });
 dotenv.config({ path: '.env', quiet: true });
 import { createClient } from '@supabase/supabase-js';
+import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { isUnusableJobTitle, sanitizeJobTitle } from '../lib/sanitizeJobTitle';
 import { getJobTitleRejectReason } from './syncAll';
 
@@ -28,7 +29,7 @@ async function fetchTalentPool(table: 'jobs' | 'jobs_IR') {
       .from(table)
       .select('id, title')
       .or(
-        'title.ilike.%talent%pool%,title.ilike.%talent%community%,title.ilike.%talent%network%,title.ilike.%talent%pipeline%',
+        'title.ilike.%talent%pool%,title.ilike.%talent%community%,title.ilike.%talent%network%,title.ilike.%talent%pipeline%,title.ilike.%talent%bank%,title.ilike.%join our team%',
       )
       .range(from, from + 999);
     if (error) throw error;
@@ -74,7 +75,11 @@ async function main() {
     };
     if (!APPLY) continue;
     for (const u of updates) {
-      const { error } = await sb.from(table).update({ title: u.to }).eq('id', u.id);
+      const tax = classifyJobTaxonomy(u.to);
+      const { error } = await sb
+        .from(table)
+        .update({ title: u.to, sector: tax.sector, department: tax.department })
+        .eq('id', u.id);
       if (error) throw error;
     }
     if (deletes.length) await deleteIds(table, deletes.map((d) => d.id));
