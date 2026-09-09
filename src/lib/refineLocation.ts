@@ -164,8 +164,9 @@ export function sanitizeJobLocation(
     if (targetParts.length) {
         loc = pickMostSpecificLocation(targetParts, market) || targetParts[0];
     } else if (parts.length > 1) {
-        // Multi-country dump with no usable target fragment
-        loc = fallback;
+        // Multi-country dump with no usable target fragment — keep original so
+        // foreign-leak deletion can see IND/Palwal/etc. instead of rewriting to UK/Ireland.
+        return loc;
     }
 
     loc = collapseForeignDump(loc, market, fallback);

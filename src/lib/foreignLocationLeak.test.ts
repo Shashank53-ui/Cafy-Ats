@@ -190,3 +190,16 @@ test('Keep: Dublin sales role covering France is not a leak', () => {
         false,
     );
 });
+
+test('Leak: IND Palwal warehouse is not Ireland', () => {
+    assert.equal(
+        isForeignLocationLeak(
+            {
+                location: 'IND | Palwal | Building T06 Part C, Topline Logistics Park',
+                title: 'Supervisor - Business Process Operations',
+            },
+            'ireland',
+        ),
+        true,
+    );
+});
