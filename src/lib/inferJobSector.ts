@@ -73,10 +73,11 @@ export const RULES: [RegExp, string][] = [
     [/\b(sales|partnerships|business development|account executive|bdr|sdr|revenue|client advisor|account director|partner manager|partnership manager|alliance managers?|client partners?|commercial managers?|go[\s-]*to[\s-]*market|goto\s*market|\bgtm\b)\b/, 'Sales & Partnerships'],
     // Customer Success
     [/\b(customer success|customer support|customer service|account manager|client success|call handlers?)\b/, 'Customer Success'],
-    // HR / People — \bpeople\b catches ATS depts named "People"
-    [/\b(hr|human resources|people ops|talent|recruiter|recruiting|resourcer|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people|workday analysts?|training advisors?)\b/, 'HR / People'],
+    // HR / People — \bpeople\b catches ATS depts named "People".
+    // Do not treat "talent pool/community" as HR (those are open-role headlines).
+    [/\b(hr|human resources|people ops|talent(?![\s-]+(pool|community))|recruiter|recruiting|resourcer|people partner|payroll|compensation|reward|learning.development|l&d|diversity|inclusion|dei|employee relations|people|workday analysts?|training advisors?)\b/, 'HR / People'],
     // Construction & Infrastructure
-    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contracts? managers?|contract management|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town plann(?:er|ers|ing)|site managers?|building inspectors?|groundworkers?|\bbim\b|bms (service|controls?|consultants?|engineers?|technicians?|leads?|managers?)|building management systems?|\bmep\b|hydraulic|flood (risk|model|modeller|modeler|forecast)|vertical transportation|highways?|hydrologist|hydrogeologists?|wastewater|arborist|ecologists?|ornithologists?|climate resilience)\b/, 'Construction & Infrastructure'],
+    [/\b(quantity surveyor|cost manager|cost management|estimator|estimating|contracts? managers?|contract management|electrician|surveyor|construction|civil engineer|civil engineering|structural|plumber|carpenter|bricklayer|joiner|project controls|project planner|fabric technician|built environment|urban design|town plann(?:er|ers|ing)|site managers?|building inspectors?|groundworkers?|\bbim\b|bms (service|controls?|consultants?|engineers?|technicians?|leads?|managers?)|building management systems?|\bmep\b|hydraulic|flood (risk|model|modeller|modeler|forecast)|vertical transportation|lift engineers?|escalator engineers?|door engineers?|lift installers?|highways?|hydrologist|hydrogeologists?|wastewater|arborist|ecologists?|ornithologists?|climate resilience)\b/, 'Construction & Infrastructure'],
     // Retail & Hospitality
     [/\b(beauty|chef|retail|store manager|hospitality|barista|restaurant|hotel|catering|cook|merchandisers?|buyer|nandoca|back of house|front of house|fitness coach|fitness manager|gym instructor|personal trainer|padel coach|online trading|trading assistant|trading manager|stores? operative|fashion assistant|customer service agent|customer care agent|deli assistant|\brunners?\b|receptionist|housekeeping|concierge|area manager|butchers?|\bcafe\b|kitchen (managers?|team leaders?|team)|skincare|sommeliers?|leisure|bar (&|and)? waiting|waiting staff|stock managers?|shift lead.{0,30}food|lounge managers?|breakfast (&|and) afternoon|visual.?commercial|\bgap\b.{0,20}team members?)\b/, 'Retail & Hospitality'],
     // Logistics & Transport — before Operations to claim warehouse/logistics/supply chain
@@ -216,12 +217,21 @@ function applyPharmaCompanyOverride(
     return sector;
 }
 
+/** Open-application headlines are not HR jobs — keep the real role words. */
+function stripTalentPoolBoilerplate(text: string): string {
+    return text
+        .replace(/\bjoin(?:ing)? our talent[\s-]+(pool|community)\b:?/g, ' ')
+        .replace(/\btalent[\s-]+(pool|community)\b:?/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function inferJobSectorUnclamped(
     title: string,
     department?: string | null,
     companySector?: string | null
 ): string | null {
-    const t = (title || '').toLowerCase().trim();
+    const t = stripTalentPoolBoilerplate((title || '').toLowerCase().trim());
     const d = (department || '').toLowerCase().trim();
     const combined = `${d} ${t}`.trim();
 

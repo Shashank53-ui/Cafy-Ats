@@ -32,6 +32,29 @@ const cases: [string, string][] = [
     'GxP Director Menlo Park, California View role',
     'GxP Director',
   ],
+  [
+    'Join Our Talent Pool: Lift Engineers in Southern England',
+    'Lift Engineers in Southern England',
+  ],
+  [
+    'Join Our Talent Pool: Escalator Engineers in London',
+    'Escalator Engineers in London',
+  ],
+  [
+    'Game Producer - Talent Pool (EU)',
+    'Game Producer',
+  ],
+  [
+    'Client Partner (Leisure Vertical) - Join Our Talent Network',
+    'Client Partner (Leisure Vertical)',
+  ],
+  [
+    'H beauty Chester - Join our Talent Community: Assistant Managers',
+    'H beauty Chester: Assistant Managers',
+  ],
+  ['Join our Talent Pool', ''],
+  ['Future Talent Pool', ''],
+  ['Sales Talent Pool', 'Sales Talent Pool'],
 ];
 
 let failed = 0;
@@ -41,7 +64,7 @@ for (const [input, want] of cases) {
     failed++;
     console.error(`FAIL: ${JSON.stringify(input)} → ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
   } else {
-    console.log(`ok: ${want}`);
+    console.log(`ok: ${want || '(empty)'}`);
   }
 }
 if (failed) process.exit(1);
@@ -53,8 +76,20 @@ if (
   console.error('FAIL: marketing blob should be unusable');
   process.exit(1);
 }
+if (!isUnusableJobTitle('Join our Talent Pool')) {
+  console.error('FAIL: bare talent pool should be unusable');
+  process.exit(1);
+}
+if (!isUnusableJobTitle('Sales Talent Pool')) {
+  console.error('FAIL: sales talent pool should be unusable');
+  process.exit(1);
+}
 if (isUnusableJobTitle('Senior Software Engineer')) {
   console.error('FAIL: real title should be usable');
+  process.exit(1);
+}
+if (isUnusableJobTitle('Join Our Talent Pool: Lift Engineers in London')) {
+  console.error('FAIL: lift engineer talent-pool title should be usable after sanitize');
   process.exit(1);
 }
 console.log(`\nAll ${cases.length} title sanitize checks passed.`);

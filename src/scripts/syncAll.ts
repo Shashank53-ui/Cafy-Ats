@@ -614,11 +614,25 @@ export function getJobTitleRejectReason(title: string): string | null {
         'open positions', 'current openings', 'our roles', 'work with us',
         'explore careers', 'early careers', 'experienced hires', 'alumni',
         'jobs and careers', 'careers', 'our vacancies', 'view vacancies', 'vacancies', 'details', 'view details & apply',
-        'view role ↗', 'more detail'
+        'view role ↗', 'more detail',
+        'join our talent pool', 'joining our talent pool', 'talent pool', 'future talent pool',
+        'join our talent community', 'talent community', 'join our talent community!',
+        'future opportunities',
     ];
     if (junk.includes(lower)) return 'title_junk';
     if (lower.length < 40 && junk.some(j => lower.startsWith(j))) return 'title_junk';
-    if (
+    if (/^join(?:ing)?\s+(?:our\s+)?talent[\s-]+(?:pool|community)\s*!?\s*$/i.test(lower)) return 'title_junk';
+    if (/^(?:future\s+)?talent[\s-]+(?:pool|community)\s*$/i.test(lower)) return 'title_junk';
+    // "Sales Talent Pool" marketing bucket — not a real vacancy title
+    if (/^[a-z0-9&/.,\s-]{1,40}\s+talent[\s-]+(?:pool|community)\s*$/i.test(lower)) return 'title_junk';
+    if (/^sales$/i.test(lower)) return 'title_junk';
+    // Early-careers / EOI community pages with no concrete role
+    if (/\b(early careers|expression of interest|eoi)\b.*\btalent[\s-]+(?:pool|community)\b/i.test(lower)) {
+        return 'title_junk';
+    }
+    if (/\btalent[\s-]+(?:pool|community)\b.*\b(early careers|expression of interest|eoi)\b/i.test(lower)) {
+        return 'title_junk';
+    }    if (
         /^(london|edinburgh|manchester|birmingham|bristol|glasgow|dublin|cork|galway|leeds|reading|sheffield|cardiff|coventry|exeter|nottingham|liverpool|brighton|watford|remote|united kingdom|ireland)$/i.test(
             title.trim(),
         )

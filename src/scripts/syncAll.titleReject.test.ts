@@ -15,7 +15,10 @@ assert(getJobTitleRejectReason('Edinburgh') === 'title_junk', 'city-only → tit
 assert(getJobTitleRejectReason('jobs in greenwich, london') === 'title_junk', 'jobs in → title_junk');
 assert(getJobTitleRejectReason('Retail Assistant') === 'title_low_profile', 'retail → title_low_profile');
 assert(getJobTitleRejectReason('Warehouse Operative') === 'title_low_profile', 'warehouse → title_low_profile');
-assert(getJobTitleRejectReason('Senior Software Engineer') === null, 'real title → null');
+assert(getJobTitleRejectReason('Join our Talent Pool') === 'title_junk', 'talent pool → title_junk');
+assert(getJobTitleRejectReason('Future Talent Pool') === 'title_junk', 'future talent pool → title_junk');
+assert(getJobTitleRejectReason('Sales Talent Pool') === 'title_junk', 'sales talent pool → title_junk');
+assert(getJobTitleRejectReason('Lift Engineers in Southern England') === null, 'lift engineer → null');
 assert(getJobTitleRejectReason('Relocate to Australia: Principal Engineer') === 'title_relocate_abroad', 'relocate → title_relocate_abroad');
 assert(getJobTitleRejectReason('General Practitioner | Fast-Track Your Move to Australia') === 'title_relocate_abroad', 'fast-track AU → title_relocate_abroad');
 assert(isValidJobTitle('Staff Nurse - London') === true, 'nurse is valid');
