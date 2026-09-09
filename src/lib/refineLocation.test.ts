@@ -119,3 +119,14 @@ test('inferJobLevel maps frontline roles to Junior', () => {
     assert.strictEqual(inferJobLevel('Senior Software Engineering Manager'), 'Senior');
     assert.strictEqual(inferJobLevel('R&D Tax Assistant Manager'), 'Mid-level');
 });
+
+test('sanitizeJobLocation does not rewrite IND Palwal to Ireland', () => {
+    assert.strictEqual(
+        sanitizeJobLocation(
+            'IND | Palwal | Building T06 Part C, Topline Logistics Park',
+            'ireland',
+            'Supervisor - Business Process Operations',
+        ),
+        'IND | Palwal | Building T06 Part C, Topline Logistics Park',
+    );
+});

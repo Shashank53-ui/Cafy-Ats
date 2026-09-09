@@ -51,6 +51,9 @@ function locationIsExplicitlyForeign(location: string): boolean {
     ) {
         return true;
     }
+    // ISO-style dumps: "IND | Palwal | …"
+    if (/^\s*(ind|usa|can|aus|sgp|chn|jpn|bra|mex|are|zaf)\s*[|/]/i.test(l)) return true;
+    if (/\bpalwal\b/i.test(l)) return true;
     // US state codes after a comma. Omit CO/MO — Irish "Co. Kildare" / "Westport, Mo".
     if (/,\s*(al|ny|nc|va|tx|ma|oh|pa|ca|ga|fl|il|wa|md|nj|nh|sc|ct|mi|mn|or|tn|az|wi)\b/i.test(l)) {
         return true;
