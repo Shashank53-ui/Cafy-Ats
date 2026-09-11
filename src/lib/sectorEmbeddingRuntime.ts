@@ -3,7 +3,7 @@
  *
  * Order:
  *   1. Exact title memory from data/embeddings/prototype_extras.json
- *   2. MiniLM cosine vs sector prototype bank
+ *   2. MiniLM cosine vs sector prototype bank (optional — skipped if HF missing)
  *   3. Title-only keyword rules (same target the improve loop learned)
  *   4. Other
  *
@@ -18,7 +18,12 @@ import {
   type SectorVectorBank,
 } from './classifyByEmbedding';
 import { ALLOWED_SECTORS } from './constants';
-import { embedText, normalizeTitleForEmbedding } from './embedText';
+import {
+  embedText,
+  getEmbeddingUnavailableReason,
+  isEmbeddingRuntimeAvailable,
+  normalizeTitleForEmbedding,
+} from './embedText';
 import { titleHasEmbeddingSignal } from './embeddingTitleSignal';
 import { inferJobSector } from './inferJobSector';
 import type { AllowedSector } from './sectorPrototypes';
@@ -30,6 +35,7 @@ const BANK_PATH = path.join(OUT_DIR, 'sector_vector_bank.json');
 let readyPromise: Promise<void> | null = null;
 let exactMemory = new Map<string, AllowedSector>();
 let bank: SectorVectorBank | null = null;
+let miniLmEnabled = false;
 
 function loadExactMemory(): Map<string, AllowedSector> {
   const map = new Map<string, AllowedSector>();
@@ -50,7 +56,7 @@ function loadExactMemory(): Map<string, AllowedSector> {
   return map;
 }
 
-async function loadBank(): Promise<SectorVectorBank> {
+async function loadBank(): Promise<SectorVectorBank | null> {
   if (fs.existsSync(BANK_PATH)) {
     try {
       const raw = JSON.parse(fs.readFileSync(BANK_PATH, 'utf8')) as {
@@ -62,9 +68,17 @@ async function loadBank(): Promise<SectorVectorBank> {
         return sectorBankFromJSON(raw.bank);
       }
     } catch (e) {
-      console.warn(`[sector_embedding] Bank cache unreadable, rebuilding:`, e);
+      console.warn(`[sector_embedding] Bank cache unreadable:`, e);
     }
   }
+
+  if (!(await isEmbeddingRuntimeAvailable())) {
+    console.warn(
+      `[sector_embedding] MiniLM unavailable (${getEmbeddingUnavailableReason() || 'unknown'}) — using title memory + rules only`,
+    );
+    return null;
+  }
+
   console.log('[sector_embedding] Building light prototype bank (no extras vectors)…');
   return buildSectorVectorBank();
 }
@@ -74,6 +88,14 @@ export async function ensureSectorEmbeddingRuntime(): Promise<void> {
     readyPromise = (async () => {
       exactMemory = loadExactMemory();
       bank = await loadBank();
+      miniLmEnabled = !!(bank && (await isEmbeddingRuntimeAvailable()));
+      if (miniLmEnabled) {
+        console.log('[sector_embedding] MiniLM enabled for sector_embedding column');
+      } else {
+        console.warn(
+          '[sector_embedding] MiniLM disabled — sync will still run; sector_embedding falls back to memory/rules',
+        );
+      }
     })();
   }
   await readyPromise;
@@ -90,12 +112,14 @@ export async function resolveSectorEmbedding(title: string): Promise<string> {
 
   if (!titleHasEmbeddingSignal(title)) return 'Other';
 
-  try {
-    const titleVector = await embedText(norm);
-    const pred = classifyTitleVector(titleVector, bank!);
-    if (pred.confident) return pred.sector;
-  } catch (e) {
-    console.warn(`[sector_embedding] MiniLM failed for "${norm.slice(0, 60)}":`, e);
+  if (miniLmEnabled && bank) {
+    try {
+      const titleVector = await embedText(norm);
+      const pred = classifyTitleVector(titleVector, bank);
+      if (pred.confident) return pred.sector;
+    } catch (e) {
+      console.warn(`[sector_embedding] MiniLM failed for "${norm.slice(0, 60)}":`, e);
+    }
   }
 
   const rules = inferJobSector(title, null, null);
