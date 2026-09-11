@@ -16,10 +16,10 @@
     "scrape:jpmc": "tsx src/scripts/scrapeJpmc.ts",
     "improve:sector-embeddings": "tsx src/scripts/improveSectorEmbeddingsLoop.ts",
     "golden:export": "tsx src/scripts/exportSectorGoldenSet.ts",
-    "golden:score": "tsx src/scripts/scoreSectorGoldenSet.ts"
+    "golden:score": "tsx src/scripts/scoreSectorGoldenSet.ts",
+    "embeddings:install": "bash scripts/install-embeddings-ec2.sh"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
     "@supabase/supabase-js": "^2.98.0",
     "cheerio": "^1.2.0",
     "crawlee": "^3.16.0",
@@ -31,6 +31,9 @@
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "tsx": "^4.22.4",
     "xlsx": "^0.18.5"
+  },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^20",
