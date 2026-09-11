@@ -101,10 +101,11 @@ async function deleteIds(table: 'jobs' | 'jobs_IR', ids: number[]) {
       if (appliedErr && !/schema cache|does not exist|relation/i.test(appliedErr.message)) {
         throw new Error(`user_applied_jobs delete: ${appliedErr.message}`);
       }
-      const { error: reportedErr } = await sb.from('reported_jobs').delete().in('job_id', part);
-      if (reportedErr && !/schema cache|does not exist|relation/i.test(reportedErr.message)) {
-        throw new Error(`reported_jobs delete: ${reportedErr.message}`);
+      const { error: reportedErr } = await sb.from('job_reports').delete().in('job_id', part.map(String));
+      if (reportedErr && !/schema cache|does not exist|relation|PGRST205/i.test(reportedErr.message)) {
+        throw new Error(`job_reports delete: ${reportedErr.message}`);
       }
+      await sb.from('reported_jobs').delete().in('job_id', part);
     }
   }
   for (const part of chunk(ids, 200)) {

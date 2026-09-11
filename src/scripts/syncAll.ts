@@ -360,7 +360,7 @@ async function deleteStaleJobsClearingFks(companyId: string | number, staleBefor
         .delete({ count: 'exact' })
         .eq('company_id', companyId)
         .lt('last_seen_at', staleBefore);
-    if (!first.error || !/foreign key|applications_job_id|user_applied_jobs|reported_jobs/i.test(first.error.message)) {
+    if (!first.error || !/foreign key|applications_job_id|user_applied_jobs|reported_jobs|job_reports/i.test(first.error.message)) {
         return first;
     }
 
@@ -375,6 +375,8 @@ async function deleteStaleJobsClearingFks(companyId: string | number, staleBefor
     for (const part of chunkArray(ids, 200)) {
         await supabase.from('applications').delete().in('job_id', part);
         await supabase.from('user_applied_jobs').delete().in('job_id', part);
+        // Live table is job_reports (job_id stored as text); reported_jobs is legacy/unused here.
+        await supabase.from('job_reports').delete().in('job_id', part.map(String));
         await supabase.from('reported_jobs').delete().in('job_id', part);
     }
     return supabase
@@ -621,7 +623,8 @@ export function getJobTitleRejectReason(title: string): string | null {
         'join our talent network', 'talent network', 'join our talent pipeline', 'talent pipeline',
         'join our talent bank', 'talent bank',
         'future opportunities',
-        'speculative application', 'general application', 'open application',
+        'speculative application', 'general application', 'open application', 'open applications',
+        'general applications',
         'cv library', 'keep in touch', 'submit your cv', 'candidate pool',
     ];
     if (junk.includes(lower)) return 'title_junk';
