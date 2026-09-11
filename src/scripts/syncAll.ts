@@ -5998,22 +5998,69 @@ export function formatNormalizedLocation(n: NormalizedLocation): string | null {
     return parts.join(', ');
 }
 
+function formatSyncDuration(ms: number): string {
+    const totalSec = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+}
+
+/** Append one line to logs/sync-duration.log for cron/EC2 duration checks. */
+function appendSyncDurationLog(entry: {
+    syncRunId: string;
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    status: 'ok' | 'error';
+    jobsSaved?: number;
+    companies?: number;
+    error?: string;
+}): void {
+    try {
+        const logDir = path.resolve(process.cwd(), 'logs');
+        fs.mkdirSync(logDir, { recursive: true });
+        const logPath = path.join(logDir, 'sync-duration.log');
+        const line = [
+            entry.finishedAt,
+            `status=${entry.status}`,
+            `duration=${formatSyncDuration(entry.durationMs)}`,
+            `duration_ms=${entry.durationMs}`,
+            `started=${entry.startedAt}`,
+            `finished=${entry.finishedAt}`,
+            `sync_run_id=${entry.syncRunId}`,
+            entry.companies != null ? `companies=${entry.companies}` : null,
+            entry.jobsSaved != null ? `jobs_saved=${entry.jobsSaved}` : null,
+            entry.error ? `error=${JSON.stringify(entry.error)}` : null,
+        ]
+            .filter(Boolean)
+            .join(' | ');
+        fs.appendFileSync(logPath, line + '\n', 'utf8');
+        console.log(`  📄 Duration log: ${logPath}`);
+    } catch (e: any) {
+        console.warn(`  ⚠ Could not write sync-duration.log: ${e?.message || e}`);
+    }
+}
+
 export async function syncAll() {
   // The whole run is wrapped so the shared Playwright browser and the
   // persistent Python normalizer worker always get torn down — on success,
   // on a thrown error, and whether this was invoked from the CLI or from
   // the /api/cron/sync-jobs route handler. Leaving either process running
   // would leak resources into the next cron invocation.
+  const startTime = Date.now();
+  const startedAtIso = new Date(startTime).toISOString();
+  const syncRunId = crypto.randomUUID();
   try {
-    const startTime = Date.now();
-    const syncRunId = crypto.randomUUID();
     // Module-level logs/counters persist across cron warm starts — reset each run.
     globalRejectionLog.length = 0;
     filterLogBuffer.length = 0;
     serperCallCount = 0;
     serperHitCount = 0;
     console.log('\n════════════════════════════════════════════════════');
-    console.log('  DAILY SYNC — ' + new Date().toISOString());
+    console.log('  DAILY SYNC — ' + startedAtIso);
     console.log(`  sync_run_id=${syncRunId}`);
     console.log('  stale_retention=immediate after successful fetch (never wipe on empty)');
     console.log('════════════════════════════════════════════════════\n');
@@ -6611,7 +6658,7 @@ export async function syncAll() {
     // ─── Summary ─────────────────────────────────────────────────────────────
     const finishedAt = new Date();
     const durationMs = Date.now() - startTime;
-    const elapsed = (durationMs / 1000).toFixed(1);
+    const elapsedHuman = formatSyncDuration(durationMs);
     const withJobs = results.filter(r => r.saved > 0);
     const noJobs = results.filter(r => r.saved === 0 && !r.error);
     const errored = results.filter(r => r.error);
@@ -6619,7 +6666,9 @@ export async function syncAll() {
     console.log('\n════════════════════════════════════════════════════');
     console.log('  SYNC COMPLETE');
     console.log('════════════════════════════════════════════════════');
-    console.log(`  ⏱  Time:          ${elapsed}s`);
+    console.log(`  ⏱  Duration:      ${elapsedHuman} (${durationMs} ms)`);
+    console.log(`  🕒 Started:       ${startedAtIso}`);
+    console.log(`  🕒 Finished:      ${finishedAt.toISOString()}`);
     console.log(`  🆔 Sync run:      ${syncRunId}`);
     console.log(`  🏢 Companies:      ${companies.length} processed`);
     console.log(`  ✅ With jobs:      ${withJobs.length}`);
@@ -6639,6 +6688,16 @@ export async function syncAll() {
         errored.forEach(r => console.log(`     - ${r.company}: ${r.error}`));
     }
 
+    appendSyncDurationLog({
+        syncRunId,
+        startedAt: startedAtIso,
+        finishedAt: finishedAt.toISOString(),
+        durationMs,
+        status: 'ok',
+        jobsSaved: totalSaved,
+        companies: companies.length,
+    });
+
     // Persist filter decisions for DQ (location_filter_log)
     let filterLogsWritten = 0;
     if (!fallbackOnlyDryRun && !skipFilterLog) {
@@ -6655,7 +6714,7 @@ export async function syncAll() {
     if (!fallbackOnlyDryRun) {
         const summaryRow = {
             sync_run_id: syncRunId,
-            started_at: new Date(startTime).toISOString(),
+            started_at: startedAtIso,
             finished_at: finishedAt.toISOString(),
             duration_ms: durationMs,
             companies_processed: companies.length,
@@ -6713,6 +6772,20 @@ export async function syncAll() {
             .forEach(r => console.log(`     ${r.company.padEnd(35)} ${r.saved} jobs  [${r.provider}]`));
     }
     console.log('════════════════════════════════════════════════════\n');
+  } catch (err: any) {
+    const finishedAt = new Date();
+    const durationMs = Date.now() - startTime;
+    const msg = err?.message || String(err);
+    console.error(`\n  SYNC FAILED after ${formatSyncDuration(durationMs)}: ${msg}`);
+    appendSyncDurationLog({
+      syncRunId,
+      startedAt: startedAtIso,
+      finishedAt: finishedAt.toISOString(),
+      durationMs,
+      status: 'error',
+      error: msg,
+    });
+    throw err;
   } finally {
     await closeSharedBrowser();
     await closePythonWorker();
