@@ -156,6 +156,45 @@ function isArchitectSenior(t: string): boolean {
   );
 }
 
+/** Frontline hospitality / retail shift leads — Junior, not NHS clinical leads. */
+function isFrontlineTeamLeaderTitle(t: string): boolean {
+  if (/\b(kitchen|shift|crew|section)\s+team leaders?\b/.test(t)) return true;
+  if (/\b(shift|crew|section)\s+leaders?\b/.test(t)) return true;
+  if (
+    /\bteam leaders?\b/.test(t) &&
+    /\b(kitchen|retail|store|shop|bar|restaurant|hospitality|pub|hotel|warehouse|sales floor|customer service)\b/.test(t)
+  ) {
+    return true;
+  }
+  // Bare "Team Leader" with no clinical/NHS signal → junior shift lead
+  if (/\bteam leaders?\b/.test(t) && !isClinicalHealthcareLeaderContext(t)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * NHS / clinical "leader" or "team leader" → Mid (Band 6–7 style), never Junior.
+ * Catches Lymphoedema Team Leader, Specialist Clinical Leader – Theatres, etc.
+ */
+function isClinicalHealthcareLeaderContext(t: string): boolean {
+  if (/\b(clinical leaders?|specialist clinical leaders?|nurse leaders?|matron leaders?)\b/.test(t)) {
+    return true;
+  }
+  if (!/\b(leaders?|team leaders?)\b/.test(t)) return false;
+  // "Maternity cover" / leave cover is not a clinical specialty signal
+  const clinicalText = t
+    .replace(/\bmaternity\s+(cover|leave|returner)s?\b/gi, ' ')
+    .replace(/\b(paternity|parental)\s+(cover|leave)\b/gi, ' ');
+  return (
+    /\b(nhs|health board|foundation trust|\btrust\b|social care)\b/.test(clinicalText) ||
+    /\b(clinical|theatres?|wards?|nurs(?:e|ing)|midwi[fv]e?|hcas?|healthcare|social care)\b/.test(clinicalText) ||
+    /\b(lymphoedema|oncology|cardiology|paediatric|pediatric|mental health|maxill?ofacial|maxfax|icu|a\s*&\s*e|emergency department|radiology|physiotherap|occupational therap|speech and language|community (?:nurs|health|midwif)|care home|hospice|neonatal|dialysis|renal|respiratory|dermatology|endocrin|haematol|hematol|orthop|ophthalm|anaesth|anesth|surgical|acute medicine|primary care|gp practice|camhs|cqc|disability)\b/.test(
+      clinicalText,
+    )
+  );
+}
+
 type OverrideResult = JobLevelMatch | 'defer';
 
 function applyTitleOverrides(t: string): OverrideResult | null {
@@ -258,6 +297,11 @@ function applyTitleOverrides(t: string): OverrideResult | null {
     return { level: 'Mid Level', source: 'title:nhs_band_mid' };
   }
 
+  // NHS / clinical leaders → Mid, but never override an explicit Senior/Principal grade
+  if (isClinicalHealthcareLeaderContext(t) && !hasSeniorityWord(t)) {
+    return { level: 'Mid Level', source: 'trap:nhs_clinical_leader_mid' };
+  }
+
   return null;
 }
 
@@ -321,11 +365,8 @@ const ARCHETYPE_TIERS: Tier[] = [
   {
     level: 'Junior',
     source: 'archetype:team_leader_junior',
-    test: (t) =>
-      /\b(team leaders?|kitchen team leaders?|shift leaders?|crew leaders?|section leaders?)\b/.test(t) ||
-      (/\bleaders?\b/.test(t) &&
-        !/\b(thought leaders?|market leaders?|world leaders?)\b/.test(t) &&
-        !/\bmanagers?\b/.test(t)),
+    // Hospitality / retail shift leads only — never NHS or clinical leaders
+    test: (t) => isFrontlineTeamLeaderTitle(t) && !isClinicalHealthcareLeaderContext(t),
   },
   {
     level: 'Junior',

@@ -85,6 +85,18 @@ assert.equal(inferJobLevel('Chef'), 'Mid Level');
 assert.equal(inferJobLevel('Head Chef'), 'Senior');
 assert.equal(inferJobLevel('Team Leader'), 'Junior');
 assert.equal(inferJobLevel('Kitchen Team Leader'), 'Junior');
+assert.equal(inferJobLevel('Lymphoedema Team Leader'), 'Mid Level');
+assert.equal(inferJobLevel('Specialist Clinical Leader – Theatres (MaxFax)'), 'Mid Level');
+assert.equal(inferJobLevel('Specialist Clinical Leader - Theatres (MaxFax)'), 'Mid Level');
+assert.equal(inferJobLevel('Clinical Team Leader - Ward'), 'Mid Level');
+assert.equal(inferJobLevel('NHS Team Leader - Community Nursing'), 'Mid Level');
+assert.equal(inferJobLevel('Social Care Team Leader'), 'Mid Level');
+assert.equal(inferJobLevel('Retail Team Leader'), 'Junior');
+assert.equal(inferJobLevel('Shift Leader'), 'Junior');
+assert.equal(inferJobLevel('Engineering Leader'), null);
+assert.equal(inferJobLevel('Theatres Senior Team Leader'), 'Senior');
+assert.equal(inferJobLevel('Tesco Shift Leader - Days - The Forum Exp Maternity Cover'), 'Junior');
+assert.equal(inferJobLevel('Lymphoedema Team Leader'), 'Mid Level');
 assert.equal(inferJobLevel('Class 2 Driver'), 'Junior');
 assert.equal(inferJobLevel('Veterinary Surgeon - Small Animal'), 'Mid Level');
 
