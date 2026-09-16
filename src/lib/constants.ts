@@ -12,18 +12,13 @@ export const ALLOWED_JOB_TYPES = [
 
 /** Seniority / catalog level — same values as preferences + jobs.level. */
 export const ALLOWED_JOB_LEVELS = [
-    'Internship',
-    'Graduate',
+    'Entry Level',
     'Junior',
-    'Mid-level',
+    'Mid Level',
     'Senior',
-    'Staff',
-    'Lead',
-    'Principal',
-    'Director',
-    'VP',
-    'Executive',
 ] as const;
+
+export type AllowedJobLevel = (typeof ALLOWED_JOB_LEVELS)[number];
 
 export const ALLOWED_LOCATIONS = [
     'London',

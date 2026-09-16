@@ -3,7 +3,8 @@
  *
  * Priority:
  *   1. Explicit title / employment cues via parseJobType (Part-time, Contract, …)
- *   2. level === Internship → Internship
+ *   2. (legacy) level === Internship → Internship — removed under 4-level taxonomy
+ *   3. else Full-time
  *   3. else → Full-time (default for this sponsor-role catalog)
  *
  * Sync can later overwrite with ATS employment fields when present.
@@ -119,7 +120,6 @@ async function main() {
     for (const row of rows) {
       const fromTitle = parseJobType(row.title);
       if (fromTitle) totals.bySource.title += 1;
-      else if ((row.level || '').trim() === 'Internship') totals.bySource.levelInternship += 1;
       else totals.bySource.defaultFullTime += 1;
 
       const inferred = inferJobTypeFromRow(

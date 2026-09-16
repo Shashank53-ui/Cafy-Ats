@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { chromium } from 'playwright';
 import { isUKJob } from '../lib/ukFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
-import { inferJobLevel } from '../lib/inferJobLevel';
+import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
 import { resolveJobType } from '../lib/parseJobType';
 import { sanitizeJobLocation } from '../lib/refineLocation';
 
@@ -140,13 +140,17 @@ async function scrapeGoogle() {
     console.log(`Attempting to save ${uniqueJobs.length} Google jobs to DB.`);
 
     if (uniqueJobs.length > 0) {
-        const jobsToInsert = uniqueJobs.map((job: any) => {
+        const levelResolved = await resolveJobLevelsBatch(
+            uniqueJobs.map((job: any) => ({ title: job.title })),
+        );
+        const jobsToInsert = uniqueJobs.map((job: any, i: number) => {
             const { sector, department } = classifyJobTaxonomy(
                 job.title,
                 job.department,
                 company.company_sector,
             );
-            const level = inferJobLevel(job.title);
+            const resolved = levelResolved[i]!;
+            const level = resolved.level;
             return {
                 company_id: company.id,
                 title: job.title,
@@ -155,6 +159,7 @@ async function scrapeGoogle() {
                 department,
                 sector,
                 level,
+                level_source: resolved.source,
                 job_type: resolveJobType({ title: job.title, level }),
             };
         });

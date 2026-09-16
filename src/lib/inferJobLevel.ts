@@ -1,85 +1,437 @@
 /**
- * Infer seniority from a job title.
- * Priority order matters — check most specific/senior first.
- * Output is always one of ALLOWED_JOB_LEVELS (or null if title empty).
+ * Cascade stage 1 — infer seniority from the job title.
+ *
+ * 4 levels: Entry Level | Junior | Mid Level | Senior
+ *
+ * Priority:
+ *   traps/overrides → structural Senior → seniority words → Entry/Junior keywords
+ *   → knowledge archetypes (role-family defaults for unmarked titles)
+ *
+ * Still abstains for junk / talent-pool titles with no real role signal.
  */
-import { ALLOWED_JOB_LEVELS } from './constants';
+import { ALLOWED_JOB_LEVELS, type AllowedJobLevel } from './constants';
 
-export type AllowedJobLevel = (typeof ALLOWED_JOB_LEVELS)[number];
+export type { AllowedJobLevel };
+
+export type JobLevelMatch = {
+  level: AllowedJobLevel;
+  /** Trace id, e.g. `title:senior` or `archetype:professional_mid` */
+  source: string;
+};
 
 const ALLOWED = new Set<string>(ALLOWED_JOB_LEVELS);
 
+function normalizeTitle(title: string): string {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/[^a-z0-9+.#/\s-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Strip talent-pool / band wrappers so the underlying role can still be classified.
+ * e.g. "Register Your Interest – Veterinary Surgeon…" → "veterinary surgeon…"
+ *      "Procurement Consultant - All Levels" → "procurement consultant"
+ */
+function stripTitleNoise(t: string): string {
+  let s = t;
+  s = s.replace(/^\s*\[\s*expression of interest\s*\]\s*/i, ' ');
+  s = s.replace(/\bexpression of interest\b/gi, ' ');
+  s = s.replace(/\bregister your interest\b(?:\s*[:\-–—]\s*|\s+for\s+our\s+)?/gi, ' ');
+  s = s.replace(/\bregister your interest\b/gi, ' ');
+  s = s.replace(/\btalent pool\b/gi, ' ');
+  // Keep the role/discipline: "Join AECOM's Growing Ground Engineering Team!" → "Ground Engineering"
+  s = s.replace(
+    /^\s*join\b.{0,50}?\b(?:growing\s+)?(.+?)\s+team[!?.]*\s*$/i,
+    '$1',
+  );
+  s = s.replace(/\bgrow your career\b(?:\s+in\b.*)?$/gi, ' ');
+  s = s.replace(/\bgrow your career\s+in\b/gi, ' ');
+  s = s.replace(/\b(?:all levels?|any levels?|all grades?|various levels?)\b/gi, ' ');
+  s = s.replace(/\bopportunities?\b/gi, ' ');
+  s = s.replace(/\bacross\b.+$/i, ' ');
+  s = s.replace(/\s+/g, ' ').trim();
+  return s;
+}
+
+/** Pure non-roles after noise strip — nothing left to classify. */
+function isNonRoleTitle(t: string): boolean {
+  if (!t || t.length < 3) return true;
+  // Bare years / programme banners with no role noun
+  if (/^(19|20)\d{2}$/.test(t)) return true;
+  if (/^upcoming\b/.test(t) && !/\b(engineer|manager|analyst|nurse|chef)\b/.test(t)) return true;
+  return (
+    /^(general application|open application|general opportunity|apply now|register your interest)$/.test(t) ||
+    /\bcan'?t find anything\b/.test(t) ||
+    /\bare you interested\b/.test(t) ||
+    /\bcleared permanent\b/.test(t) ||
+    (/^\bwork at\b/.test(t) && !/\b(manager|engineer|nurse|chef|analyst)\b/.test(t)) ||
+    /^(tax|technology|engineering|business management|investment management|water|scotland|infrastructure|cyber transformation)$/.test(
+      t,
+    ) ||
+    /\brenewable energy professionals\b/.test(t) ||
+    (/\btransmission and distribution\b/.test(t) && !/\b(manager|engineer|officer)\b/.test(t)) ||
+    // Marketing / nonsense fragments that are not job titles
+    /\bfortune\s*100\b/.test(t) ||
+    /\bnight buses?\b/.test(t) ||
+    /\bfirewalls?\b/.test(t) && !/\b(engineer|architect|specialist|analyst)\b/.test(t)
+  );
+}
+
+/** True internship / apprenticeship / graduate scheme — not location "Campus". */
+function isEntryTrainingTitle(t: string): boolean {
+  if (/\bplacement brokers?\b/.test(t)) return false;
+  if (/\b(interns?|internships?|apprentices?|apprenticeships?|vacation schemes?|freshers?)\b/.test(t)) {
+    return true;
+  }
+  if (/\b(industrial|work|student|undergraduate|graduate)\s+placements?\b/.test(t)) return true;
+  if (/\byear in industry\b/.test(t)) return true;
+  if (
+    /\bplacements?\b/.test(t) &&
+    /\b(months?|weeks?|scheme|programmes?|programs?|student|team placement)\b/.test(t)
+  ) {
+    return true;
+  }
+  if (/\b(graduates?|grad schemes?|graduate schemes?|entry[\s-]?level|early careers?|new grads?|undergraduates?|digital academy|academy programme|academy program)\b/.test(t)) {
+    return true;
+  }
+  // "campus" only as early-careers programme — not "Senior PM (Campus)" site label
+  if (/\bcampus\s+(recruit|recruiting|programme|program|hire|hiring|grads?|graduates?|scheme)\b/.test(t)) {
+    return true;
+  }
+  if (/\b(university|grad)\s+campus\b/.test(t)) return true;
+  if (/\btrainees?\b/.test(t) && !/\btrainers?\b/.test(t)) return true;
+  return false;
+}
+
+function hasSeniorityWord(t: string): boolean {
+  return (
+    /\b(seniors?|snr\.?|sr\.?)\b/.test(t) ||
+    /\bprincipals?\b/.test(t) ||
+    /\b(juniors?|jr\.?)\b/.test(t) ||
+    /\b(mid[\s-]?level|intermediate)\b/.test(t)
+  );
+}
+
+/** C-suite / top leadership → Senior in the 4-level taxonomy. */
+function isStructuralSeniorTitle(t: string): boolean {
+  if (/\bexecutive assistants?\b/.test(t)) return false;
+  if (/\bchief of staff\b/.test(t)) return false;
+  if (/\bchief\s+\w+(?:\s+\w+)?\s+office\b/.test(t)) return false;
+  if (/\boffice of the\s+(coo|cfo|ceo|cto|cpo)\b/.test(t)) return false;
+
+  if (/\b(cto|ceo|cfo|coo|cpo|ciso)\b/.test(t)) return true;
+  if (/\bmanaging directors?\b/.test(t)) return true;
+  if (/\b(vice presidents?|avp|svp|evp)\b/.test(t) || /(^|[^a-z])vp([^a-z]|$)/.test(t)) return true;
+  if (/\bdirectors?\b/.test(t) && !/\bassistant directors?\b/.test(t)) return true;
+  if (/\bhead of\b/.test(t)) return true;
+  if (
+    /\bchief\s+(executive|technology|financial|operating|product|information|marketing|people|revenue|compliance|medical|clinical)\s+officers?\b/.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (/\bchief\s+[a-z]+\s+officers?\b/.test(t)) return true;
+  if (/\bpresidents?\b/.test(t) && !/\bvice presidents?\b/.test(t)) return true;
+  if (/\b(founders?|co-founders?)\b/.test(t)) return true;
+  if (/\b(managing|equity|founding)\s+partners?\b/.test(t)) return true;
+  return false;
+}
+
+/** Architect family — senior by convention. */
+function isArchitectSenior(t: string): boolean {
+  if (
+    /\b(solutions?|software|enterprise|cloud|security|data|technical|system|systems|application|platform|network|infrastructure)\s+architects?\b/.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  return (
+    /\barchitects?\b/.test(t) &&
+    /\b(solutions?|software|enterprise|cloud|security|data|technical|platform)\b/.test(t)
+  );
+}
+
+type OverrideResult = JobLevelMatch | 'defer';
+
+function applyTitleOverrides(t: string): OverrideResult | null {
+  // Executive / Personal Assistant — professional admin → Mid (not C-suite, not blank)
+  if (/\bexecutive assistants?\b/.test(t) || (/\bea\b/.test(t) && /\b(executive|personal)\b/.test(t)) || /\bpersonal assistants?\b/.test(t)) {
+    return { level: 'Mid Level', source: 'trap:executive_assistant_mid' };
+  }
+
+  // Entry training beats C-suite tokens — but not when an explicit Senior grade is also present
+  // e.g. "Trainee Senior Staff Nurse" stays Entry; "Senior PM (Campus)" must NOT become Entry
+  if (isEntryTrainingTitle(t) && !/\b(seniors?|snr\.?|sr\.?)\b/.test(t)) {
+    return { level: 'Entry Level', source: 'override:entry_beats_exec' };
+  }
+  // True trainee/intern even with "senior" in the title (Trainee Senior Staff Nurse)
+  if (
+    /\b(interns?|internships?|apprentices?|trainees?|graduates?|entry[\s-]?level)\b/.test(t) &&
+    isEntryTrainingTitle(t)
+  ) {
+    return { level: 'Entry Level', source: 'override:entry_training' };
+  }
+
+  if (/\blead\s*gen(eration)?\b/.test(t) || /\bgeneration\s+lead\b/.test(t)) {
+    // Marketing function — if also "executive", treat as Junior; else abstain
+    if (/\bexecutives?\b/.test(t) && !hasSeniorityWord(t)) {
+      return { level: 'Junior', source: 'trap:lead_gen_executive' };
+    }
+    return 'defer';
+  }
+
+  // Trap: UK "… Executive" (non C-suite) → Junior unless seniority word present
+  // Covers Account/SEO/Events/Tax/Client Services Executive etc.
+  if (
+    !hasSeniorityWord(t) &&
+    /\bexecutives?\b/.test(t) &&
+    !/\b(chief|managing)\b/.test(t) &&
+    !/\bexecutive assistants?\b/.test(t)
+  ) {
+    return { level: 'Junior', source: 'trap:uk_executive_junior' };
+  }
+
+  if (/\bassociate directors?\b/.test(t)) {
+    return { level: 'Senior', source: 'trap:associate_director' };
+  }
+
+  if (/\bassistant managers?\b/.test(t)) {
+    return { level: 'Mid Level', source: 'trap:assistant_manager' };
+  }
+
+  if (/\b(shift|sales)\s+leads?\b/.test(t) && !/\bsales\s+lead\s*gen/.test(t)) {
+    return { level: 'Junior', source: 'trap:shift_or_sales_lead' };
+  }
+
+  if (/\bchief of staff\b/.test(t)) {
+    return { level: 'Senior', source: 'trap:chief_of_staff' };
+  }
+
+  if (/\bstaff\s+(nurses?|midwives|midwife|hcas?|healthcare assistants?|accountants?|attorneys?|solicitors?)\b/.test(t)) {
+    if (/\b(seniors?|snr\.?|sr\.?)\b/.test(t)) {
+      return { level: 'Senior', source: 'override:senior_staff_clinical' };
+    }
+    return { level: 'Mid Level', source: 'trap:staff_clinical_or_admin' };
+  }
+
+  if (/\bmid[\s-]?level\b/.test(t) && /\b(seniors?|snr\.?|sr\.?)\b/.test(t)) {
+    return { level: 'Senior', source: 'override:mid_to_senior_range' };
+  }
+  if (/\b(juniors?|jr\.?)\b/.test(t) && /\bmid[\s-]?level\b/.test(t)) {
+    return { level: 'Junior', source: 'override:junior_mid_range' };
+  }
+
+  if (/\b(mid[\s-]?level|intermediate)\b/.test(t)) {
+    return { level: 'Mid Level', source: 'title:mid_level' };
+  }
+
+  if (/\b(juniors?|jr\.?)\b/.test(t) && (isStructuralSeniorTitle(t) || /\b(chief|cto|ceo|cfo|coo|cpo|ciso|president)\b/.test(t))) {
+    return { level: 'Junior', source: 'override:junior_beats_exec_token' };
+  }
+
+  if (isArchitectSenior(t)) {
+    return { level: 'Senior', source: 'title:architect' };
+  }
+
+  if (
+    /\b(seniors?|snr\.?|sr\.?)\b/.test(t) &&
+    (/\bchief\s+\w+(?:\s+\w+)?\s+office\b/.test(t) || /\boffice of the\s+(coo|cfo|ceo|cto)\b/.test(t))
+  ) {
+    return { level: 'Senior', source: 'override:senior_beats_chief_office' };
+  }
+
+  // Head Chef / Executive Chef — kitchen leadership → Senior
+  if (/\b(head|executive)\s+chefs?\b/.test(t) || /\bhead\s+(fitness\s+)?coach(?:es)?\b/.test(t)) {
+    return { level: 'Senior', source: 'archetype:head_role' };
+  }
+
+  // NHS band 7+ ≈ Senior; band 5–6 ≈ Mid
+  if (/\bband\s*([89]|1[0-9])\b/.test(t) || /\bband\s*7\b/.test(t)) {
+    return { level: 'Senior', source: 'title:nhs_band_senior' };
+  }
+  if (/\bband\s*[56]\b/.test(t)) {
+    return { level: 'Mid Level', source: 'title:nhs_band_mid' };
+  }
+
+  return null;
+}
+
+type Tier = { level: AllowedJobLevel; source: string; test: (t: string) => boolean };
+
+const KEYWORD_TIERS: Tier[] = [
+  {
+    level: 'Senior',
+    source: 'title:structural_senior',
+    test: (t) => isStructuralSeniorTitle(t),
+  },
+  {
+    level: 'Senior',
+    source: 'title:senior_word',
+    test: (t) =>
+      /\b(seniors?|snr\.?|sr\.?)\b/.test(t) ||
+      /\bprincipals?\b/.test(t) ||
+      (/\bstaff\b/.test(t) &&
+        !/\bstaff\s+(nurses?|midwives|midwife|hcas?|healthcare assistants?|accountants?|attorneys?|solicitors?)\b/.test(t) &&
+        !/\b(deli|floor|kitchen|waiting|bar|shop|store|retail|sales|warehouse|support)\s+staff\b/.test(t)) ||
+      (/\bleads?\b/.test(t) && !/\blead\s*gen(eration)?\b/.test(t) && !/\b(shift|sales)\s+leads?\b/.test(t)) ||
+      (/\b(software|engineering)\s+managers?\b/.test(t) && !/\bassistant managers?\b/.test(t)) ||
+      /\b(senior managers?|general managers?|regional managers?|engineering managers?)\b/.test(t),
+  },
+  {
+    level: 'Junior',
+    source: 'title:shop_staff_junior',
+    test: (t) =>
+      /\b(deli|floor|kitchen|waiting|bar|shop|store|retail|sales|warehouse|support)\s+staff\b/.test(t) ||
+      /\bstaff\s*\([^)]*(full|part)\s*time/.test(t),
+  },
+  {
+    level: 'Entry Level',
+    source: 'title:entry',
+    test: (t) => isEntryTrainingTitle(t),
+  },
+  {
+    level: 'Junior',
+    source: 'title:junior',
+    test: (t) => /\b(juniors?|jr\.?)\b/.test(t),
+  },
+  {
+    level: 'Junior',
+    source: 'title:frontline_junior',
+    test: (t) =>
+      /\b(care assistants?|healthcare assistants?|\bhcas?\b|support workers?|care workers?|\bcarers?\b|home care)\b/.test(t) ||
+      /\b(kitchen assistants?|kitchen porters?|catering assistants?|dishwashers?|commis chefs?|deli assistants?)\b/.test(t) ||
+      /\b(cashiers?|sales assistants?|shop assistants?|store assistants?|retail assistants?|team members?)\b/.test(t) ||
+      /\b(sales associates?|retail associates?|store associates?|fragrance associates?|warehouse associates?)\b/.test(t) ||
+      /\b(waiters?|waitresses?|waiting staff|baristas?|bartenders?|bar staff|room attendants?|housekeep(?:er|ing)?|cleaners?|chambermaids?)\b/.test(t) ||
+      /\b(warehouse operatives?|order pickers?|picker\s*[/&]?\s*packers?|\bpackers?\b)\b/.test(t) ||
+      /\b(security guards?|security officers?|delivery drivers?|van drivers?)\b/.test(t),
+  },
+];
+
+/**
+ * Knowledge archetypes for unmarked titles (no seniority word).
+ * Role-family defaults from common UK/IE hiring conventions.
+ */
+const ARCHETYPE_TIERS: Tier[] = [
+  {
+    level: 'Junior',
+    source: 'archetype:team_leader_junior',
+    test: (t) =>
+      /\b(team leaders?|kitchen team leaders?|shift leaders?|crew leaders?|section leaders?)\b/.test(t) ||
+      (/\bleaders?\b/.test(t) &&
+        !/\b(thought leaders?|market leaders?|world leaders?)\b/.test(t) &&
+        !/\bmanagers?\b/.test(t)),
+  },
+  {
+    level: 'Junior',
+    source: 'archetype:frontline_service',
+    test: (t) =>
+      /\b(retail customer service|customer service advisors?|customer advisors?|customer assistants?|service assistants?)\b/.test(t) ||
+      /\b(postpersons?|postal workers?|postmen|postwomen|mail carriers?|mail sorters?|sorters?)\b/.test(t) ||
+      /\b(class\s*[12]\s+drivers?|hgv drivers?|lgv drivers?|truck drivers?|bus drivers?|taxi drivers?|service drivers?|drivers?|couriers?|shunters?|loaders?)\b/.test(
+        t,
+      ) ||
+      /\b(field sales representatives?|sales representatives?|sales reps?|brand ambassadors?)\b/.test(t) ||
+      /\b(sales development representatives?|business development representatives?|sdrs?\b|bdrs?\b|representatives?|\breps?\b)\b/.test(t) ||
+      /\b(activities co-?ordinators?|receptionists?|porters?|secretar(?:y|ies)|lifeguards?|gardeners?|handlers?|merchandisers?)\b/.test(
+        t,
+      ) ||
+      /\b(prisoner custody officers?|custody officers?|parking attendants?)\b/.test(t) ||
+      /\b(chef de partie|commis|kitchen hands?|cake-?a-?tiers?|boh team mates?|team mates?|teammates?)\b/.test(t) ||
+      /\b(colleagues?|nandocas?|crew members?|hosts?|hostesses|stewards?|attendants?|key[\s-]?holders?)\b/.test(t) ||
+      /\b(general assistants?|online assistants?|trading assistants?|activities assistants?|service assistants?|sales assi[st]ants?|sales assiatants?)\b/.test(
+        t,
+      ) ||
+      /\b(foh|boh|front of house|back of house|maintenance persons?)\b/.test(t) ||
+      /\b(paint sprayers?|sprayers?)\b/.test(t) ||
+      (/\b(agents?|clerks?|operatives?|workers?)\b/.test(t) && !/\b(knowledge workers?|social workers?)\b/.test(t)) ||
+      (/\bassistants?\b/.test(t) && !/\b(executive|personal)\s+assistants?\b/.test(t)),
+  },
+  {
+    level: 'Mid Level',
+    source: 'archetype:professional_mid',
+    test: (t) =>
+      /\bmanagers?\b/.test(t) ||
+      /\b(engineers?|developers?|programmers?|testers?|machinists?|technologists?|packagers?|wirers?)\b/.test(t) ||
+      /\banalysts?\b/.test(t) ||
+      /\b(scientists?|physicists?|economists?|researchers?|ecologists?|hydrogeologists?|geologists?)\b/.test(t) ||
+      /\b(product owners?|process owners?|platform owners?|scrum masters?|delivery leads?)\b/.test(t) ||
+      /\b(registered nurses?|\brgns?\b|\brmns?\b|dental nurses?|veterinary nurses?|practice nurses?|nurses?|matrons?)\b/.test(t) ||
+      /\b(veterinary surgeons?|\bvets?\b|pharmacists?|physiotherapists?|occupational therapists?|radiographers?|sonographers?|mammographers?|paramedics?|midwives|dentists?|orthodontists?|periodontists?|optometrists?|hygienists?|dietitians?|dieticians?|gps?\b|doctors?|physicians?|clinicians?|practitioners?|therapists?|physiologists?|psychologists?|counsell?ors?|assessors?|phlebotomists?)\b/.test(
+        t,
+      ) ||
+      /\b(sous chefs?|chefs?|cooks?|butchers?)\b/.test(t) ||
+      /\b(personal trainers?|fitness coach(?:es)?|coach(?:es)?|trainers?|beauty experts?)\b/.test(t) ||
+      /\b(consultants?|specialists?|technicians?|surveyors?|solicitors?|paralegals?|accountants?|bookkeepers?|auditors?|underwriters?|actuaries?|architects?|counsels?|barristers?|lawyers?|advocates?|fee earners?|paraplanners?|negotiators?|adjusters?|investigators?|generalists?|professionals?|contractors?)\b/.test(
+        t,
+      ) ||
+      /\b(designers?|writers?|copywriters?|translators?|producers?|editors?|strategists?|estimators?|inspectors?|sourcers?|recruiters?|experts?|modellers?|modelers?|draftsmen|draughtsmen|animators?|riggers?|artists?|schedulers?)\b/.test(
+        t,
+      ) ||
+      /\b(co-?ordinators?|coordinators?|administrators?|officers?|advisors?|advisers?|associates?|partners?)\b/.test(t) ||
+      /\b(teachers?|tutors?|lecturers?|instructors?)\b/.test(t) ||
+      /\b(buyers?|planners?|controllers?|supervisors?|forepersons?|foremen|foreman)\b/.test(t) ||
+      /\b(electricians?|mechanics?|plumbers?|carpenters?|joiners?|roofers?|roof tilers?|installers?|fitters?|pipefitters?|operators?|welders?|fabricators?|builders?|bricklayers?|painters?|decorators?|groundworkers?|plasterers?|panel beaters?|linem[ae]n|linesm[ae]n|lineworkers?)\b/.test(
+        t,
+      ) ||
+      /\b(bankers?|traders?|brokers?|underwriters?|claims handlers?|file handlers?)\b/.test(t) ||
+      /\b(vfx|lookdev|groom)\b/.test(t) ||
+      (/\btds?\b/.test(t) && /\b(facial|rigging|groom|lookdev|vfx|anim)\b/.test(t)) ||
+      /\b(project controls|cost management|risk management|project management|cost and commercial management|customer success|ground engineering|software engineering|transportation|cost intelligence)\b/.test(
+        t,
+      ) ||
+      /\b(social workers?|legal secretar(?:y|ies)|legal pas?)\b/.test(t) ||
+      /\boperations support\b/.test(t) ||
+      /\b\d+(?:st|nd|rd|th)\s+line\s+support\b/.test(t),
+  },
+];
+
+/**
+ * Stage 1: title only. null = no match (pass to JD / years / embedding / review).
+ */
+export function inferJobLevelFromTitle(title: string): JobLevelMatch | null {
+  if (!title?.trim()) return null;
+  const t = stripTitleNoise(normalizeTitle(title));
+  if (isNonRoleTitle(t)) return null;
+
+  const override = applyTitleOverrides(t);
+  if (override === 'defer') return null;
+  if (override) return ALLOWED.has(override.level) ? override : null;
+
+  for (const tier of KEYWORD_TIERS) {
+    if (tier.test(t) && ALLOWED.has(tier.level)) {
+      return { level: tier.level, source: tier.source };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Knowledge archetypes for unmarked titles (no seniority word).
+ * Intended to run AFTER JD labels / soft years in the cascade.
+ */
+export function inferJobLevelFromArchetype(title: string): JobLevelMatch | null {
+  if (!title?.trim()) return null;
+  const t = stripTitleNoise(normalizeTitle(title));
+  if (isNonRoleTitle(t)) return null;
+
+  for (const tier of ARCHETYPE_TIERS) {
+    if (tier.test(t) && ALLOWED.has(tier.level)) {
+      return { level: tier.level, source: tier.source };
+    }
+  }
+  return null;
+}
+
+/**
+ * Title-only helper including archetypes (tests / scrapers that skip JD).
+ */
 export function inferJobLevel(title: string): AllowedJobLevel | null {
-    if (!title) return null;
-    const t = title.toLowerCase();
-
-    let level: AllowedJobLevel;
-
-    // Executive / C-Suite
-    if (/\b(chief|cto|ceo|cfo|coo|cpo|president|managing director|md)\b/.test(t)) {
-        level = 'Executive';
-    }
-    // Vice President
-    else if (/\bvp\b|vice president/.test(t)) {
-        level = 'VP';
-    }
-    // Director — "Head of X" is director-tier in UK catalogs
-    else if (/\bdirector\b/.test(t) || /\bhead of\b/.test(t)) {
-        level = 'Director';
-    }
-    // Principal
-    else if (/\bprincipal\b/.test(t)) {
-        level = 'Principal';
-    }
-    // Senior / Sr — before eng-manager→Lead so "Senior Engineering Manager" stays Senior
-    else if (/\b(senior|sr\.?)\b/.test(t)) {
-        level = 'Senior';
-    }
-    // Lead — engineering/software managers (not assistant managers)
-    else if (
-        /\blead\b/.test(t) ||
-        (/\b(software|engineering) managers?\b/.test(t) && !/\bassistant managers?\b/.test(t))
-    ) {
-        level = 'Lead';
-    }
-    // Shop-floor "X Staff" before IC "Staff Engineer" / NHS "Staff Nurse"
-    else if (
-        /\b(deli|floor|kitchen|waiting|bar|shop|store|retail|sales|warehouse|support)\s+staff\b/.test(t) ||
-        /\bstaff\s*\([^)]*(full|part)\s*time/.test(t)
-    ) {
-        level = 'Junior';
-    }
-    // Staff (IC / clinical grade)
-    else if (/\bstaff\b/.test(t)) {
-        level = 'Staff';
-    }
-    // Internship / Placement (seniority — not employment type)
-    else if (/\b(intern|internship|placement|apprentice|apprenticeship)\b/.test(t)) {
-        level = 'Internship';
-    }
-    // Graduate / Entry (avoid bare "associate" — often retail/warehouse mid titles)
-    else if (/\b(graduate|entry.?level|early career|new grad|grad scheme|graduate scheme)\b/.test(t)) {
-        level = 'Graduate';
-    }
-    // Junior / Jr
-    else if (/\b(junior|jr\.?)\b/.test(t)) {
-        level = 'Junior';
-    }
-    // Frontline / entry service roles that were over-labelled Mid-level
-    else if (
-        /\b(care assistant|healthcare assistant|\bhca\b|support worker|care worker|\bcarer\b|home care)\b/.test(t) ||
-        /\b(kitchen assistant|kitchen porter|catering assistant|dishwasher|commis chef|deli assistant)\b/.test(t) ||
-        /\b(cashier|sales assistant|shop assistant|store assistant|retail assistant|team member)\b/.test(t) ||
-        /\b(sales associate|retail associate|store associate|fragrance associate|warehouse associate)\b/.test(t) ||
-        /\b(waiter|waitress|waiting staff|barista|bartender|bar staff|room attendant|housekeep|cleaner|chambermaid)\b/.test(t) ||
-        /\b(warehouse operative|order picker|picker\s*[/&]?\s*packer|\bpacker\b)\b/.test(t) ||
-        /\b(security guard|security officer|delivery driver|van driver)\b/.test(t)
-    ) {
-        level = 'Junior';
-    } else {
-        // Mid-level fallback
-        level = 'Mid-level';
-    }
-
-    return ALLOWED.has(level) ? level : 'Mid-level';
+  return inferJobLevelFromTitle(title)?.level ?? inferJobLevelFromArchetype(title)?.level ?? null;
 }
