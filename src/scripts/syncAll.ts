@@ -48,7 +48,7 @@ import { isIrelandJob } from '../lib/irelandFilter';
 import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
 import { inferJobTypeFromListing, parseJobType, resolveJobType } from '../lib/parseJobType';
 import { runClosedAtsSweep } from './purgeClosedAtsJobs';
-import { runExpiredJobsPurge } from './purgeExpiredJobs';
+
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -7809,15 +7809,8 @@ export async function syncAll() {
         } catch (err: any) {
             console.warn(`  ⚠ Closed ATS sweep failed: ${err?.message || err}`);
         }
-
-        try {
-            const expired = await runExpiredJobsPurge({ apply: true, hours: 48 });
-            console.log(
-                `  🧹 Expired (>${expired.cutoffHours}h): ${expired.jobs} UK + ${expired.jobs_IR} IE`,
-            );
-        } catch (err: any) {
-            console.warn(`  ⚠ Expired jobs purge failed: ${err?.message || err}`);
-        }
+        // No time-based expired purge: keep jobs while the posting may still be live.
+        // Removal is live-board only (per-company stale after successful fetch + closed ATS sweep).
     }
 
     // ─── Summary ─────────────────────────────────────────────────────────────

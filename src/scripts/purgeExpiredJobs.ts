@@ -1,11 +1,15 @@
 /**
- * Backlog sweep for companies the daily sync has not visited.
- * Default cutoff is 48h so yesterday's successful fetch is not wiped
- * if today's cron has not run yet. After a successful fetch, syncAll
- * now drops missing URLs immediately.
+ * OPTIONAL manual backlog sweep by last_seen_at age.
+ *
+ * NOT called from syncAll anymore — time-based deletes can remove live posts
+ * after a failed/thin sync day. Daily sync removes jobs only when they are
+ * missing from a successful company fetch or the closed-ATS live-ID sweep.
+ *
+ * Use this only when you deliberately want an age-based cleanup:
  *
  *   npx tsx src/scripts/purgeExpiredJobs.ts
  *   npx tsx src/scripts/purgeExpiredJobs.ts --apply
+ *   npx tsx src/scripts/purgeExpiredJobs.ts --hours=168 --apply
  */
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local', quiet: true });
