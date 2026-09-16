@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import dotenv from 'dotenv';
 import { isUKJob } from '../lib/ukFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
-import { inferJobLevel } from '../lib/inferJobLevel';
+import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
 import { resolveJobType } from '../lib/parseJobType';
 import { sanitizeJobLocation } from '../lib/refineLocation';
 
@@ -86,9 +86,13 @@ async function scrapeJPMorgan() {
     if (ukJobs.length > 0) {
         const { data: company } = await supabase.from('companies').select('id, company_sector').eq('trading_name', 'JPMorgan Chase & Co.').single();
         if (company) {
-            const jobsToInsert = ukJobs.map(j => {
+            const levelResolved = await resolveJobLevelsBatch(
+                ukJobs.map((j) => ({ title: j.title })),
+            );
+            const jobsToInsert = ukJobs.map((j, i) => {
                 const { sector, department } = classifyJobTaxonomy(j.title, null, company.company_sector);
-                const level = inferJobLevel(j.title);
+                const resolved = levelResolved[i]!;
+                const level = resolved.level;
                 return {
                     company_id: company.id,
                     title: j.title,
@@ -97,6 +101,7 @@ async function scrapeJPMorgan() {
                     department,
                     sector,
                     level,
+                    level_source: resolved.source,
                     job_type: resolveJobType({ title: j.title, level }),
                 };
             });

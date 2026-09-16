@@ -98,7 +98,7 @@ test('sanitizeJobLocation maps codes and strips N/A', () => {
     );
 });
 
-test('inferJobLevel maps frontline roles to Junior', () => {
+test('inferJobLevel maps frontline roles to Junior (4-level taxonomy)', () => {
     assert.strictEqual(inferJobLevel('Care Assistant - Bank'), 'Junior');
     assert.strictEqual(inferJobLevel('Retail Sales Assistant'), 'Junior');
     assert.strictEqual(inferJobLevel('Barista'), 'Junior');
@@ -108,16 +108,22 @@ test('inferJobLevel maps frontline roles to Junior', () => {
     assert.strictEqual(inferJobLevel('Waiting Staff'), 'Junior');
     assert.strictEqual(inferJobLevel('Deli Assistant'), 'Junior');
     assert.strictEqual(inferJobLevel('Senior Engineer'), 'Senior');
-    assert.strictEqual(inferJobLevel('Staff Engineer'), 'Staff');
-    assert.strictEqual(inferJobLevel('Staff Mechanical Design Engineer, R&D'), 'Staff');
-    assert.strictEqual(inferJobLevel('Staff Project Engineer'), 'Staff');
-    assert.strictEqual(inferJobLevel('Staff Nurse - CT'), 'Staff');
-    assert.strictEqual(inferJobLevel('Operations Associate'), 'Mid-level');
-    assert.strictEqual(inferJobLevel('Head of Software Engineering'), 'Director');
-    assert.strictEqual(inferJobLevel('Head of Engineering'), 'Director');
-    assert.strictEqual(inferJobLevel('Software Engineering Manager'), 'Lead');
+    assert.strictEqual(inferJobLevel('Staff Engineer'), 'Senior');
+    assert.strictEqual(inferJobLevel('Staff Mechanical Design Engineer, R&D'), 'Senior');
+    assert.strictEqual(inferJobLevel('Staff Project Engineer'), 'Senior');
+    assert.strictEqual(inferJobLevel('Staff Nurse - CT'), 'Mid Level');
+    assert.strictEqual(inferJobLevel('Operations Associate'), 'Mid Level');
+    assert.strictEqual(inferJobLevel('Head of Software Engineering'), 'Senior');
+    assert.strictEqual(inferJobLevel('Head of Engineering'), 'Senior');
+    assert.strictEqual(inferJobLevel('Software Engineering Manager'), 'Senior');
     assert.strictEqual(inferJobLevel('Senior Software Engineering Manager'), 'Senior');
-    assert.strictEqual(inferJobLevel('R&D Tax Assistant Manager'), 'Mid-level');
+    assert.strictEqual(inferJobLevel('Assistant Manager'), 'Mid Level');
+    assert.strictEqual(inferJobLevel('Solution Architect'), 'Senior');
+    assert.strictEqual(inferJobLevel('Software Engineer'), 'Mid Level');
+    assert.strictEqual(inferJobLevel('Project Manager'), 'Mid Level');
+    assert.strictEqual(inferJobLevel('Team Leader'), 'Junior');
+    assert.strictEqual(inferJobLevel('Chef'), 'Mid Level');
+    assert.strictEqual(inferJobLevel('Register your interest'), null);
 });
 
 test('sanitizeJobLocation does not rewrite IND Palwal to Ireland', () => {

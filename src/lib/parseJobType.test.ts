@@ -56,12 +56,12 @@ for (const [input, expect] of cases) {
 const resolveCases: Array<[{ employment?: unknown; title?: string; level?: string | null }, string]> = [
   [{ title: 'Software Engineer' }, 'Full-time'],
   [{ title: 'Summer Intern' }, 'Internship'],
-  [{ title: 'Analyst', level: 'Internship' }, 'Internship'],
+  [{ title: 'Analyst', level: 'Entry Level' }, 'Full-time'],
   [{ employment: 'Part-time', title: 'Engineer' }, 'Part-time'],
   [{ title: 'Contract Manager' }, 'Full-time'], // role title, not employment Contract
   [{ employment: 'Contract', title: 'Senior Contracts Manager:Rail projects' }, 'Full-time'],
-  [{ title: 'Graduate Placement - Technical Purchasing (12-24 Months)', level: 'Internship' }, 'Placement scheme'],
-  [{ title: 'Caterlink - Chef Manager - Co-op Academy Delius', level: 'Mid-level' }, 'Full-time'],
+  [{ title: 'Graduate Placement - Technical Purchasing (12-24 Months)', level: 'Entry Level' }, 'Placement scheme'],
+  [{ title: 'Caterlink - Chef Manager - Co-op Academy Delius', level: 'Mid Level' }, 'Full-time'],
   [{ employment: 'Full-time', title: 'Software Engineer - Intern' }, 'Internship'],
   [{ employment: 'Full-time', title: 'Part Time Care Assistant' }, 'Part-time'],
   [{ employment: 'Full-time', title: 'Care Assistant - Bank - Care Home' }, 'Part-time'],

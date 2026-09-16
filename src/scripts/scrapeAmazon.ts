@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { sanitizeJobLocation } from '../lib/refineLocation';
-import { inferJobLevel } from '../lib/inferJobLevel';
+import { resolveJobLevel } from '../lib/resolveJobLevel';
 import { resolveJobType } from '../lib/parseJobType';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -133,7 +133,8 @@ async function scrapeAmazon() {
             );
 
             const title = truncate(job.title, 500);
-            const level = inferJobLevel(title);
+            const resolved = await resolveJobLevel({ title, description: job.description_external || job.basic_qualifications });
+            const level = resolved.level;
             const { error: upsertError } = await supabase
                 .from('jobs')
                 .upsert({
@@ -143,6 +144,7 @@ async function scrapeAmazon() {
                     department,
                     sector,
                     level,
+                    level_source: resolved.source,
                     location: truncate(sanitizeJobLocation(locationStr, 'uk', job.title, absoluteUrl), 500),
                     job_type: resolveJobType({
                         employment: job.job_schedule_type,

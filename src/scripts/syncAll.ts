@@ -27,7 +27,12 @@ import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
 import { fetchCustom } from './customScrapers';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
-import { inferJobLevel } from '../lib/inferJobLevel';
+import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
+import {
+    enqueueLevelManualReview,
+    flushLevelManualReviewLog,
+    resetLevelManualReviewBuffer,
+} from '../lib/levelManualReview';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { ensureSectorEmbeddingRuntime, resolveSectorEmbedding, resolveSectorEmbeddings } from '../lib/sectorEmbeddingRuntime';
 import * as XLSX from 'xlsx';
@@ -43,6 +48,7 @@ import { isIrelandJob } from '../lib/irelandFilter';
 import { refineVagueLocation, pickMostSpecificLocation, sanitizeJobLocation } from '../lib/refineLocation';
 import { inferJobTypeFromListing, parseJobType, resolveJobType } from '../lib/parseJobType';
 import { runClosedAtsSweep } from './purgeClosedAtsJobs';
+import { runExpiredJobsPurge } from './purgeExpiredJobs';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -116,6 +122,8 @@ interface JobRow {
     url: string;
     department: string | null;
     level: string | null;
+    /** Which cascade rule set the level, e.g. title:senior | jd:label:senior | manual_review */
+    level_source?: string | null;
     sector: string | null;
     /** MiniLM + title memory; compare with sector. Never replaces sector. */
     sector_embedding: string | null;
@@ -437,11 +445,24 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
     const embeddingMap = new Map<string, string>();
     uniqueJobs.forEach((j, i) => embeddingMap.set(j.url, sectorEmbeddings[i]));
 
+    // Level cascade (title → JD label → embedding) in one batch so MiniLM
+    // only runs for titles that miss stages 1–2.
+    const cleanDescriptions = uniqueJobs.map((j) => cleanJobDescription(j.description));
+    const levelResolved = await resolveJobLevelsBatch(
+      uniqueJobs.map((_, i) => ({
+        title: cleanTitles[i]!,
+        description: cleanDescriptions[i],
+      })),
+    );
+    const levelMap = new Map<string, (typeof levelResolved)[number]>();
+    uniqueJobs.forEach((j, i) => levelMap.set(j.url, levelResolved[i]!));
+
     // Re-validate the *stored* location string. Dual-office posts can pass the
     // pre-filter (e.g. "London | Amsterdam") then normalize down to a foreign
     // city — that is exactly how Amsterdam/US rows reappeared after cleanup.
     const rows: JobRow[] = [];
-    for (const j of uniqueJobs) {
+    for (let ji = 0; ji < uniqueJobs.length; ji++) {
+        const j = uniqueJobs[ji]!;
         const n = normalizedMap.get(j.url);
         const raw = safeStr(j.location, 255);
         const targetCountry = market === 'ireland' ? 'Ireland' : 'United Kingdom';
@@ -495,7 +516,7 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
         // only allowlisted sector terms. Unknown/junk departments fall back
         // to the inferred sector so the UI never shows blank/null.
         const rawDept = j.department ? safeStr(j.department, 255) : '';
-        const cleanTitle = sanitizeJobTitle(safeStr(j.title));
+        const cleanTitle = cleanTitles[ji]!;
         const sector_embedding = embeddingMap.get(j.url) ?? 'Other';
         const { sector, department } = classifyJobTaxonomy(
             cleanTitle,
@@ -504,7 +525,20 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             sector_embedding,
         );
         const nowIso = new Date().toISOString();
-        const level = inferJobLevel(safeStr(j.title));
+        const description = cleanDescriptions[ji] ?? null;
+        const resolved = levelMap.get(j.url) ?? {
+            level: null as string | null,
+            source: 'manual_review',
+            needsManualReview: true,
+        };
+        if (resolved.needsManualReview) {
+            enqueueLevelManualReview({
+                title: cleanTitle,
+                url: j.url,
+                company: company.trading_name,
+                description_preview: description,
+            });
+        }
 
         rows.push({
             company_id: companyId,
@@ -512,17 +546,18 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             location: safeStr(cleanedLocation, 255),
             url: j.url,
             department,
-            level,
+            level: resolved.level,
+            level_source: resolved.source,
             sector,
             sector_embedding,
             job_type: resolveJobType({
                 employment: j.job_type,
                 title: cleanTitle,
-                level,
+                level: resolved.level,
             }),
             updated_at: nowIso,
             last_seen_at: nowIso,
-            description: cleanJobDescription(j.description),
+            description,
             salary: cleanSalary(j.salary),
         });
     }
@@ -7168,6 +7203,7 @@ export async function syncAll() {
     filterLogBuffer.length = 0;
     serperCallCount = 0;
     serperHitCount = 0;
+    resetLevelManualReviewBuffer();
     console.log('\nΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ');
     console.log('  DAILY SYNC ΓÇö ' + startedAtIso);
     console.log(`  sync_run_id=${syncRunId}`);
@@ -7666,7 +7702,8 @@ export async function syncAll() {
                     const stripSource = /source/i.test(jobErr.message);
                     const stripSeen = /last_seen_at/i.test(jobErr.message);
                     const stripJobType = /job_type/i.test(jobErr.message);
-                    if (stripSector || stripSectorEmbedding || stripSource || stripSeen || stripJobType) {
+                    const stripLevelSource = /level_source/i.test(jobErr.message);
+                    if (stripSector || stripSectorEmbedding || stripSource || stripSeen || stripJobType || stripLevelSource) {
                         const stripped = rows.map((row) => {
                             const next: Record<string, unknown> = {
                                 company_id: row.company_id,
@@ -7684,6 +7721,7 @@ export async function syncAll() {
                             if (!stripSource && row.source) next.source = row.source;
                             if (!stripSeen) next.last_seen_at = row.last_seen_at;
                             if (!stripJobType) next.job_type = row.job_type;
+                            if (!stripLevelSource && row.level_source) next.level_source = row.level_source;
                             return next;
                         });
                         const { error: fallbackErr } = await supabase
@@ -7769,11 +7807,20 @@ export async function syncAll() {
                 `  ≡ƒº╣ Closed ATS posts: ${atsClosed.jobs} UK + ${atsClosed.jobs_IR} IE (live board ID mismatch)`,
             );
         } catch (err: any) {
-            console.warn(`  ΓÜá Closed ATS sweep failed: ${err?.message || err}`);
+            console.warn(`  ⚠ Closed ATS sweep failed: ${err?.message || err}`);
+        }
+
+        try {
+            const expired = await runExpiredJobsPurge({ apply: true, hours: 48 });
+            console.log(
+                `  🧹 Expired (>${expired.cutoffHours}h): ${expired.jobs} UK + ${expired.jobs_IR} IE`,
+            );
+        } catch (err: any) {
+            console.warn(`  ⚠ Expired jobs purge failed: ${err?.message || err}`);
         }
     }
 
-    // ΓöÇΓöÇΓöÇ Summary ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // ─── Summary ─────────────────────────────────────────────────────────────
     const finishedAt = new Date();
     const durationMs = Date.now() - startTime;
     const elapsedHuman = formatSyncDuration(durationMs);
@@ -7794,7 +7841,11 @@ export async function syncAll() {
     console.log(`  ≡ƒÜ½ Rejected:       ${totalRejected}`);
     console.log(`  ≡ƒ¢í∩╕Å  Wipe prevented: ${wipePreventedCount} (empty filter kept live set)`);
     console.log(`  ≡ƒº╣ Stale purged:   ${stalePurgedCount} (missing from today's fetch)`);
-    console.log(`  ΓÜ¬ No jobs saved:  ${noJobs.length}`);
+    console.log(`  ⚪ No jobs saved:  ${noJobs.length}`);
+    const levelReviewWritten = flushLevelManualReviewLog();
+    if (levelReviewWritten > 0) {
+        console.log(`  🔎 Level manual review: ${levelReviewWritten} titles → logs/level_manual_review.jsonl`);
+    }
     if (fallbackOnlyDryRun) {
         console.log('  ≡ƒº¬ Mode:          custom fallback dry run (no writes)');
     }

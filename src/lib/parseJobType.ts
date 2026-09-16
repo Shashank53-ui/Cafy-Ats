@@ -190,6 +190,6 @@ export function resolveJobType(input: {
     return fromEmployment;
   }
   if (fromTitle) return fromTitle;
-  if ((input.level || '').trim() === 'Internship') return 'Internship';
+  // Entry Level covers grads + interns; do not infer employment type from level alone.
   return 'Full-time';
 }
