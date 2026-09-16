@@ -73,6 +73,15 @@ assert.equal(inferJobLevel('Solution Architect'), 'Senior');
 assert.equal(inferJobLevel('Solutions Architect'), 'Senior');
 assert.equal(inferJobLevel('Account Executive'), 'Junior');
 assert.equal(inferJobLevel('Associate Director of Finance'), 'Senior');
+assert.equal(
+  inferJobLevel('Director of Software Engineering (AIOps) - Executive Director'),
+  'Senior',
+);
+assert.equal(inferJobLevel('Executive Director of Public Health'), 'Senior');
+assert.equal(inferJobLevel('EMEA Commodities Legal Counsel – Markets - Executive Director'), 'Senior');
+assert.equal(inferJobLevel('Executive Director - Pensions Actuary'), 'Senior');
+assert.equal(inferJobLevel('Team Leader - Information Security Incident Response'), 'Senior');
+assert.equal(inferJobLevel('Assistant Director of Nursing'), 'Senior');
 assert.equal(inferJobLevel('Assistant Manager'), 'Mid Level');
 assert.equal(inferJobLevel('Shift Lead'), 'Junior');
 assert.equal(inferJobLevel('Senior Business Development Executive'), 'Senior');

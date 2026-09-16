@@ -234,7 +234,9 @@ function isSeniorProfessionalLeaderTitle(t: string): boolean {
       t,
     ) ||
     (/\bteam leaders?\b/.test(t) &&
-      /\b(presales|pre-sales|engineering|technology|technical|product|software|platform)\b/.test(t))
+      /\b(presales|pre-sales|engineering|technology|technical|product|software|platform|security|information security|cyber|incident)\b/.test(
+        t,
+      ))
   );
 }
 
@@ -284,17 +286,26 @@ function applyTitleOverrides(t: string): OverrideResult | null {
 
   // Trap: UK "… Executive" (non C-suite) → Junior unless seniority word present
   // Covers Account/SEO/Events/Tax/Client Services Executive etc.
+  // NEVER treat "Executive Director" / Director / VP / Head of as junior UK-executive titles.
   if (
     !hasSeniorityWord(t) &&
     /\bexecutives?\b/.test(t) &&
     !/\b(chief|managing)\b/.test(t) &&
-    !/\bexecutive assistants?\b/.test(t)
+    !/\bexecutive assistants?\b/.test(t) &&
+    !/\bexecutive directors?\b/.test(t) &&
+    !/\b(non[\s-]?executive directors?|directors?|vice presidents?|\bvps?\b|head of)\b/.test(t) &&
+    !isStructuralSeniorTitle(t)
   ) {
     return { level: 'Junior', source: 'trap:uk_executive_junior' };
   }
 
   if (/\bassociate directors?\b/.test(t)) {
     return { level: 'Senior', source: 'trap:associate_director' };
+  }
+
+  // Assistant Director (NHS / corporate) — senior leadership grade, not frontline assistant
+  if (/\bassistant directors?\b/.test(t)) {
+    return { level: 'Senior', source: 'trap:assistant_director' };
   }
 
   if (/\bassistant managers?\b/.test(t)) {

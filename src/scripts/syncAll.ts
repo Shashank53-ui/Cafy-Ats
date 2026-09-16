@@ -489,8 +489,8 @@ async function buildRowsForJobs(company: CompanyRow, companyId: number, jobs: Jo
             }
         }
 
-        cleanedLocation = refineVagueLocation(cleanedLocation, j.title, j.url, market);
-        cleanedLocation = sanitizeJobLocation(cleanedLocation, market, j.title, j.url);
+        cleanedLocation = refineVagueLocation(cleanedLocation, j.title, j.url, market, j.description);
+        cleanedLocation = sanitizeJobLocation(cleanedLocation, market, j.title, j.url, j.description);
 
         if (!locationPasses(cleanedLocation)) {
             if (!locationPasses(raw)) continue;

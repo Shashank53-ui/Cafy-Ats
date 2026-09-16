@@ -9,7 +9,9 @@ const UK_CITIES = [
     'Coventry', 'Leicester', 'York', 'Aberdeen', 'Dundee', 'Swansea', 'Bath',
     'Exeter', 'Norwich', 'Derby', 'Slough', 'Guildford', 'Watford', 'Croydon',
     'Milton Keynes', 'Basingstoke', 'Warrington', 'Chester', 'Hatfield',
-    'Leamington Spa', 'Newmarket', 'Canary Wharf', 'Paddington',
+    'Leamington Spa', 'Newmarket', 'Canary Wharf', 'Paddington', 'Newbury',
+    'Bracknell', 'Maidenhead', 'Woking', 'Crawley', 'Ipswich', 'Peterborough',
+    'Stoke-on-Trent', 'Wolverhampton', 'Sunderland', 'Hull', 'Middlesbrough',
 ];
 
 const IE_CITIES = [
@@ -63,12 +65,13 @@ function placeLabels(market: 'uk' | 'ireland'): string[] {
     return market === 'uk' ? [...UK_REGIONS, ...UK_CITIES] : IE_CITIES;
 }
 
-/** If location is country-only or an ATS placeholder, lift a city/region from title/url. */
+/** If location is country-only or an ATS placeholder, lift a city/region from title/url/description. */
 export function refineVagueLocation(
     location: string | null | undefined,
     title?: string | null,
     url?: string | null,
     market: 'uk' | 'ireland' = 'uk',
+    description?: string | null,
 ): string {
     const loc = String(location || '').trim();
     if (!loc) return loc;
@@ -78,9 +81,14 @@ export function refineVagueLocation(
     if (!isCountryOnly && !isPlaceholderLocation(loc)) return loc;
 
     const labels = placeLabels(market);
-    // Title is the job's geography; URLs often name HQ / board cities.
+    // Prefer an explicit "Location: City" line in the JD when present.
+    const desc = String(description || '');
+    const locLine = desc.match(/^\s*location\s*:\s*([^\n\r]+)/im)?.[1] || '';
+    // Title is the job's geography; JD location line next; URLs often name HQ / board cities.
     const city =
         findCityInText(String(title || ''), labels) ||
+        findCityInText(locLine, labels) ||
+        findCityInText(desc.slice(0, 600), labels) ||
         findCityInText(String(url || ''), labels);
     if (!city) {
         return isPlaceholderLocation(loc)
@@ -126,13 +134,14 @@ export function sanitizeJobLocation(
     market: 'uk' | 'ireland' = 'uk',
     title?: string | null,
     url?: string | null,
+    description?: string | null,
 ): string {
     const fallback = market === 'ireland' ? 'Ireland' : 'United Kingdom';
     let loc = String(location || '').trim();
     if (!loc) return fallback;
 
     if (isPlaceholderLocation(loc)) {
-        return refineVagueLocation(fallback, title, url, market);
+        return refineVagueLocation(fallback, title, url, market, description);
     }
 
     const firstLine = loc.split(/\n/)[0].replace(/\+\s*\d+\s+more\b[.…]* /gi, '').trim();
@@ -170,7 +179,7 @@ export function sanitizeJobLocation(
     }
 
     loc = collapseForeignDump(loc, market, fallback);
-    loc = refineVagueLocation(loc, title, url, market);
+    loc = refineVagueLocation(loc, title, url, market, description);
     if (!loc || loc.length > 80) return fallback;
     if (/\+\s*\d+\s+more/i.test(loc)) return fallback;
     return loc;
