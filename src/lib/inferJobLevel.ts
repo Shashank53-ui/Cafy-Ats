@@ -156,13 +156,34 @@ function isArchitectSenior(t: string): boolean {
   );
 }
 
+/** School / youth club activity leaders — frontline Junior, not professional Mid. */
+function isSchoolActivityLeaderTitle(t: string): boolean {
+  return (
+    /\bleaders?\b/.test(t) &&
+    /\b(activity|activities|after[\s-]?school|breakfast club|holiday club|nursery activity|eyfs|soft play)\b/.test(t)
+  );
+}
+
 /** Frontline hospitality / retail shift leads — Junior, not NHS clinical leads. */
 function isFrontlineTeamLeaderTitle(t: string): boolean {
+  if (isSchoolActivityLeaderTitle(t)) return true;
+  // Professional/domain Team Leaders are not frontline (e.g. Presales Engineering Team Leader)
+  if (
+    /\bteam leaders?\b/.test(t) &&
+    /\b(presales|pre-sales|engineering|technology|technical|product|software|platform|security|data|ai|practice|market)\b/.test(
+      t,
+    ) &&
+    !isClinicalHealthcareLeaderContext(t)
+  ) {
+    return false;
+  }
   if (/\b(kitchen|shift|crew|section)\s+team leaders?\b/.test(t)) return true;
   if (/\b(shift|crew|section)\s+leaders?\b/.test(t)) return true;
   if (
     /\bteam leaders?\b/.test(t) &&
-    /\b(kitchen|retail|store|shop|bar|restaurant|hospitality|pub|hotel|warehouse|sales floor|customer service)\b/.test(t)
+    /\b(kitchen|retail|store|shop|bar|restaurant|hospitality|pub|hotel|warehouse|sales floor|customer service|tesco|nandos|pret|greene)\b/.test(
+      t,
+    )
   ) {
     return true;
   }
@@ -189,9 +210,46 @@ function isClinicalHealthcareLeaderContext(t: string): boolean {
   return (
     /\b(nhs|health board|foundation trust|\btrust\b|social care)\b/.test(clinicalText) ||
     /\b(clinical|theatres?|wards?|nurs(?:e|ing)|midwi[fv]e?|hcas?|healthcare|social care)\b/.test(clinicalText) ||
-    /\b(lymphoedema|oncology|cardiology|paediatric|pediatric|mental health|maxill?ofacial|maxfax|icu|a\s*&\s*e|emergency department|radiology|physiotherap|occupational therap|speech and language|community (?:nurs|health|midwif)|care home|hospice|neonatal|dialysis|renal|respiratory|dermatology|endocrin|haematol|hematol|orthop|ophthalm|anaesth|anesth|surgical|acute medicine|primary care|gp practice|camhs|cqc|disability)\b/.test(
+    /\b(lymphoedema|oncology|cardiology|paediatric|pediatric|mental health|maxill?ofacial|maxfax|icu|a\s*&\s*e|emergency department|radiology|physiotherap|occupational therap|speech and language|community (?:nurs|health|midwif)|care home|hospice|neonatal|dialysis|renal|respiratory|dermatology|endocrin|haematol|hematol|orthop|ophthalm|anaesth|anesth|surgical|acute medicine|primary care|gp practice|camhs|cqc|disability|coronary|radiographer|substance use)\b/.test(
       clinicalText,
     )
+  );
+}
+
+/**
+ * Professional / domain "Leader" titles (Product, Technology, Practice, BD, …).
+ * Not frontline team leaders and not NHS clinical leaders.
+ */
+function isProfessionalLeaderTitle(t: string): boolean {
+  if (!/\bleaders?\b/.test(t)) return false;
+  if (isFrontlineTeamLeaderTitle(t) || isClinicalHealthcareLeaderContext(t)) return false;
+  if (isSchoolActivityLeaderTitle(t)) return false;
+  return true;
+}
+
+/** Senior-grade professional leaders by UK hiring convention. */
+function isSeniorProfessionalLeaderTitle(t: string): boolean {
+  return (
+    /\b(technology|technical|product|engineering|practice|market|presales|pre-sales|principal|platform|ai)\s+leaders?\b/.test(
+      t,
+    ) ||
+    (/\bteam leaders?\b/.test(t) &&
+      /\b(presales|pre-sales|engineering|technology|technical|product|software|platform)\b/.test(t))
+  );
+}
+
+/** Retail / beauty / sales advisors — Junior, not Mid professional advisors. */
+function isFrontlineAdvisorTitle(t: string): boolean {
+  return /\b(sales advisors?|beauty advisors?|service advisors?|retail advisors?|customer (?:service )?advisors?|membership sales advisors?|field sales advisors?|outbound sales advisors?|inside sales advisors?)\b/.test(
+    t,
+  );
+}
+
+/** Warehouse / store / hospitality supervisors — Junior. */
+function isFrontlineSupervisorTitle(t: string): boolean {
+  if (!/\bsupervisors?\b/.test(t)) return false;
+  return /\b(warehouse|store|shop|retail|shift|restaurant|hotel|pub|bar|kitchen|hospitality|tesco|asda|nandos|sortation|fleet|maintenance)\b/.test(
+    t,
   );
 }
 
@@ -300,6 +358,29 @@ function applyTitleOverrides(t: string): OverrideResult | null {
   // NHS / clinical leaders → Mid, but never override an explicit Senior/Principal grade
   if (isClinicalHealthcareLeaderContext(t) && !hasSeniorityWord(t)) {
     return { level: 'Mid Level', source: 'trap:nhs_clinical_leader_mid' };
+  }
+
+  // Retail / beauty / sales advisors → Junior (before professional Mid archetype)
+  if (isFrontlineAdvisorTitle(t) && !hasSeniorityWord(t)) {
+    return { level: 'Junior', source: 'trap:frontline_advisor_junior' };
+  }
+
+  // Warehouse / store / shift supervisors → Junior
+  if (isFrontlineSupervisorTitle(t) && !hasSeniorityWord(t)) {
+    return { level: 'Junior', source: 'trap:frontline_supervisor_junior' };
+  }
+
+  // School / youth activity leaders → Junior
+  if (isSchoolActivityLeaderTitle(t) && !hasSeniorityWord(t)) {
+    return { level: 'Junior', source: 'trap:school_activity_leader_junior' };
+  }
+
+  // Professional domain Leaders (Product/Technology/Practice/BD…) — not frontline
+  if (isProfessionalLeaderTitle(t) && !hasSeniorityWord(t)) {
+    if (isSeniorProfessionalLeaderTitle(t)) {
+      return { level: 'Senior', source: 'trap:professional_leader_senior' };
+    }
+    return { level: 'Mid Level', source: 'trap:professional_leader_mid' };
   }
 
   return null;
@@ -414,9 +495,13 @@ const ARCHETYPE_TIERS: Tier[] = [
       /\b(designers?|writers?|copywriters?|translators?|producers?|editors?|strategists?|estimators?|inspectors?|sourcers?|recruiters?|experts?|modellers?|modelers?|draftsmen|draughtsmen|animators?|riggers?|artists?|schedulers?)\b/.test(
         t,
       ) ||
-      /\b(co-?ordinators?|coordinators?|administrators?|officers?|advisors?|advisers?|associates?|partners?)\b/.test(t) ||
+      /\b(co-?ordinators?|coordinators?|administrators?|officers?|associates?|partners?)\b/.test(t) ||
+      // Professional advisors only — frontline sales/beauty/service advisors handled by trap
+      (/\b(advisors?|advisers?)\b/.test(t) && !isFrontlineAdvisorTitle(t)) ||
       /\b(teachers?|tutors?|lecturers?|instructors?)\b/.test(t) ||
-      /\b(buyers?|planners?|controllers?|supervisors?|forepersons?|foremen|foreman)\b/.test(t) ||
+      // Professional supervisors only — warehouse/store/shift handled by trap
+      (/\b(buyers?|planners?|controllers?|forepersons?|foremen|foreman)\b/.test(t) ||
+        (/\bsupervisors?\b/.test(t) && !isFrontlineSupervisorTitle(t))) ||
       /\b(electricians?|mechanics?|plumbers?|carpenters?|joiners?|roofers?|roof tilers?|installers?|fitters?|pipefitters?|operators?|welders?|fabricators?|builders?|bricklayers?|painters?|decorators?|groundworkers?|plasterers?|panel beaters?|linem[ae]n|linesm[ae]n|lineworkers?)\b/.test(
         t,
       ) ||

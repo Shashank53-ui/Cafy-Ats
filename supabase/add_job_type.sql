@@ -50,34 +50,20 @@ ALTER TABLE public."jobs_IR" DROP CONSTRAINT IF EXISTS jobs_ir_level_allowed;
 ALTER TABLE public.jobs
   ADD CONSTRAINT jobs_level_allowed CHECK (
     level IS NULL OR level IN (
-      'Internship',
-      'Graduate',
+      'Entry Level',
       'Junior',
-      'Mid-level',
-      'Senior',
-      'Staff',
-      'Lead',
-      'Principal',
-      'Director',
-      'VP',
-      'Executive'
+      'Mid Level',
+      'Senior'
     )
   );
 
 ALTER TABLE public."jobs_IR"
   ADD CONSTRAINT jobs_ir_level_allowed CHECK (
     level IS NULL OR level IN (
-      'Internship',
-      'Graduate',
+      'Entry Level',
       'Junior',
-      'Mid-level',
-      'Senior',
-      'Staff',
-      'Lead',
-      'Principal',
-      'Director',
-      'VP',
-      'Executive'
+      'Mid Level',
+      'Senior'
     )
   );
 
