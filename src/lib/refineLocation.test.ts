@@ -14,6 +14,19 @@ test('refineVagueLocation lifts city from title when location is United Kingdom'
     );
 });
 
+test('refineVagueLocation lifts city from JD Location line', () => {
+    assert.strictEqual(
+        refineVagueLocation(
+            'United Kingdom',
+            'VodafoneThree - SbD Security Architect - Networks',
+            'https://jobs.vodafone.com/careers/job/123',
+            'uk',
+            'Location: Newbury + Hybrid\nSalary: Excellent basic salary',
+        ),
+        'Newbury',
+    );
+});
+
 test('sanitizeJobLocation replaces N Locations / Multiple locations placeholders', () => {
     assert.strictEqual(
         sanitizeJobLocation('2 Locations', 'uk', 'Lift Service Engineer - East London'),

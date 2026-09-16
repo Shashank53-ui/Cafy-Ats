@@ -41,7 +41,7 @@ export const RULES: [RegExp, string][] = [
     // Pharmaceutical — specific lab/GMP/drug-development *roles* only (not "Life Sciences" BD tags).
     [PHARMA_ROLE_SIGNAL, 'Pharmaceutical'],
     // Engineering (Hardware) — plant maintenance / reliability (not SRE)
-    [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded|machine operators?|factory automation|energy storage|shipbuild|packaging technicians?|maintenance technicians?|maintenance reliability|reliability managers?|plant (maintenance|reliability)|wind turbine|plant fitters?)\b|\bcomposite laminat\w*|\bpackaging technolog\w*/, 'Engineering (Hardware)'],
+    [/\b(hardware|electrical|electronics|mechanical|manufacturing|firmware|embedded (systems?|software|engineers?|developers?|firmware)|machine operators?|factory automation|energy storage|shipbuild|packaging technicians?|maintenance technicians?|maintenance reliability|reliability managers?|plant (maintenance|reliability)|wind turbine|plant fitters?)\b|\bcomposite laminat\w*|\bpackaging technolog\w*/, 'Engineering (Hardware)'],
     // Data — after Legal "data protection" override in inferJobSectorUnclamped
     [/\b(data(?!\s*cent)|analytics|statistics|sql|python|bi|business intelligence|dba|database administrator|customer targeting)\b/, 'Data'],
     // Finance
@@ -236,7 +236,55 @@ function inferJobSectorUnclamped(
     const d = (department || '').toLowerCase().trim();
     const combined = `${d} ${t}`.trim();
 
+    const builderRole =
+        /\b(engineers?|developers?|architects?|programmers?|scientists?|data scientists?|machine learning|devops|\bsre\b|mlops|product managers?|product owners?|product engineers?)\b/.test(
+            t,
+        );
+
+    // Commercial / GTM function beats product-domain words (Software, SaaS, Cloud,
+    // Cyber, AI, Data, Embedded Finance) — must run before those domain traps.
+    {
+        const salesFunction =
+            /\b(account executives?|account directors?|\bbdr\b|\bsdr\b|business development|sales (executives?|managers?|directors?|representatives?|advisors?|advisers?|consultants?|specialists?|associates?|leads?|leaders?)|software sales|saas sales|cloud sales|enterprise sales|enterprise partnerships|data partnerships|alliance managers?|partner managers?|partnership managers?|client partners?)\b/.test(
+                t,
+            ) ||
+            (/\bpartnerships?\b/.test(t) &&
+                !/\bproduct\b/.test(t) &&
+                !builderRole &&
+                !/\b(engineers?|developers?|architects?|scientists?)\b/.test(t)) ||
+            (/\bsales\b/.test(t) &&
+                !/\bsalesforce\b/.test(t) &&
+                !/\b(engineers?|developers?|architects?|programmers?|scientists?|analysts?|data scientists?)\b/.test(
+                    t,
+                ));
+        if (salesFunction && !builderRole) {
+            return 'Sales & Partnerships';
+        }
+    }
+
+    // "Embedded Finance" is a fintech product domain, not hardware/firmware.
+    if (/\bembedded finance\b/.test(t)) {
+        return 'Business & Strategy';
+    }
+
+    // People / marketing function also beats tech-domain modifiers
+    // ("Cloud Recruiter", "AI Marketing Manager") — but not builder roles.
+    if (!builderRole) {
+        if (/\b(recruiters?|talent acquisition|people partners?)\b/.test(t)) {
+            return 'HR / People';
+        }
+        if (
+            /\b(marketing managers?|marketing executives?|marketing directors?|brand managers?|growth marketers?|seo managers?|content marketers?)\b/.test(
+                t,
+            ) ||
+            (/\bmarketing\b/.test(t) && !/\b(engineers?|developers?|data scientists?|analysts?)\b/.test(t))
+        ) {
+            return 'Marketing & PR';
+        }
+    }
+
     // Applied AI / ML / ERP systems titles (avoid bare "ERP" NHS band noise like "*ERP*").
+    // Skip when the title is commercial (already returned above).
     if (
         /\b(applied ai|ai\/ml|ai & ml|machine learning|mlops|erp (transformation|consultant|specialist|analyst|manager|developer|implement))\b/.test(t) ||
         (/\b(ai|ml)\b/.test(t) && /\b(engineer|director|scientist|developer)\b/.test(t))
@@ -322,23 +370,15 @@ function inferJobSectorUnclamped(
 
     // Job function beats technology-domain modifiers ("Senior Auditor – Cloud"
     // is IT assurance advisory, not Engineering (Software)).
+    // Sales / AE / BD / recruiter / marketing already handled above (before AI traps).
     if (!BUILD_ROLE.test(t)) {
         if (/\b(auditors?|it audit|technology (audit|risk)|cyber audit|cloud audit)\b/.test(t)) {
             // Cloud/IT/cyber audit = advisory assurance. Statutory audit = Finance.
             // Either way it is not Engineering (Software) (`qa` / `cloud` used to steal it).
             return TECH_DOMAIN.test(t) ? 'Business & Strategy' : 'Finance';
         }
-        if (/\b(sales|account executives?|\bbdr\b|\bsdr\b)\b/.test(t)) {
-            return 'Sales & Partnerships';
-        }
-        if (/\b(recruiters?|talent acquisition)\b/.test(t)) {
-            return 'HR / People';
-        }
         if (/\b(tax|accountants?)\b/.test(t)) {
             return 'Finance';
-        }
-        if (/\b(marketing|seo|brand managers?)\b/.test(t) && !/\bdata\s*cent/.test(t)) {
-            return 'Marketing & PR';
         }
     }
 
