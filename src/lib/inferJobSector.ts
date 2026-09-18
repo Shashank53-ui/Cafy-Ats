@@ -241,6 +241,25 @@ function inferJobSectorUnclamped(
             t,
         );
 
+    // Legal practitioners beat finance/tax domain words ("Tax Solicitor", "Financial … Legal Counsel")
+    if (
+        /\b(lawyers?|solicitors?|attorneys?|barristers?|paralegals?|legal counsels?|general counsels?|\bcounsels?\b)\b/.test(
+            combined,
+        )
+    ) {
+        return 'Legal';
+    }
+
+    // Veterinary / animal clinical care beats retail "receptionist" and finance "financial package"
+    if (/\b(veterinary|veterinarian|\bvets?\b|veterinary nurses?|veterinary surgeons?)\b/.test(t)) {
+        return 'Healthcare & Social Care';
+    }
+
+    // People Partner before partnership/sales GTM patterns ("People Partner Manager")
+    if (!builderRole && /\b(recruiters?|talent acquisition|people partners?)\b/.test(t)) {
+        return 'HR / People';
+    }
+
     // Commercial / GTM function beats product-domain words (Software, SaaS, Cloud,
     // Cyber, AI, Data, Embedded Finance) — must run before those domain traps.
     {
@@ -251,7 +270,8 @@ function inferJobSectorUnclamped(
             (/\bpartnerships?\b/.test(t) &&
                 !/\bproduct\b/.test(t) &&
                 !builderRole &&
-                !/\b(engineers?|developers?|architects?|scientists?)\b/.test(t)) ||
+                !/\b(engineers?|developers?|architects?|scientists?)\b/.test(t) &&
+                !/\bpeople partners?\b/.test(t)) ||
             (/\bsales\b/.test(t) &&
                 !/\bsalesforce\b/.test(t) &&
                 !/\b(engineers?|developers?|architects?|programmers?|scientists?|analysts?|data scientists?)\b/.test(
@@ -383,7 +403,8 @@ function inferJobSectorUnclamped(
     }
 
     // Unambiguous legal-practitioner titles stay Legal (even "Finance Lawyer").
-    if (/\b(lawyer|solicitor|attorney)\b/.test(combined)) {
+    // (Also gated earlier; keep as safety net after tax/finance blocks.)
+    if (/\b(lawyer|solicitor|attorney|barrister|paralegal|legal counsel|general counsel|\bcounsel\b)\b/.test(combined)) {
         return 'Legal';
     }
 
@@ -510,10 +531,12 @@ function inferJobSectorUnclamped(
     }
 
     // Retail trading / shop-floor (before Finance / Software catch-alls)
+    // Veterinary receptionists are clinical admin, not retail reception.
     if (
-        /\b(online trading manager|trading assistant|customer and trading|stores? operative|fashion assistant|materials operator|deli assistant|\brunners?\b|receptionist|soho house)\b/.test(
+        /\b(online trading manager|trading assistant|customer and trading|stores? operative|fashion assistant|materials operator|deli assistant|\brunners?\b|soho house)\b/.test(
             t,
-        )
+        ) ||
+        (/\breceptionists?\b/.test(t) && !/\b(veterinary|veterinarian|\bvets?\b)\b/.test(t))
     ) {
         return 'Retail & Hospitality';
     }

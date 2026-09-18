@@ -135,6 +135,14 @@ function isStructuralSeniorTitle(t: string): boolean {
     return true;
   }
   if (/\bchief\s+[a-z]+\s+officers?\b/.test(t)) return true;
+  // Chief Engineer / Chief Nurse / Deputy Chief Nurse — senior grade (not "Chief … Office")
+  if (
+    /\b((deputy|assistant)\s+)?chief\s+(engineers?|nurses?|architects?|scientists?|surveyors?|technologists?|systems engineers?)\b/.test(
+      t,
+    )
+  ) {
+    return true;
+  }
   if (/\bpresidents?\b/.test(t) && !/\bvice presidents?\b/.test(t)) return true;
   if (/\b(founders?|co-founders?)\b/.test(t)) return true;
   if (/\b(managing|equity|founding)\s+partners?\b/.test(t)) return true;
@@ -258,9 +266,34 @@ function isFrontlineSupervisorTitle(t: string): boolean {
 type OverrideResult = JobLevelMatch | 'defer';
 
 function applyTitleOverrides(t: string): OverrideResult | null {
+  // Explicit Junior beats EA / PA mid default ("Junior Executive Assistant")
+  if (
+    /\b(juniors?|jr\.?)\b/.test(t) &&
+    (/\bexecutive assistants?\b/.test(t) ||
+      /\bpersonal assistants?\b/.test(t) ||
+      (/\bea\b/.test(t) && /\b(executive|personal)\b/.test(t)))
+  ) {
+    return { level: 'Junior', source: 'override:junior_executive_assistant' };
+  }
+
   // Executive / Personal Assistant — professional admin → Mid (not C-suite, not blank)
   if (/\bexecutive assistants?\b/.test(t) || (/\bea\b/.test(t) && /\b(executive|personal)\b/.test(t)) || /\bpersonal assistants?\b/.test(t)) {
     return { level: 'Mid Level', source: 'trap:executive_assistant_mid' };
+  }
+
+  // Kitchen Leader (hospitality) — Junior shift lead, not professional Mid "Leader"
+  if (/\bkitchen\s+leaders?\b/.test(t) && !hasSeniorityWord(t) && !isClinicalHealthcareLeaderContext(t)) {
+    return { level: 'Junior', source: 'trap:kitchen_leader_junior' };
+  }
+
+  // Care / home-care supervisors are operational Mid (not frontline "home care" Junior)
+  if (
+    /\bsupervisors?\b/.test(t) &&
+    /\b(home care|homecare|care|healthcare)\b/.test(t) &&
+    !isFrontlineSupervisorTitle(t) &&
+    !hasSeniorityWord(t)
+  ) {
+    return { level: 'Mid Level', source: 'trap:care_supervisor_mid' };
   }
 
   // Entry training beats C-suite tokens — but not when an explicit Senior grade is also present
@@ -439,7 +472,9 @@ const KEYWORD_TIERS: Tier[] = [
     level: 'Junior',
     source: 'title:frontline_junior',
     test: (t) =>
-      /\b(care assistants?|healthcare assistants?|\bhcas?\b|support workers?|care workers?|\bcarers?\b|home care)\b/.test(t) ||
+      // "home care" / carers — but not supervisors/managers (handled in overrides / Mid archetype)
+      (/\b(care assistants?|healthcare assistants?|\bhcas?\b|support workers?|care workers?|\bcarers?\b|home care)\b/.test(t) &&
+        !/\b(supervisors?|managers?)\b/.test(t)) ||
       /\b(kitchen assistants?|kitchen porters?|catering assistants?|dishwashers?|commis chefs?|deli assistants?)\b/.test(t) ||
       /\b(cashiers?|sales assistants?|shop assistants?|store assistants?|retail assistants?|team members?)\b/.test(t) ||
       /\b(sales associates?|retail associates?|store associates?|fragrance associates?|warehouse associates?)\b/.test(t) ||
@@ -483,7 +518,10 @@ const ARCHETYPE_TIERS: Tier[] = [
       /\b(foh|boh|front of house|back of house|maintenance persons?)\b/.test(t) ||
       /\b(paint sprayers?|sprayers?)\b/.test(t) ||
       (/\b(agents?|clerks?|operatives?|workers?)\b/.test(t) && !/\b(knowledge workers?|social workers?)\b/.test(t)) ||
-      (/\bassistants?\b/.test(t) && !/\b(executive|personal)\s+assistants?\b/.test(t)),
+      // Bare "assistant" is frontline — but not chef/cook/nurse/engineer assistants (professional Mid)
+      (/\bassistants?\b/.test(t) &&
+        !/\b(executive|personal)\s+assistants?\b/.test(t) &&
+        !/\b(chefs?|cooks?|nurses?|engineers?|managers?|directors?)\b/.test(t)),
   },
   {
     level: 'Mid Level',
@@ -498,7 +536,7 @@ const ARCHETYPE_TIERS: Tier[] = [
       /\b(veterinary surgeons?|\bvets?\b|pharmacists?|physiotherapists?|occupational therapists?|radiographers?|sonographers?|mammographers?|paramedics?|midwives|dentists?|orthodontists?|periodontists?|optometrists?|hygienists?|dietitians?|dieticians?|gps?\b|doctors?|physicians?|clinicians?|practitioners?|therapists?|physiologists?|psychologists?|counsell?ors?|assessors?|phlebotomists?)\b/.test(
         t,
       ) ||
-      /\b(sous chefs?|chefs?|cooks?|butchers?)\b/.test(t) ||
+      /\b(sous chefs?|assistant chefs?|chefs?|cooks?|butchers?)\b/.test(t) ||
       /\b(personal trainers?|fitness coach(?:es)?|coach(?:es)?|trainers?|beauty experts?)\b/.test(t) ||
       /\b(consultants?|specialists?|technicians?|surveyors?|solicitors?|paralegals?|accountants?|bookkeepers?|auditors?|underwriters?|actuaries?|architects?|counsels?|barristers?|lawyers?|advocates?|fee earners?|paraplanners?|negotiators?|adjusters?|investigators?|generalists?|professionals?|contractors?)\b/.test(
         t,

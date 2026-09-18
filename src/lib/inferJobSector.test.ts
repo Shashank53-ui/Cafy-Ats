@@ -111,9 +111,20 @@ const cases: Case[] = [
   { title: 'Banking Lawyer', expect: 'Legal' },
   { title: 'Insurance lawyer', expect: 'Legal' },
   { title: 'Structured Finance Lawyer', department: 'Dublin - Talent Management', expect: 'Legal' },
+  { title: 'Legal Counsel, Financial Regulatory & Product', expect: 'Legal' },
+  { title: 'Wills, Probate, Tax & Trusts Solicitor', expect: 'Legal' },
+  { title: 'Senior Paralegal - Asset Servicing', expect: 'Legal' },
   // Bare "legal" stays out of this pre-check — too ambiguous
   // ("Legal Entity Risk" is a genuine Finance/risk term).
   { title: 'VP, Enterprise Risk Management & Legal Entity Risk', expect: 'Finance' },
+
+  // Veterinary clinical / practice roles — not retail reception or finance package text
+  { title: 'Veterinary Receptionist', expect: 'Healthcare & Social Care' },
+  { title: 'Veterinary Receptionist (Part-Time)', expect: 'Healthcare & Social Care' },
+  { title: 'Lead Veterinary Surgeon - Financial Package up to £100,000!', expect: 'Healthcare & Social Care' },
+
+  // People Partner before partnership/sales GTM patterns
+  { title: 'People Partner Manager (Europe) - 12 Month FTC', expect: 'HR / People' },
 
   // "Product Designer" is a design discipline, not product management —
   // Design must win this collision regardless of rule order.
