@@ -7713,6 +7713,8 @@ export async function syncAll() {
                                 department: row.department,
                                 level: row.level,
                                 updated_at: row.updated_at,
+                                description: row.description,
+                                salary: row.salary,
                             };
                             if (!stripSector) next.sector = row.sector;
                             if (!stripSectorEmbedding && row.sector_embedding) {
