@@ -55,9 +55,10 @@ export const RULES: [RegExp, string][] = [
     // Includes NHS "Consultant [Specialty]" clinical grade titles — without these,
     // titles like "Consultant Psychiatrist" fall through to the bare `consultant`
     // catch-all below and land in Business & Strategy (found via audit, ~400+ jobs).
-    [/\b(health|medical|clinical|biomedical|nurses?|nursing|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|physiologists?|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|histolog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|hematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|serolog(?:y|ist)|biochemistr(?:y|ies)|blood sciences?|blood transfusions?|clinical psycholog(?:y|ist)|echocardiograph(?:er|y)|audiolog(?:y|ist)|pathology|dosimetrists?|healthcare scientists?|clinical scientists?|\ba\s*&\s*e\b|accident\s*&\s*emergency|home managers?|computed tomography|prescribers?|theatre practitioners?|scrub practitioners?|clinicians?)\b/, 'Healthcare'],
-    // Healthcare & Social Care
-    [/\b(dietitian|social worker|ward manager|carer|care worker|care home|social care|community care|matron|sonographer|podiatrist|care assistant|general practitioner|veterinary|practice manager|nursery|early years|after.?school|breakfast club|holiday club|childcare|childminder)\b/, 'Healthcare & Social Care'],
+    // Care assistants / care-home roles are Healthcare (not a separate HC&SC label).
+    [/\b(health|medical|clinical|biomedical|nurses?|nursing|doctor|physician|therapist|pharmacist|pharmacy|physiotherapist|physiologists?|radiographer|midwife|midwifery|paramedic|dentist|dental|optometrist|surgeon|surgery|gp|psychiatr(?:y|ist|ists|ic)|gastroenterolog(?:y|ist)|histopatholog(?:y|ist)|histolog(?:y|ist)|cardiolog(?:y|ist)|radiolog(?:y|ist)|rheumatolog(?:y|ist)|dermatolog(?:y|ist)|anaesthe(?:tics|tist|sia)|oncolog(?:y|ist)|neurolog(?:y|ist)|urolog(?:y|ist)|endocrinolog(?:y|ist)|haematolog(?:y|ist)|hematolog(?:y|ist)|nephrolog(?:y|ist)|gynaecolog(?:y|ist)|obstetric(?:s|ian)?|ophthalmolog(?:y|ist)|geriatric(?:ian)?|emergency medicine|stroke medicine|acute medicine|intensive care medicine|respiratory medicine|rehabilitation medicine|general medicine|pain management|paediatric(?:ian)?|neurophysiology|immunolog(?:y|ist)|microbiolog(?:y|ist)|virolog(?:y|ist)|serolog(?:y|ist)|biochemistr(?:y|ies)|blood sciences?|blood transfusions?|clinical psycholog(?:y|ist)|echocardiograph(?:er|y)|audiolog(?:y|ist)|pathology|dosimetrists?|healthcare scientists?|clinical scientists?|\ba\s*&\s*e\b|accident\s*&\s*emergency|home managers?|computed tomography|prescribers?|theatre practitioners?|scrub practitioners?|clinicians?|care assistants?|healthcare assistants?|\bhcas?\b|senior care assistants?|night care assistants?|care workers?|senior carers?|\bcarers?\b|veterinary|veterinarian|\bvets?\b|veterinary nurses?|veterinary surgeons?)\b/, 'Healthcare'],
+    // Healthcare & Social Care — social / early-years / care-home setting (non-clinical titles)
+    [/\b(dietitian|social worker|ward manager|social care|community care|matron|sonographer|podiatrist|general practitioner|practice manager|nursery|early years|after.?school|breakfast club|holiday club|childcare|childminder|care home)\b/, 'Healthcare & Social Care'],
     // Legal
     [/\b(legal|counsel|lawyer|attorney|solicitor|compliance|paralegal|data protection|gdpr|privacy analysts?|\bprivacy\b)\b/, 'Legal'],
     // Marketing & PR
@@ -252,7 +253,20 @@ function inferJobSectorUnclamped(
 
     // Veterinary / animal clinical care beats retail "receptionist" and finance "financial package"
     if (/\b(veterinary|veterinarian|\bvets?\b|veterinary nurses?|veterinary surgeons?)\b/.test(t)) {
-        return 'Healthcare & Social Care';
+        return 'Healthcare';
+    }
+
+    // Care assistants / carers — Healthcare (aligned label; not HC&SC).
+    // Do not use bare "care home" alone (chefs/admins at care homes stay other sectors).
+    if (
+        /\b(care assistants?|healthcare assistants?|\bhcas?\b|senior care assistants?|night care assistants?|care workers?|senior carers?|\bcarers?\b|home care assistants?)\b/.test(
+            t,
+        ) &&
+        !/\b(social workers?|nursery|childcare|childminder|chefs?|cooks?|maintenance|administrators?|co-?ordinators?|coordinators?)\b/.test(
+            t,
+        )
+    ) {
+        return 'Healthcare';
     }
 
     // People Partner before partnership/sales GTM patterns ("People Partner Manager")
@@ -352,8 +366,12 @@ function inferJobSectorUnclamped(
         }
     }
 
-    // Data centres are built environment, not the Data job family.
-    if (/\bdata\s*cent(re|er)s?\b/.test(t)) {
+    // Data centres are built environment, not the Data job family —
+    // except software/SWE builder roles working on data-centre products.
+    if (
+        /\bdata\s*cent(re|er)s?\b/.test(t) &&
+        !/\b(software|developers?|engineers?|architects?|devops|sre|programmers?)\b/.test(t)
+    ) {
         return 'Construction & Infrastructure';
     }
 
@@ -402,26 +420,47 @@ function inferJobSectorUnclamped(
         }
     }
 
+    // Sales & Marketing dual titles — sales function wins when "sales" is present
+    if (
+        /\bsales\b/.test(t) &&
+        /\bmarketing\b/.test(t) &&
+        !/\b(engineers?|developers?|architects?|scientists?)\b/.test(t)
+    ) {
+        return 'Sales & Partnerships';
+    }
+
+    // Marketing analytics analysts — marketing function over bare Data
+    if (
+        /\b(marketing|growth|paid social|search marketing)\b/.test(t) &&
+        /\b(data analysts?|analysts?)\b/.test(t) &&
+        !/\b(engineers?|scientists?)\b/.test(t)
+    ) {
+        return 'Marketing & PR';
+    }
+
     // Unambiguous legal-practitioner titles stay Legal (even "Finance Lawyer").
     // (Also gated earlier; keep as safety net after tax/finance blocks.)
     if (/\b(lawyer|solicitor|attorney|barrister|paralegal|legal counsel|general counsel|\bcounsel\b)\b/.test(combined)) {
         return 'Legal';
     }
 
-    // Privacy / GDPR roles — before bare "data" → Data.
-    if (/\b(data protection|gdpr|privacy (analyst|officer|manager|counsel))\b/.test(t)) {
-        return 'Legal';
-    }
-
-    // SWE titles beat financial-domain modifiers ("Equities Algo Trading").
+    // SWE builder titles beat Legal "data protection" and Construction "data centre"
     if (
-        /\b(java|esoftware|e-?software|golang|typescript|kotlin)\b/.test(t) &&
-        /\b(engineers?|developers?|programmers?)\b/.test(t)
+        /\b(software engineers?|software developers?|software development managers?|solutions? architects?|software architects?)\b/.test(
+            t,
+        ) ||
+        (/\b(engineers?|developers?|programmers?)\b/.test(t) &&
+            /\b(java|golang|typescript|kotlin|fullstack|full[\s-]?stack|backend|frontend)\b/.test(t))
     ) {
         return 'Engineering (Software)';
     }
-    if (/\b(software engineers?|software developers?)\b/.test(t)) {
-        return 'Engineering (Software)';
+
+    // Privacy / GDPR roles — before bare "data" → Data. (Not software engineers.)
+    if (
+        /\b(data protection|gdpr|privacy (analyst|officer|manager|counsel))\b/.test(t) &&
+        !/\b(software|engineers?|developers?|architects?)\b/.test(t)
+    ) {
+        return 'Legal';
     }
 
     // Merchandising: brand/field "Sales Merchandiser" is Sales; shop-floor

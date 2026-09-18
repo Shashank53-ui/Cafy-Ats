@@ -95,8 +95,17 @@ assert.equal(inferJobLevel('Assistant Chef'), 'Mid Level');
 assert.equal(inferJobLevel('Caterlink - Assistant Chef'), 'Mid Level');
 assert.equal(inferJobLevel('Head Chef'), 'Senior');
 assert.equal(inferJobLevel('Chief Engineer'), 'Senior');
+assert.equal(inferJobLevel('Chief Project Engineer'), 'Senior');
 assert.equal(inferJobLevel('Deputy Chief Nurse'), 'Senior');
 assert.equal(inferJobLevel('Assistant Chief Engineer'), 'Senior');
+assert.equal(inferJobLevel('Executive Chief Digital Information Officer'), 'Senior');
+assert.equal(inferJobLevel('Vice President, Scrum Leader'), 'Senior');
+assert.equal(
+  inferJobLevel('Corporate Tax Senior Associate / Assistant Manager'),
+  'Senior',
+);
+assert.equal(inferJobLevel('Graduate - Junior AI / ML Software Engineer'), 'Junior');
+assert.equal(inferJobLevel('Software Development Manager'), 'Senior');
 assert.equal(inferJobLevel('Kitchen Leader'), 'Junior');
 assert.equal(inferJobLevel('Kitchen Leader - John Lewis, Stratford'), 'Junior');
 assert.equal(inferJobLevel('Home Care Supervisor'), 'Mid Level');

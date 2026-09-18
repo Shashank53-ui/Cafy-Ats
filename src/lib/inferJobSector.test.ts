@@ -119,9 +119,17 @@ const cases: Case[] = [
   { title: 'VP, Enterprise Risk Management & Legal Entity Risk', expect: 'Finance' },
 
   // Veterinary clinical / practice roles — not retail reception or finance package text
-  { title: 'Veterinary Receptionist', expect: 'Healthcare & Social Care' },
-  { title: 'Veterinary Receptionist (Part-Time)', expect: 'Healthcare & Social Care' },
-  { title: 'Lead Veterinary Surgeon - Financial Package up to £100,000!', expect: 'Healthcare & Social Care' },
+  { title: 'Veterinary Receptionist', expect: 'Healthcare' },
+  { title: 'Veterinary Receptionist (Part-Time)', expect: 'Healthcare' },
+  { title: 'Lead Veterinary Surgeon - Financial Package up to £100,000!', expect: 'Healthcare' },
+  { title: 'Care Assistant - Care Home', expect: 'Healthcare' },
+  { title: 'Senior Care Assistant', expect: 'Healthcare' },
+  { title: 'Night Care Assistant - Bank', expect: 'Healthcare' },
+  { title: "Experienced HCA's - Healthcare Research Project - Cumbria", expect: 'Healthcare' },
+  { title: 'Global Sales & Marketing – CEEMEA FX Sales – Analyst', expect: 'Sales & Partnerships' },
+  { title: 'Senior Data Analyst (Marketing Analytics)', expect: 'Marketing & PR' },
+  { title: 'Senior Software Engineer, Customer Data Protection', expect: 'Engineering (Software)' },
+  { title: 'Software Development Manager - Industrial Controls, Data Center Builder Tools', expect: 'Engineering (Software)' },
 
   // People Partner before partnership/sales GTM patterns
   { title: 'People Partner Manager (Europe) - 12 Month FTC', expect: 'HR / People' },

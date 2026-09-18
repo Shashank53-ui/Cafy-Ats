@@ -135,14 +135,16 @@ function isStructuralSeniorTitle(t: string): boolean {
     return true;
   }
   if (/\bchief\s+[a-z]+\s+officers?\b/.test(t)) return true;
-  // Chief Engineer / Chief Nurse / Deputy Chief Nurse — senior grade (not "Chief … Office")
+  // Chief Engineer / Chief Nurse / Chief Project|Systems Engineer (not "Chief … Office")
   if (
-    /\b((deputy|assistant)\s+)?chief\s+(engineers?|nurses?|architects?|scientists?|surveyors?|technologists?|systems engineers?)\b/.test(
+    /\b((deputy|assistant)\s+)?chief\s+(project\s+|systems?\s+|software\s+|data\s+|digital\s+)?(engineers?|nurses?|architects?|scientists?|surveyors?|technologists?)\b/.test(
       t,
     )
   ) {
     return true;
   }
+  // Multi-word C-suite: Chief Digital Information Officer (not Chief Control Office)
+  if (/\bchief(?:\s+[a-z]+){1,3}\s+officers?\b/.test(t)) return true;
   if (/\bpresidents?\b/.test(t) && !/\bvice presidents?\b/.test(t)) return true;
   if (/\b(founders?|co-founders?)\b/.test(t)) return true;
   if (/\b(managing|equity|founding)\s+partners?\b/.test(t)) return true;
@@ -298,13 +300,15 @@ function applyTitleOverrides(t: string): OverrideResult | null {
 
   // Entry training beats C-suite tokens — but not when an explicit Senior grade is also present
   // e.g. "Trainee Senior Staff Nurse" stays Entry; "Senior PM (Campus)" must NOT become Entry
-  if (isEntryTrainingTitle(t) && !/\b(seniors?|snr\.?|sr\.?)\b/.test(t)) {
+  // Explicit Junior in the title (Graduate - Junior Engineer) beats Entry training default
+  if (isEntryTrainingTitle(t) && !/\b(seniors?|snr\.?|sr\.?)\b/.test(t) && !/\b(juniors?|jr\.?)\b/.test(t)) {
     return { level: 'Entry Level', source: 'override:entry_beats_exec' };
   }
   // True trainee/intern even with "senior" in the title (Trainee Senior Staff Nurse)
   if (
     /\b(interns?|internships?|apprentices?|trainees?|graduates?|entry[\s-]?level)\b/.test(t) &&
-    isEntryTrainingTitle(t)
+    isEntryTrainingTitle(t) &&
+    !/\b(juniors?|jr\.?)\b/.test(t)
   ) {
     return { level: 'Entry Level', source: 'override:entry_training' };
   }
@@ -342,6 +346,10 @@ function applyTitleOverrides(t: string): OverrideResult | null {
   }
 
   if (/\bassistant managers?\b/.test(t)) {
+    // "Senior Associate / Assistant Manager" band → Senior wins over Mid assistant-manager
+    if (/\b(seniors?|snr\.?|sr\.?)\b/.test(t)) {
+      return { level: 'Senior', source: 'override:senior_beats_assistant_manager' };
+    }
     return { level: 'Mid Level', source: 'trap:assistant_manager' };
   }
 
@@ -384,6 +392,12 @@ function applyTitleOverrides(t: string): OverrideResult | null {
     (/\bchief\s+\w+(?:\s+\w+)?\s+office\b/.test(t) || /\boffice of the\s+(coo|cfo|ceo|cto)\b/.test(t))
   ) {
     return { level: 'Senior', source: 'override:senior_beats_chief_office' };
+  }
+
+  // Structural senior (VP / Director / Chief …) before professional "Leader" Mid default
+  // e.g. "Vice President, Scrum Leader" must stay Senior
+  if (isStructuralSeniorTitle(t) && !isEntryTrainingTitle(t)) {
+    return { level: 'Senior', source: 'override:structural_senior' };
   }
 
   // Head Chef / Executive Chef — kitchen leadership → Senior
@@ -448,8 +462,8 @@ const KEYWORD_TIERS: Tier[] = [
         !/\bstaff\s+(nurses?|midwives|midwife|hcas?|healthcare assistants?|accountants?|attorneys?|solicitors?)\b/.test(t) &&
         !/\b(deli|floor|kitchen|waiting|bar|shop|store|retail|sales|warehouse|support)\s+staff\b/.test(t)) ||
       (/\bleads?\b/.test(t) && !/\blead\s*gen(eration)?\b/.test(t) && !/\b(shift|sales)\s+leads?\b/.test(t)) ||
-      (/\b(software|engineering)\s+managers?\b/.test(t) && !/\bassistant managers?\b/.test(t)) ||
-      /\b(senior managers?|general managers?|regional managers?|engineering managers?)\b/.test(t),
+      (/\b(software|engineering|development)\s+managers?\b/.test(t) && !/\bassistant managers?\b/.test(t)) ||
+      /\b(senior managers?|general managers?|regional managers?|engineering managers?|software development managers?)\b/.test(t),
   },
   {
     level: 'Junior',
@@ -459,14 +473,15 @@ const KEYWORD_TIERS: Tier[] = [
       /\bstaff\s*\([^)]*(full|part)\s*time/.test(t),
   },
   {
-    level: 'Entry Level',
-    source: 'title:entry',
-    test: (t) => isEntryTrainingTitle(t),
-  },
-  {
     level: 'Junior',
     source: 'title:junior',
     test: (t) => /\b(juniors?|jr\.?)\b/.test(t),
+  },
+  {
+    level: 'Entry Level',
+    source: 'title:entry',
+    // Explicit Junior grade in title beats graduate/entry training default
+    test: (t) => isEntryTrainingTitle(t) && !/\b(juniors?|jr\.?)\b/.test(t),
   },
   {
     level: 'Junior',
