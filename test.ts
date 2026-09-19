@@ -1,0 +1,1 @@
+import { fetchCustom } from './src/scripts/customScrapers'; async function test() { const jobs = await fetchCustom('https://careers.capgemini.com/', {id: 1774, name: 'Capgemini'} as any); console.log(jobs.length, jobs[0]); } test();

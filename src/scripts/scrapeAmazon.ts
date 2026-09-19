@@ -5,6 +5,7 @@ import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { sanitizeJobLocation } from '../lib/refineLocation';
 import { resolveJobLevel } from '../lib/resolveJobLevel';
 import { resolveJobType } from '../lib/parseJobType';
+import { cleanInlineJD } from './customScrapers';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
@@ -135,6 +136,14 @@ async function scrapeAmazon() {
             const title = truncate(job.title, 500);
             const resolved = await resolveJobLevel({ title, description: job.description_external || job.basic_qualifications });
             const level = resolved.level;
+
+            const fullDesc = [
+                job.description || job.description_external,
+                job.basic_qualifications ? `<h3>Basic Qualifications</h3><br>${job.basic_qualifications}` : '',
+                job.preferred_qualifications ? `<h3>Preferred Qualifications</h3><br>${job.preferred_qualifications}` : ''
+            ].filter(Boolean).join('<br><br>');
+            const cleanDescription = cleanInlineJD(fullDesc);
+
             const { error: upsertError } = await supabase
                 .from('jobs')
                 .upsert({
@@ -146,6 +155,7 @@ async function scrapeAmazon() {
                     level,
                     level_source: resolved.source,
                     location: truncate(sanitizeJobLocation(locationStr, 'uk', job.title, absoluteUrl), 500),
+                    description: cleanDescription,
                     job_type: resolveJobType({
                         employment: job.job_schedule_type,
                         title,

@@ -208,6 +208,39 @@ export async function fetchCustom(url: string, company?: CompanyRow): Promise<Jo
     return [];
 }
 
+export function cleanInlineJD(rawHtmlOrText?: string): string | undefined {
+    if (!rawHtmlOrText || typeof rawHtmlOrText !== 'string') return undefined;
+
+    // Quick length check
+    if (rawHtmlOrText.trim().length < 100) return undefined;
+
+    // Convert HTML to clean text
+    if (rawHtmlOrText.includes('<') && rawHtmlOrText.includes('>')) {
+        const $ = cheerio.load(rawHtmlOrText);
+        $('script, style, iframe, noscript, svg, nav, footer, header').remove();
+
+        // Convert block elements to logical newlines
+        $('br').replaceWith('\n');
+        $('p, div, h1, h2, h3, h4, h5, h6').each(function() { $(this).append('\n\n'); });
+        $('li').each(function() { $(this).prepend('• ').append('\n'); });
+
+        let text = $.text();
+
+        // Clean up spacing
+        text = text.replace(/[ \t]+/g, ' '); // collapse inline spaces
+        text = text.replace(/^ | $/gm, ''); // remove leading/trailing spaces on each line
+        text = text.replace(/\n{3,}/g, '\n\n'); // collapse multiple newlines
+
+        const cleanText = text.trim();
+        if (cleanText.length < 300) return undefined;
+
+        // Return perfectly formatted plain text
+        return cleanText;
+    }
+
+    return rawHtmlOrText.trim();
+}
+
 async function fetchAmpa(url: string): Promise<Job[]> {
     try {
         const r = await fetchWithTimeout(`https://careers.ampa.co.uk/postings.json`, {
@@ -224,11 +257,22 @@ async function fetchAmpa(url: string): Promise<Job[]> {
             } else {
                 location = String(locRaw || '');
             }
+            const fullDescription = [
+                j.description,
+                j.key_responsibilities_header ? `<strong>${j.key_responsibilities_header}</strong>` : '',
+                j.key_responsibilities,
+                j.skills_knowledge_expertise_header ? `<strong>${j.skills_knowledge_expertise_header}</strong>` : '',
+                j.skills_knowledge_expertise,
+                j.benefits_header ? `<strong>${j.benefits_header}</strong>` : '',
+                j.benefits
+            ].filter(Boolean).join('<br/><br/>');
+
             return {
                 title: j.title || '',
                 location,
                 url: j.url || `https://careers.ampa.co.uk${j.path || ''}`,
                 department: j.job?.department?.name || '',
+                description: cleanInlineJD(fullDescription),
                 salary: undefined
             };
         });
@@ -835,13 +879,25 @@ async function fetchInfobric(url: string): Promise<Job[]> {
                     const loc = j._jobposting?.jobLocation?.[0]?.address?.addressLocality ||
                                 j._jobposting?.jobLocation?.[0]?.address?.addressCountry ||
                                 j['human-location'] || '';
-                    jobs.push({ title: j.title, url: j.url, location: loc, department: '' });
+                    jobs.push({
+                        title: j.title,
+                        url: j.url,
+                        location: loc,
+                        department: '',
+                        description: cleanInlineJD(j.content_html)
+                    });
                 }
             } else if (data.data) {
                 for (const j of data.data) {
                     const attrs = j.attributes || {};
                     const loc = attrs['human-location'] || '';
-                    jobs.push({ title: attrs.title, url: j.links?.careersite_job_url || '', location: loc, department: '' });
+                    jobs.push({
+                        title: attrs.title,
+                        url: j.links?.careersite_job_url || '',
+                        location: loc,
+                        department: '',
+                        description: cleanInlineJD(attrs.body || attrs.pitch)
+                    });
                 }
             }
         }
@@ -858,7 +914,13 @@ async function fetchOtrium(url: string): Promise<Job[]> {
             const data = await res.json();
             for (const j of (data.jobs || [])) {
                 let loc = j.location?.site?.name || j.location?.site?.country || 'Remote';
-                jobs.push({ title: j.title, url: `https://careers.otrium.com/jobs/${j.id}`, location: loc, department: j.department || '' });
+                jobs.push({
+                    title: j.title,
+                    url: `https://careers.otrium.com/jobs/${j.id}`,
+                    location: loc,
+                    department: j.department || '',
+                    description: cleanInlineJD(j.description)
+                });
             }
         }
     } catch (e: any) { console.error('[Otrium] Error:', e.message); }
@@ -949,7 +1011,13 @@ async function fetchAize(url: string): Promise<Job[]> {
                 const loc = j._jobposting?.jobLocation?.[0]?.address?.addressLocality ||
                             j._jobposting?.jobLocation?.[0]?.address?.addressCountry ||
                             j['human-location'] || '';
-                jobs.push({ title: j.title, url: j.url, location: loc, department: '' });
+                jobs.push({
+                    title: j.title,
+                    url: j.url,
+                    location: loc,
+                    department: '',
+                    description: cleanInlineJD(j.content_html)
+                });
             }
         }
     } catch (e: any) { console.error('[Aize] Error:', e.message); }
@@ -960,11 +1028,17 @@ async function fetchMindFoundry(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
     console.log('[Custom: Mind Foundry] Fetching Greenhouse API...');
     try {
-        const res = await fetchWithTimeout('https://boards-api.greenhouse.io/v1/boards/mindfoundry/jobs');
+        const res = await fetchWithTimeout('https://boards-api.greenhouse.io/v1/boards/mindfoundry/jobs?content=true');
         if (res.ok) {
             const data = await res.json();
             for (const j of data.jobs) {
-                jobs.push({ title: j.title, url: j.absolute_url, location: j.location?.name || 'Remote', department: '' });
+                jobs.push({
+                    title: j.title,
+                    url: j.absolute_url,
+                    location: j.location?.name || 'Remote',
+                    department: '',
+                    description: cleanInlineJD(j.content)
+                });
             }
         }
     } catch (e: any) { console.error('[Mind Foundry] Error:', e.message); }
@@ -975,11 +1049,17 @@ async function fetchClue(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
     console.log('[Custom: Clue] Fetching Greenhouse API...');
     try {
-        const res = await fetchWithTimeout('https://boards-api.greenhouse.io/v1/boards/helloclue/jobs');
+        const res = await fetchWithTimeout('https://boards-api.greenhouse.io/v1/boards/helloclue/jobs?content=true');
         if (res.ok) {
             const data = await res.json();
             for (const j of data.jobs) {
-                jobs.push({ title: j.title, url: j.absolute_url, location: j.location?.name || 'Remote', department: '' });
+                jobs.push({
+                    title: j.title,
+                    url: j.absolute_url,
+                    location: j.location?.name || 'Remote',
+                    department: '',
+                    description: cleanInlineJD(j.content)
+                });
             }
         }
     } catch (e: any) { console.error('[Clue] Error:', e.message); }
@@ -1463,7 +1543,7 @@ async function fetchElastic(url: string): Promise<Job[]> {
 async function fetchFromGreenhouse(boardToken: string, label: string): Promise<Job[]> {
     const jobs: Job[] = [];
     try {
-        const res = await fetchWithTimeout(`https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs`);
+        const res = await fetchWithTimeout(`https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs?content=true`);
         if (!res.ok) {
             console.log(`[Custom: ${label}] Failed to fetch: ${res.statusText}`);
             return [];
@@ -1484,6 +1564,7 @@ async function fetchFromGreenhouse(boardToken: string, label: string): Promise<J
                         url: item.absolute_url,
                         job_type: parseJobType(jobTypeMeta || item.employment_type || item.type || item.employmentType) ?? undefined,
                         salary,
+                        description: cleanInlineJD(item.content),
                         atsProvider: 'greenhouse',
                     });
                 }
@@ -1756,7 +1837,8 @@ async function fetchCynergy(url: string): Promise<Job[]> {
                     title: j.title || '',
                     url: j.url || '',
                     location: 'United Kingdom',
-                    department: ''
+                    department: '',
+                    description: cleanInlineJD(j.content_html)
                 });
             }
         }
@@ -1768,44 +1850,55 @@ async function fetchCynergy(url: string): Promise<Job[]> {
 
 async function fetchCapgemini(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
-    console.log('[Custom: Capgemini] Fetching jobs via API...');
-    
+    console.log('[Custom: Capgemini] Fetching jobs via API (Paginated)...');
+
     try {
-        const targetUrl = `https://cg-jobstream-api.azurewebsites.net/api/job-search?country_code=en-gb%2Cgb-en%2Cen-gb%2Cgb-en&page=1&size=500`;
-        
-        const res = await fetchWithTimeout(targetUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json'
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore && page <= 20) { // arbitrary cap to prevent infinite loops
+            const targetUrl = `https://cg-jobstream-api.azurewebsites.net/api/job-search?country_code=en-gb%2Cgb-en%2Cen-gb%2Cgb-en&page=${page}&size=100`;
+
+            const res = await fetchWithTimeout(targetUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'application/json'
+                }
+            }, 30000); // 30s per page
+
+            if (!res.ok) {
+                console.error(`[Custom: Capgemini] API failed with status ${res.status}: ${res.statusText}`);
+                break;
             }
-        }, 60000);
-        
-        if (!res.ok) {
-            console.error(`[Custom: Capgemini] API failed with status ${res.status}: ${res.statusText}`);
-            return jobs;
-        }
-        
-        const result = await res.json();
-        const items = result.data || [];
-        
-        for (const job of items) {
-            if (job.title && (job.apply_job_url || job.wp_url)) {
-                const jobType = inferJobTypeFromListing({
-                    employmentField: job.contract_type || job.employment_type,
-                });
-                jobs.push({
-                    title: job.title,
-                    location: job.location || job.city || 'United Kingdom',
-                    url: job.apply_job_url || job.wp_url,
-                    department: job.sbu || job.professional_communities || '',
-                    ...(jobType ? { job_type: jobType } : {}),
-                });
+
+            const result = await res.json();
+            const items = result.data || [];
+            if (items.length === 0) break;
+
+            for (const job of items) {
+                if (job.title && (job.apply_job_url || job.wp_url)) {
+                    const jobType = inferJobTypeFromListing({
+                        employmentField: job.contract_type || job.employment_type,
+                    });
+                    jobs.push({
+                        title: job.title,
+                        location: job.location || job.city || 'United Kingdom',
+                        url: job.apply_job_url || job.wp_url,
+                        department: job.sbu || job.professional_communities || '',
+                        description: cleanInlineJD(job.job_description || job.description),
+                        ...(jobType ? { job_type: jobType } : {}),
+                    });
+                }
             }
+
+            if (items.length < 100) hasMore = false;
+            page++;
+            await new Promise(r => setTimeout(r, 500)); // sleep to respect rate limits
         }
     } catch (e: any) {
         console.error('[Capgemini] Error:', e.message);
     }
-    
+
     const uniqueJobs = Array.from(new Map(jobs.map(j => [j.url, j])).values());
     console.log(`[Custom: Capgemini] Found ${uniqueJobs.length} jobs.`);
     return uniqueJobs;
@@ -2067,31 +2160,38 @@ async function fetchJibeApi(baseUrl: string, companyName: string): Promise<Job[]
                 const res = await fetchWithTimeout(searchUrl, {
                     headers: { 'User-Agent': 'Mozilla/5.0' }
                 });
-                
+
                 if (!res.ok) {
                     console.log(`[Custom: ${companyName}] Failed to fetch page ${page}: ${res.statusText}`);
                     break;
                 }
-                
+
                 const data: any = await res.json();
-                
+
                 if (page === 1) {
                     totalPages = Math.ceil((data.totalCount || 0) / 100) || 1;
                     console.log(`[Custom: ${companyName}] Found ${data.totalCount || 0} jobs. Total pages: ${totalPages}`);
                 }
-                
+
                 for (const item of data.jobs || []) {
                     const jData = item.data || {};
                     const title = jData.title;
                     const canonicalUrl = jData.meta_data?.canonical_url || jData.apply_url;
                     const location = jData.full_location || jData.country || decodeURIComponent(locCode);
                     const department = (jData.category && jData.category.length > 0) ? jData.category[0].trim() : '';
-                    
+                    const description = jData.description || jData.content || '';
+
                     if (title && canonicalUrl) {
-                        jobs.push({ title, url: canonicalUrl, location, department });
+                        jobs.push({
+                            title,
+                            url: canonicalUrl,
+                            location,
+                            department,
+                            description: cleanInlineJD(description)
+                        });
                     }
                 }
-                
+
                 page++;
                 await new Promise(r => setTimeout(r, 500));
             }
@@ -2514,7 +2614,12 @@ async function fetchProsek(url: string): Promise<Job[]> {
                 const jobUrl = job.absolute_url;
                 const location = job.location?.name || 'Unknown';
                 if (title && jobUrl) {
-                    jobs.push({ title, url: jobUrl, location });
+                    jobs.push({
+                        title,
+                        url: jobUrl,
+                        location,
+                        description: cleanInlineJD(job.content)
+                    });
                 }
             }
         }
