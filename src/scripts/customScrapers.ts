@@ -803,7 +803,7 @@ async function fetchBaeSystems(url: string): Promise<Job[]> {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                     'Accept-Language': 'en-US,en;q=0.9'
                 }
-            }, 30000);
+            });
             
             if (!res.ok) {
                 break;
@@ -1935,7 +1935,7 @@ async function fetchCapgemini(url: string): Promise<Job[]> {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'application/json'
                 }
-            }, 30000); // 30s per page
+            }, 60000) // 60s per page
 
             if (!res.ok) {
                 console.error(`[Custom: Capgemini] API failed with status ${res.status}: ${res.statusText}`);
