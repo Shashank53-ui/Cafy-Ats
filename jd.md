@@ -35,8 +35,8 @@ These companies use documented REST APIs or predictable JSON structures that **a
 
 **Jibe & Eightfold APIs**
 - ~~**AXA** *(Jibe)*~~ **[IMPLEMENTED]**
-- **Aon** *(Jibe)*
-- **Qualcomm** *(Eightfold)*
+- ~~**Aon** *(Jibe)*~~ **[IMPLEMENTED]**
+- ~~**Qualcomm** *(Eightfold)*~~ **[IMPLEMENTED]**
 
 ---
 

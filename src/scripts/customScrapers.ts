@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { Job, CompanyRow, fetchWithTimeout, fetchPhenom, fetchOracleCloud } from './syncAll';
 import { inferJobTypeFromListing, parseJobType } from '../lib/parseJobType';
+import pLimit from "p-limit";
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
@@ -2792,15 +2793,15 @@ async function fetchUHG(url: string): Promise<Job[]> {
 }
 
 async function fetchQualcomm(): Promise<Job[]> {
-    const allJobs: Job[] = [];
+    const rawPositions: any[] = [];
     let start = 0;
     const PAGE_SIZE = 10;
-    
+
     while (start < 3000) { // Safety limit to cover ~3000 jobs
         try {
             const url = `https://careers.qualcomm.com/api/pcsx/search?domain=qualcomm.com&query=&start=${start}&sort_by=timestamp`;
             console.log(`[Custom: Qualcomm] Fetching start=${start} -> ${url}`);
-            
+
             const res = await fetchWithTimeout(url, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
@@ -2812,22 +2813,16 @@ async function fetchQualcomm(): Promise<Job[]> {
                 console.log(`[Custom: Qualcomm] HTTP error ${res.status}`);
                 break;
             }
-            
+
             const d = await res.json();
             const positions = d.data?.positions || [];
-            
+
             if (positions.length === 0) break;
 
-            allJobs.push(...positions.map((p: any) => ({
-                title: p.name || '',
-                location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
-                url: `https://careers.qualcomm.com${p.positionUrl}?domain=qualcomm.com`,
-                department: p.department || '',
-                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
-            })));
+            rawPositions.push(...positions);
 
             if (positions.length < PAGE_SIZE) break;
-            
+
             start += positions.length;
             await new Promise(resolve => setTimeout(resolve, 500));
         } catch (err: any) {
@@ -2835,6 +2830,45 @@ async function fetchQualcomm(): Promise<Job[]> {
             break;
         }
     }
-    
+
+    // Concurrently fetch job descriptions for all collected positions
+    const limit = pLimit(10);
+    const allJobs: Job[] = [];
+
+    await Promise.all(rawPositions.map(p => limit(async () => {
+        try {
+            const detailUrl = `https://careers.qualcomm.com/api/apply/v2/jobs/${p.id}?domain=qualcomm.com`;
+            const detailRes = await fetchWithTimeout(detailUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0',
+                    'Accept': 'application/json'
+                }
+            });
+            let description = '';
+            if (detailRes.ok) {
+                const detailData = await detailRes.json();
+                description = detailData.job_description || '';
+            }
+
+            allJobs.push({
+                title: p.name || '',
+                location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
+                url: `https://careers.qualcomm.com${p.positionUrl}?domain=qualcomm.com`,
+                department: p.department || '',
+                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined,
+                description: cleanInlineJD(description)
+            });
+        } catch (err: any) {
+            console.log(`[Custom: Qualcomm] Error fetching detail for ${p.id}: ${err.message}`);
+            allJobs.push({
+                title: p.name || '',
+                location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
+                url: `https://careers.qualcomm.com${p.positionUrl}?domain=qualcomm.com`,
+                department: p.department || '',
+                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
+            });
+        }
+    })));
+
     return allJobs;
 }
