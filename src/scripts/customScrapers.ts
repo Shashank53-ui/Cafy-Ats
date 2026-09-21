@@ -6,7 +6,40 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 puppeteer.use(StealthPlugin());
-export async function fetchCustom(url: string, company?: CompanyRow): Promise<Job[]> {
+async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promise<void> {
+    const limit = pLimit(10);
+    await Promise.all(jobs.map(j => limit(async () => {
+        if (j.description && j.description.length > 50) return;
+
+        try {
+            const res = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) return;
+            const html = await res.text();
+            let $ = cheerio.load(html);
+
+            // JLR / SuccessFactors edge case: Some return a script wrapping HTML or block entirely without cookies, but we try parsing anyway.
+            const selectors = [
+                '[data-id="job-description"]', '.job-description', '#job-description',
+                '.jobDescription', '.jobdescription', '.joblayouttoken', '#jd-description',
+                'div[itemprop="description"]', 'section[itemprop="description"]', '.posting-description',
+                '.job-details', '.description', '.jd-info', 'article', 'main.content', 'main'
+            ];
+
+            for (const sel of selectors) {
+                if ($(sel).length && $(sel).first().text().trim().length > 100) {
+                    j.description = cleanInlineJD($(sel).first().html() || '');
+                    if (j.description) return;
+                }
+            }
+
+            j.description = cleanInlineJD($('body').html() || '');
+        } catch (err: any) {
+            console.log(`[enrichHtml] Error fetching JD for ${j.url}: ${err.message}`);
+        }
+    })));
+}
+
+async function fetchCustomInternal(url: string, company?: CompanyRow): Promise<Job[]> {
     console.log(`[fetchCustom] Routing provider. Company ID: ${company?.id}, URL: "${url}"`);
     if (company?.id === 294 || url.includes('bbc.co.uk')) {
         return fetchBBC(url);
@@ -284,7 +317,10 @@ async function fetchAmpa(url: string): Promise<Job[]> {
 }
 
 async function fetchSerco(url: string): Promise<Job[]> {
+    const rawJobs: any[] = [];
     const allJobs: Job[] = [];
+    let csrfToken = '';
+
     try {
         let from = 0;
         let totalHits = 1;
@@ -296,7 +332,13 @@ async function fetchSerco(url: string): Promise<Job[]> {
             if (!initRes.ok) break;
             
             const html = await initRes.text();
-            const match = html.match(/"eagerLoadRefineSearch"\s*:\s*(\{[\s\S]*?\})\s*,\s*"jobwidgetsettings"/);
+
+            if (!csrfToken) {
+                const csrfMatch = html.match(/"csrfToken"s*:s*"([^"]+)"/);
+                if (csrfMatch) csrfToken = csrfMatch[1];
+            }
+
+            const match = html.match(/"eagerLoadRefineSearch"s*:s*({[sS]*?})s*,s*"jobwidgetsettings"/);
             if (!match) break;
             
             const data = JSON.parse(match[1]);
@@ -309,23 +351,51 @@ async function fetchSerco(url: string): Promise<Job[]> {
             if (jobs[0].jobId === lastFirstJobId) break;
             lastFirstJobId = jobs[0].jobId;
             
-            for (const j of jobs) {
-                const slug = (j.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-                allJobs.push({
-                    title: j.title || '',
-                    location: j.location || j.cityStateCountry || '',
-                    url: `https://careers.serco.com/gb/en/job/${j.jobId}/${slug}`,
-                    department: j.category || '',
-                    salary: undefined
-                });
-            }
+            rawJobs.push(...jobs);
             
             from += jobs.length;
-            // sleep is not imported in customScrapers.ts, so we use a small manual delay
             await new Promise(r => setTimeout(r, 1000));
         }
-    } catch (e) {
-        console.error('[Custom: Serco] Error:', e);
+
+        const limit = pLimit(10);
+        await Promise.all(rawJobs.map(j => limit(async () => {
+            let description = '';
+            try {
+                const jobSeqNo = String(j.jobSeqNo || j.jobseqno || '');
+                const locale = String(j.locale || 'en_gb');
+                const req = await fetchWithTimeout("https://careers.serco.com/widgets", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0",
+                        "X-CSRF-Token": csrfToken
+                    },
+                    body: JSON.stringify({
+                        lang: locale, deviceType: "desktop", country: locale.split('_')[1] || "gb",
+                        pageName: "job-details", ddoKey: "jobDetail", jobSeqNo, siteType: "external"
+                    })
+                });
+                if (req.ok) {
+                    const d = await req.json();
+                    const jobDetail = d.jobDetail?.data?.job || d.data?.job;
+                    description = jobDetail?.description || jobDetail?.ml_Description || '';
+                }
+            } catch (err: any) {
+                console.log(`[Custom: Serco] Error fetching JD: ${err.message}`);
+            }
+
+            const slug = (j.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            allJobs.push({
+                title: j.title || '',
+                location: j.location || j.cityStateCountry || '',
+                url: `https://careers.serco.com/gb/en/job/${j.jobId}/${slug}`,
+                department: j.category || '',
+                salary: undefined,
+                description: cleanInlineJD(description)
+            });
+        })));
+    } catch (err) {
+        console.error('[Custom: Serco]', err);
     }
     return allJobs;
 }
@@ -2060,27 +2130,23 @@ async function fetchStripe(baseUrl: string): Promise<Job[]> {
 }
 
 async function fetchApple(url: string): Promise<Job[]> {
+    const rawJobs: any[] = [];
     const jobs: Job[] = [];
-    let page = 1;
-    let totalPages = 1;
-    
     console.log('[Custom: Apple] Fetching API...');
     
     try {
         for (const locCode of ['united-kingdom-GBR', 'ireland-IRL']) {
-            page = 1;
-            totalPages = 1;
-            while (page <= totalPages && page <= 50) { // Safety limit of 50 pages
+            let page = 1;
+            let totalPages = 1;
+            while (page <= totalPages && page <= 50) { 
                 const pageUrl = `https://jobs.apple.com/en-in/search?location=${locCode}&page=${page}`;
                 const res = await fetchWithTimeout(pageUrl, {
                     headers: { 'User-Agent': 'Mozilla/5.0' }
                 });
-                
                 if (!res.ok) {
-                    console.log(`[Custom: Apple] Failed to fetch page ${page} for ${locCode}: ${res.statusText}`);
+                    console.log(`[Custom: Apple] Failed to fetch page ${page} for ${locCode}`);
                     break;
                 }
-                
                 const html = await res.text();
                 const $ = cheerio.load(html);
                 let foundData = false;
@@ -2088,7 +2154,7 @@ async function fetchApple(url: string): Promise<Job[]> {
                 $('script').each((i, el) => {
                     const text = $(el).html();
                     if (text && text.includes('__staticRouterHydrationData = JSON.parse(')) {
-                        const match = text.match(/JSON\.parse\((".*?")\);/);
+                        const match = text.match(/JSON.parse((".+?"));/);
                         if (match) {
                             try {
                                 const jsonStr = JSON.parse(match[1]); 
@@ -2098,50 +2164,81 @@ async function fetchApple(url: string): Promise<Job[]> {
                                     const totalRecords = searchData.totalRecords || 0;
                                     totalPages = Math.ceil(totalRecords / 20) || 1;
                                 }
-                                
                                 const searchResults = searchData.searchResults || [];
                                 for (const item of searchResults) {
-                                    const title = item.postingTitle;
-                                    const jobId = item.positionId;
-                                    const jobUrl = `https://jobs.apple.com/en-in/details/${jobId}`;
-                                    const location = item.locations?.[0]?.name || (locCode === 'ireland-IRL' ? 'Ireland' : 'United Kingdom');
-                                    
-                                    if (title && jobId) {
-                                        const jobType = inferJobTypeFromListing({
-                                            employmentField: [
-                                                item.positionType,
-                                                item.roleType,
-                                                item.jobType,
-                                                item.weeklyHours != null
-                                                    ? `${item.weeklyHours} hours per week`
-                                                    : null,
-                                            ],
-                                        });
-                                        jobs.push({
-                                            title,
-                                            url: jobUrl,
-                                            location,
-                                            ...(jobType ? { job_type: jobType } : {}),
-                                        });
-                                    }
+                                    item._locCode = locCode;
+                                    rawJobs.push(item);
                                 }
-                                foundData = true;
-                            } catch(e: any) {
-                                console.error('[Custom: Apple] JSON parse error:', e.message);
+                                if (searchResults.length > 0) foundData = true;
+                            } catch (e) {
+                                console.error("[Custom: Apple] Parse error:", e);
                             }
                         }
                     }
                 });
-                
                 if (!foundData) break;
-                
                 page++;
-                await new Promise(r => setTimeout(r, 500)); // Respectful delay
+                await new Promise(r => setTimeout(r, 1000));
             }
         }
-        console.log(`[Custom: Apple] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error('[Custom: Apple] Error:', e);
+
+        const limit = pLimit(10);
+        await Promise.all(rawJobs.map(item => limit(async () => {
+            const title = item.postingTitle;
+            const jobId = item.positionId;
+            const jobUrl = `https://jobs.apple.com/en-in/details/${jobId}`;
+            const location = item.locations?.[0]?.name || (item._locCode === 'ireland-IRL' ? 'Ireland' : 'United Kingdom');
+            
+            if (title && jobId) {
+                const jobType = inferJobTypeFromListing({
+                    employmentField: [
+                        item.positionType,
+                        item.roleType,
+                        item.jobType,
+                        item.weeklyHours != null ? `${item.weeklyHours} hours per week` : null,
+                    ],
+                    title
+                });
+
+                let description = item.jobSummary || '';
+                try {
+                    const dRes = await fetchWithTimeout(jobUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                    if (dRes.ok) {
+                        const dHtml = await dRes.text();
+                        const $d = cheerio.load(dHtml);
+                        $d('script').each((i, el) => {
+                            const text = $d(el).html();
+                            if (text && text.includes('__staticRouterHydrationData = JSON.parse(')) {
+                                const match = text.match(/JSON.parse((".+?"));/);
+                                if (match) {
+                                    try {
+                                        const jsonStr = JSON.parse(match[1]);
+                                        const data = JSON.parse(jsonStr);
+                                        const jd = data?.loaderData?.jobDetails?.jobsData?.[0] || data?.loaderData?.jobDetails?.jobsData || {};
+                                        if (jd.description) {
+                                            description = (jd.jobSummary || '') + "\\n\\n" + (jd.description || '') + "\\n\\n" + (jd.minimumQualifications || '') + "\\n\\n" + (jd.preferredQualifications || '');
+                                        }
+                                    } catch(e){}
+                                }
+                            }
+                        });
+                    }
+                } catch(e) {}
+
+                jobs.push({
+                    title,
+                    url: jobUrl,
+                    location,
+                    salary: undefined,
+                    job_type: jobType,
+                    atsProvider: 'custom',
+                    description: cleanInlineJD(description)
+                });
+            }
+        })));
+        
+    } catch (err: any) {
+        console.log(`[Custom: Apple] Error: ${err.message}`);
     }
     
     return jobs;
@@ -2871,4 +2968,12 @@ async function fetchQualcomm(): Promise<Job[]> {
     })));
 
     return allJobs;
+}
+
+export async function fetchCustom(url: string, company?: CompanyRow): Promise<Job[]> {
+    const jobs = await fetchCustomInternal(url, company);
+    if (jobs && jobs.length > 0) {
+        await enrichHtmlJobDescriptionsConcurrently(jobs);
+    }
+    return jobs;
 }

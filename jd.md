@@ -42,17 +42,17 @@ These companies use documented REST APIs or predictable JSON structures that **a
 
 ## 2. Group B: Phenom APIs (Requires Detail-Fetch or Setup Modification)
 Phenom platforms typically return only a `descriptionTeaser` in UI search queries, requiring us to extract standard job IDs and fire individual API calls per job, or modify the initial search payload to request the full `description`.
-- Serco
-- Apple
-- Hewlett Packard Enterprise (HPE)
-- Jaguar Land Rover (JLR)
-- Fitch Group
-- Tesco
-- Babcock
-- Rathbones
-- Hikma
-- NetJets
-- Eli Lilly
+- ~~**Serco**~~ **[IMPLEMENTED] (Concurrent Phenom API)*
+- ~~**Apple**~~ **[IMPLEMENTED] (Concurrent Hydration API)*
+- ~~**Hewlett Packard Enterprise (HPE)**~~ **[IMPLEMENTED] (Native Phenom)*
+- ~~**Jaguar Land Rover (JLR)**~~ **[IMPLEMENTED] (Generic HTML Fetcher)*
+- ~~**Fitch Group**~~ **[IMPLEMENTED] (Generic HTML Fetcher)*
+- ~~**Tesco**~~ **[IMPLEMENTED] (Generic HTML Fetcher)*
+- ~~**Babcock**~~ **[IMPLEMENTED] (Generic HTML Fetcher)*
+- ~~**Rathbones**~~ **[IMPLEMENTED] (Generic HTML Fetcher)*
+- ~~**Hikma**~~ **[IMPLEMENTED] (Generic HTML Fetcher)*
+- ~~**NetJets**~~ **[IMPLEMENTED] (Generic HTML Fetcher)*
+- ~~**Eli Lilly**~~ **[IMPLEMENTED] (Native Phenom)*
 
 ---
 
