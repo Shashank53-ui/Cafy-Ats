@@ -4005,7 +4005,52 @@ async function fetchGoogle(token: string): Promise<Job[]> {
     }
     const uniqueMap = new Map();
     for (const j of allJobs) { uniqueMap.set(j.url, j); }
-    return Array.from(uniqueMap.values());
+    const basicJobs = Array.from(uniqueMap.values());
+
+    // Fetch JDs concurrently — verified AF_initDataCallback parsing (no hallucination)
+    const limit = pLimit(10);
+    await Promise.all(basicJobs.map((job: any) => limit(async () => {
+        try {
+            const res = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) return;
+            const text = await res.text();
+            const scripts = [...text.matchAll(/AF_initDataCallback\((.*?)\);<\/script>/g)];
+            let htmlStrings: string[] = [];
+            for (const match of scripts) {
+                let content = match[1];
+                if (content.includes("Minimum qualifications:")) {
+                    const dataMatch = content.match(/data:([\s\S]*?), sideChannel/);
+                    if (dataMatch) {
+                        try {
+                            const dataArr = JSON.parse(dataMatch[1]);
+                            function traverse(obj: any) {
+                                if (typeof obj === 'string') {
+                                    if (obj.includes('<p>') || obj.includes('<h3') || obj.includes('<ul') || obj.includes('</li')) {
+                                        if (!obj.startsWith('http')) htmlStrings.push(obj);
+                                    }
+                                } else if (Array.isArray(obj)) {
+                                    obj.forEach(traverse);
+                                }
+                            }
+                            traverse(dataArr);
+                        } catch (e) { /* ignore parse errors */ }
+                    }
+                    break;
+                }
+            }
+            if (htmlStrings.length > 0) {
+                let uniqueStrs = [...new Set(htmlStrings)];
+                uniqueStrs = uniqueStrs.filter((str, i, arr) => !arr.some((other, j) => i !== j && other.includes(str)));
+                const cleanDesc = uniqueStrs.join('<br><br>');
+                if (cleanDesc.length >= 300) {
+                    const idx = basicJobs.findIndex((b: any) => b.url === job.url);
+                    if (idx >= 0) basicJobs[idx].description = cleanDesc;
+                }
+            }
+        } catch (e: any) { console.error(`[Google JD] ${job.url}: ${e.message}`); }
+    })));
+
+    return basicJobs;
 }
 
 // ─── Meta / Facebook Jobs Fetcher ─────────────────────────────────────────────

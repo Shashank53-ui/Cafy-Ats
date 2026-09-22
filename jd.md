@@ -58,14 +58,14 @@ Phenom platforms typically return only a `descriptionTeaser` in UI search querie
 
 ## 3. Group C: DOM/HTML Scrapes (Requires Detail Page Crawling)
 These companies load job listings via raw HTML, sitemaps, or iframe scraping. Getting the JD means using `p-limit` concurrency arrays to `cheerio.load()` or `Playwright goto` into *each individual job URL* after extracting the list.
-- **BBC** *(Sitemap.xml list -> fetch HTML per URL)*
-- **Stripe** *(DOM pagination -> fetch HTML per URL)*
-- **KPMG** *(DOM scraping)*
-- **Vodafone** *(Puppeteer/DOM)*
-- **Elastic** *(DOM)*
+- **BBC** *(Sitemap.xml list -> fetch HTML per URL)* ~~**[IMPLEMENTED]**~~
+- ~~**Stripe**~~ **[IMPLEMENTED]** *(DOM pagination -> fetch HTML per URL)*
+- **KPMG** *(DOM scraping)* ~~**[IMPLEMENTED]**~~
+- **Vodafone** *(Puppeteer/DOM)* ~~**[IMPLEMENTED]**~~
+- ~~**Elastic**~~ **[IMPLEMENTED]**
 - **Depop** *(HTML)*
 - **Nottingham / Reading University** *(Academic HTML sites)*
-- **Google** *(Dedicated Scraper: Playwright UI paginator)*
+- ~~**Google**~~ **[IMPLEMENTED]** *(Dedicated Scraper: Playwright UI paginator)* 
 - **Goldman Sachs & JPMC** *(Dedicated Scrapers)*
 - **LinkedIn Ireland** *(Dedicated Scraper)*
 - *Plus the remaining companies residing in `customScrapers.ts` relying on raw `cheerio` HTML traversal.*

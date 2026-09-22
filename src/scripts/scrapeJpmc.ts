@@ -1,11 +1,15 @@
 import https from 'https';
 import { supabase } from '../lib/supabase';
 import dotenv from 'dotenv';
+import * as cheerio from 'cheerio';
 import { isUKJob } from '../lib/ukFilter';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
 import { resolveJobType } from '../lib/parseJobType';
 import { sanitizeJobLocation } from '../lib/refineLocation';
+import { cleanInlineJD } from './customScrapers';
+import { fetchWithTimeout } from './syncAll';
+import pLimit from "p-limit";
 
 dotenv.config({ path: '.env.local' });
 
@@ -86,32 +90,112 @@ async function scrapeJPMorgan() {
     if (ukJobs.length > 0) {
         const { data: company } = await supabase.from('companies').select('id, company_sector').eq('trading_name', 'JPMorgan Chase & Co.').single();
         if (company) {
-            const levelResolved = await resolveJobLevelsBatch(
-                ukJobs.map((j) => ({ title: j.title })),
-            );
-            const jobsToInsert = ukJobs.map((j, i) => {
-                const { sector, department } = classifyJobTaxonomy(j.title, null, company.company_sector);
-                const resolved = levelResolved[i]!;
-                const level = resolved.level;
-                return {
+            // Fetch descriptions concurrently
+            const limit = pLimit(10);
+            console.log(`[Custom: JPMorgan Chase] Fetching JDs for ${ukJobs.length} jobs concurrently...`);
+            let validJobsCount = 0;
+            let skippedJobsCount = 0;
+
+            const jobsToInsert: any[] = [];
+
+            await Promise.all(ukJobs.map((job: any, i: number) => limit(async () => {
+                let description = '';
+                try {
+                    const res = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                    if (!res.ok) {
+                        console.error(`[Custom: JPMorgan Chase] HTTP ${res.status} for ${job.url}`);
+                        return;
+                    }
+                    const html = await res.text();
+                    const $ = cheerio.load(html);
+
+                    // Try common selectors for Oracle Taleo job description
+                    const selectors = [
+                        '#jobDescription',
+                        '.jobdescription',
+                        '[id="jobDescription"]',
+                        '.description',
+                        '.job_desc',
+                        '.job-description',
+                        '.section.job-description',
+                        '.jobcontent',
+                        '.jobinfo',
+                        '.display',
+                        'div[class*="jobdesc"]',
+                        'div[class*="description"]'
+                    ];
+
+                    let found = false;
+                    for (const sel of selectors) {
+                        if ($(sel).length && $(sel).first().text().trim().length > 100) {
+                            description = $(sel).first().html() || '';
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        // Fallback to body if nothing else found
+                        description = $('body').html() || '';
+                    }
+
+                } catch (e: any) {
+                    console.error(`[Custom: JPMorgan Chase] Error fetching JD for ${job.url}: ${e.message}`);
+                    return;
+                }
+
+                const cleanDesc = cleanInlineJD(description) || '';
+
+                if (cleanDesc.length < 300) {
+                    console.log(`[Custom: JPMorgan Chase] Skipping job due to insufficient description: ${job.url}`);
+                    skippedJobsCount++;
+                    return;
+                }
+
+                const { sector, department } = classifyJobTaxonomy(
+                    job.title,
+                    null,
+                    company.company_sector,
+                );
+                const levelResolved = await resolveJobLevelsBatch(
+                    [{ title: job.title }]
+                );
+                const level = levelResolved[0]!.level;
+
+                jobsToInsert.push({
                     company_id: company.id,
-                    title: j.title,
-                    location: sanitizeJobLocation(j.location, 'uk', j.title, j.url),
-                    url: j.url,
+                    title: job.title,
+                    location: sanitizeJobLocation(job.location, 'uk', job.title, job.url),
+                    url: job.url,
                     department,
                     sector,
                     level,
-                    level_source: resolved.source,
-                    job_type: resolveJobType({ title: j.title, level }),
-                };
-            });
-            await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
+                    level_source: levelResolved[0]!.source,
+                    description: cleanDesc,
+                    job_type: resolveJobType({ title: job.title, level }),
+                });
+                validJobsCount++;
+            })));
+
+            if (jobsToInsert.length > 0) {
+                const { error: jobErr } = await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
+                if (jobErr) console.error("Error inserting jobs", jobErr);
+            }
+
+            console.log(`[Custom: JPMorgan Chase] Saving stats: ${validJobsCount} saved, ${skippedJobsCount} skipped (no JD).`);
+
+            // 5. Update Exact Count Tracking
             await supabase.from('companies').update({
                 ats_provider: 'taleo_api',
                 active_jobs_count: jobsToInsert.length
             }).eq('id', company.id);
             console.log(`✅ Saved ${jobsToInsert.length} JPMorgan jobs to Supabase!`);
         }
+    } else {
+        await supabase.from('companies').update({
+            active_jobs_count: 0
+        }).eq('trading_name', 'JPMorgan Chase & Co.');
+        console.log("No UK jobs to insert for JPMorgan Chase.");
     }
 }
 
