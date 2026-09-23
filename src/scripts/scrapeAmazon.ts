@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
+import pLimit from 'p-limit';
 import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { sanitizeJobLocation } from '../lib/refineLocation';
 import { resolveJobLevel } from '../lib/resolveJobLevel';
@@ -69,50 +70,52 @@ async function scrapeAmazon() {
 
     const targetJobs = 450;
     const batchSize = 100; // API usually allows up to 100 per request
-    let offset = 0;
     let allJobs: any[] = [];
 
-    while (allJobs.length < targetJobs) {
-        // We filter by full-time and country=GBR 
-        const url = `https://www.amazon.jobs/en/search.json?offset=${offset}&result_limit=${batchSize}&sort=relevant&job_type%5B%5D=Full-Time&country%5B%5D=GBR`;
-        console.log(`Fetching from ${url} ...`);
-
-        try {
-            const res = await fetch(url, {
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'Mozilla/5.0'
-                }
-            });
-
-            if (!res.ok) {
-                console.error(`Status ${res.status} from Amazon API`);
-                break;
-            }
-
-            const data = await res.json();
-
-            if (!data.jobs || data.jobs.length === 0) {
-                console.log('No more jobs returned.');
-                break;
-            }
-
-            // Filter strictly for UK just in case the API ignores the country flag
-            const ukJobs = data.jobs.filter((j: any) => j.country_code === 'UK' || j.country_code === 'GB' || j.country_code === 'GBR');
-
-            allJobs = allJobs.concat(ukJobs);
-            offset += batchSize;
-
-            if (offset >= data.hits) {
-                break; // reached end of all results
-            }
-
-            // Artificial delay to prevent ratelimiting
-            await new Promise(r => setTimeout(r, 1000));
-        } catch (e) {
-            console.error('Error fetching chunk:', e);
-            break;
+    const firstUrl = `https://www.amazon.jobs/en/search.json?offset=0&result_limit=${batchSize}&sort=relevant&job_type%5B%5D=Full-Time&country%5B%5D=GBR`;
+    console.log(`Fetching initial page to determine total hits...`);
+    
+    try {
+        const res = await fetch(firstUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json();
+        
+        const ukJobs = (data.jobs || []).filter((j: any) => j.country_code === 'UK' || j.country_code === 'GB' || j.country_code === 'GBR');
+        allJobs.push(...ukJobs);
+        
+        const totalHits = data.hits || 0;
+        console.log(`Total hits reported by Amazon: ${totalHits}`);
+        
+        const offsets = [];
+        // Max limit of 10,000 as per common search API restrictions, though we will break early if we hit targetJobs
+        for (let i = batchSize; i < Math.min(totalHits, 10000); i += batchSize) {
+            offsets.push(i);
         }
+        
+        const fetchLimit = pLimit(5);
+        await Promise.all(offsets.map(offset => fetchLimit(async () => {
+            if (allJobs.length >= targetJobs) return; // Short-circuit if we have enough
+            
+            const url = `https://www.amazon.jobs/en/search.json?offset=${offset}&result_limit=${batchSize}&sort=relevant&job_type%5B%5D=Full-Time&country%5B%5D=GBR`;
+            console.log(`Fetching from ${url} ...`);
+            
+            try {
+                // Small random delay before request to smooth out burst
+                await new Promise(r => setTimeout(r, Math.random() * 500));
+                const pageRes = await fetch(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } });
+                if (!pageRes.ok) return;
+                
+                const pageData = await pageRes.json();
+                if (!pageData.jobs) return;
+                
+                const pageUkJobs = pageData.jobs.filter((j: any) => j.country_code === 'UK' || j.country_code === 'GB' || j.country_code === 'GBR');
+                allJobs.push(...pageUkJobs);
+            } catch (e) {
+                console.error(`Error fetching offset ${offset}:`, e);
+            }
+        })));
+    } catch (e) {
+        console.error('Error fetching initial Amazon jobs:', e);
     }
 
     // Trim to specified amount
@@ -122,7 +125,9 @@ async function scrapeAmazon() {
 
     let insertedJobsCount = 0;
 
-    for (const job of limitJobs) {
+    const limit = pLimit(10);
+
+    await Promise.all(limitJobs.map(job => limit(async () => {
         try {
             const absoluteUrl = `https://www.amazon.jobs${job.job_path}`;
             const locationStr = mapLocation(job);
@@ -171,7 +176,7 @@ async function scrapeAmazon() {
         } catch (e) {
             console.error('Processing error:', e);
         }
-    }
+    })));
 
     if (insertedJobsCount > 0) {
         console.log(`Updating company active_jobs_count...`);

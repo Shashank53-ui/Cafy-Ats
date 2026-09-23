@@ -25,7 +25,7 @@ import pLimit from 'p-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
-import { fetchCustom } from './customScrapers';
+import { fetchCustom, cleanInlineJD } from './customScrapers';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
 import {
@@ -3830,17 +3830,26 @@ async function fetchRippling(token: string, company?: CompanyRow, existingJobsMa
 async function fetchAmazon(token: string): Promise<Job[]> {
     const allJobs: Job[] = [];
     const batchSize = 100;
-    let offset = 0;
-    while (true) {
-        const url = `https://www.amazon.jobs/en/search.json?offset=${offset}&result_limit=${batchSize}&sort=relevant&job_type%5B%5D=Full-Time&country%5B%5D=GBR`;
-        try {
-            const res = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } });
-            if (!res.ok) break;
-            const data: any = await res.json();
-            if (!data.jobs || data.jobs.length === 0) break;
-            const ukJobs = data.jobs.filter((j: any) => j.country_code === 'UK' || j.country_code === 'GB' || j.country_code === 'GBR');
+    
+    const firstUrl = `https://www.amazon.jobs/en/search.json?offset=0&result_limit=${batchSize}&sort=relevant&job_type%5B%5D=Full-Time&country%5B%5D=GBR`;
+    
+    try {
+        const res = await fetchWithTimeout(firstUrl, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } });
+        if (!res.ok) return [];
+        const data: any = await res.json();
+        
+        const processJobs = (jobs: any[]) => {
+            const ukJobs = jobs.filter((j: any) => j.country_code === 'UK' || j.country_code === 'GB' || j.country_code === 'GBR');
             for (const job of ukJobs) {
                 const locParts = [job.normalized_location || job.city, job.state].filter(Boolean);
+                
+                const fullDesc = [
+                    job.description || job.description_external,
+                    job.basic_qualifications ? `<h3>Basic Qualifications</h3><br>${job.basic_qualifications}` : '',
+                    job.preferred_qualifications ? `<h3>Preferred Qualifications</h3><br>${job.preferred_qualifications}` : ''
+                ].filter(Boolean).join('<br><br>');
+                const cleanDescription = cleanInlineJD(fullDesc);
+
                 allJobs.push({
                     title: job.title || '',
                     location: locParts.join(', ') || 'United Kingdom',
@@ -3848,14 +3857,41 @@ async function fetchAmazon(token: string): Promise<Job[]> {
                     department: job.job_category || job.job_family_name || 'Various',
                     job_type: parseJobType([job.title, job.job_category, job.job_family_name, job.job_schedule_type]),
                     salary: undefined,
+                    description: cleanDescription,
                     atsProvider: 'amazon'
                 });
             }
-            if (offset >= data.hits) break;
-            offset += batchSize;
-            await sleep(500);
-        } catch { break; }
+        };
+
+        if (data.jobs && data.jobs.length > 0) {
+            processJobs(data.jobs);
+        }
+        
+        const totalHits = data.hits || 0;
+        const offsets = [];
+        for (let i = batchSize; i < Math.min(totalHits, 10000); i += batchSize) {
+            offsets.push(i);
+        }
+        
+        const fetchLimit = pLimit(5);
+        await Promise.all(offsets.map(offset => fetchLimit(async () => {
+            const url = `https://www.amazon.jobs/en/search.json?offset=${offset}&result_limit=${batchSize}&sort=relevant&job_type%5B%5D=Full-Time&country%5B%5D=GBR`;
+            try {
+                await sleep(Math.random() * 500);
+                const pageRes = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } });
+                if (!pageRes.ok) return;
+                const pageData: any = await pageRes.json();
+                if (pageData.jobs && pageData.jobs.length > 0) {
+                    processJobs(pageData.jobs);
+                }
+            } catch (e) {
+                // ignore
+            }
+        })));
+    } catch (e) {
+        // ignore
     }
+    
     return allJobs;
 }
 
@@ -3957,7 +3993,49 @@ async function fetchGoldmanSachs(token: string): Promise<Job[]> {
     } catch (e) { console.error("Goldman Sachs Error:", e); } finally {
         if (context) await context.close().catch(() => { });
     }
-    return allJobs;
+
+    // Fetch descriptions concurrently with validation — no hallucination, only real HTML
+    const limit = pLimit(10);
+    const jobsWithDescription: Job[] = [];
+    await Promise.all(allJobs.map((basicJob) => limit(async () => {
+        let description = '';
+        try {
+            const res = await fetchWithTimeout(basicJob.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) return;
+            const html = await res.text();
+            const $ = cheerio.load(html);
+            const selectors = [
+                '[data-id="job-description"]', '.job-description', '#job-description',
+                '.jobDescription', '.jobdescription', '.joblayouttoken', '#jd-description',
+                'div[itemprop="description"]', 'section[itemprop="description"]', '.posting-description',
+                '.job-details', '.description', '.jd-info', 'article', 'main.content', 'main',
+                '.gs-job-description', '.job-description-text', '.description-text'
+            ];
+            let found = false;
+            for (const sel of selectors) {
+                if ($(sel).length && $(sel).first().text().trim().length > 100) {
+                    description = $(sel).first().html() || '';
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) description = $('body').html() || '';
+        } catch (e: any) { return; }
+
+        const cleanDesc = cleanInlineJD(description) || '';
+        if (cleanDesc && cleanDesc.length >= 300) {
+            jobsWithDescription.push({
+                title: basicJob.title,
+                location: basicJob.location,
+                url: basicJob.url,
+                department: basicJob.department,
+                description: cleanDesc,
+            });
+        }
+    })));
+
+    console.log(`[Custom: Goldman Sachs] Found ${jobsWithDescription.length} jobs with valid descriptions`);
+    return jobsWithDescription;
 }
 
 async function fetchGoogle(token: string): Promise<Job[]> {
@@ -4161,7 +4239,7 @@ async function fetchLinkedin(token: string, company?: CompanyRow, existingJobsMa
             await page.waitForTimeout(1500);
         }
 
-        const jobs = await page.evaluate(() => {
+        const jobCards = await page.evaluate(() => {
             const results: any[] = [];
             // Selectors for public LinkedIn job search cards
             const cards = document.querySelectorAll('.jobs-search__results-list > li, .base-search-card');
@@ -4183,7 +4261,61 @@ async function fetchLinkedin(token: string, company?: CompanyRow, existingJobsMa
             return results;
         });
 
-        allJobs.push(...jobs);
+        // Fetch descriptions concurrently for non-empty jobs
+        if (jobCards.length > 0) {
+            const limit = pLimit(5);
+            await Promise.all(jobCards.map(async (jobCard: any) => {
+                if (!jobCard.url) return;
+
+                try {
+                    // Skip if we already have a good description from cache
+                    if (existingJobsMap?.has(jobCard.url) && (existingJobsMap.get(jobCard.url)?.trim().length || 0) > 50) {
+                        jobCard.description = existingJobsMap.get(jobCard.url);
+                        return;
+                    }
+
+                    if (!context) return;
+                    const jobPage = await context.newPage();
+                    await jobPage.goto(jobCard.url, { waitUntil: 'networkidle', timeout: 30000 });
+                    await jobPage.waitForTimeout(2000);
+
+                    const description = await jobPage.evaluate(() => {
+                        // Try multiple selectors for LinkedIn job description
+                        const selectors = [
+                            '.show-more-less-html__markup',
+                            '.description__text',
+                            '.job-details-jobs-unified-top-card__job-description',
+                            '[data-test-description]',
+                            '.jobs-box__html-content',
+                            '.jobs-description-content__text',
+                            '.jobs-description'
+                        ];
+
+                        for (const selector of selectors) {
+                            const element = document.querySelector(selector);
+                            if (element) {
+                                // Get innerHTML to preserve some structure for cleaning
+                                return element.innerHTML.trim();
+                            }
+                        }
+
+                        // Fallback to body if nothing else found
+                        return document.body.innerHTML || '';
+                    });
+
+                    await jobPage.close();
+
+                    if (description && description.length > 50) { // Basic validation before cleaning
+                        jobCard.description = description;
+                    }
+                } catch (err: any) {
+                    console.warn(`Failed to fetch description for ${jobCard.url}: ${err.message}`);
+                    // Continue without description - will be filtered out later if too short
+                }
+            }));
+        }
+
+        allJobs.push(...jobCards);
         await context.close();
     } catch (e) {
         console.error('LinkedIn scraper error:', e);
@@ -4324,6 +4456,47 @@ async function fetchNhsSearchPages(startUrl: string): Promise<Job[]> {
     }
     return allJobs;
 }
+function parseNhsJobDescriptionHtml(html: string): string {
+    const $ = cheerio.load(html);
+    let descHtml = '';
+    const sections = [
+        '#job_overview',
+        '#job_description',
+        '#about_organisation',
+        '#job_description_large',
+        '[id^="skill_category"]' // For person specification sections
+    ];
+    let combined = '';
+    sections.forEach(sel => {
+        $(sel).each((_, el) => {
+            const content = $(el).parent().html() || $(el).html() || '';
+            if (content && !combined.includes(content)) {
+                combined += `<div>${content}</div><br/>`;
+            }
+        });
+    });
+
+    if (combined.length > 100) {
+        descHtml = combined;
+    } else {
+        // Fallback to original selectors if new ones aren't found
+        const fallbackSelectors = ['.nhsuk-panel--blue', '.nhsuk-panel', '.nhsuk-summary-list__row', 'article', 'main'];
+        for (const sel of fallbackSelectors) {
+            const el = $(sel).first();
+            if (el.length && el.html()) {
+                const text = el.text().trim();
+                if (text.length > 100) {
+                    descHtml = el.html() || '';
+                    break;
+                }
+            }
+        }
+    }
+    if (!descHtml || descHtml.trim().length < 100) {
+        descHtml = $('body').html() || '';
+    }
+    return descHtml;
+}
 
 async function fetchNHS(token: string): Promise<Job[]> {
     const tokenUrl = token.startsWith('http')
@@ -4337,7 +4510,8 @@ async function fetchNHS(token: string): Promise<Job[]> {
     ];
     const seen = new Set<string>();
     const allJobs: Job[] = [];
-    for (const searchUrl of urls) {
+    const searchLimit = pLimit(3);
+    await Promise.all(urls.map(searchUrl => searchLimit(async () => {
         try {
             const batch = await fetchNhsSearchPages(searchUrl);
             for (const job of batch) {
@@ -4348,9 +4522,77 @@ async function fetchNHS(token: string): Promise<Job[]> {
         } catch (e: any) {
             console.warn(`[nhs] ${searchUrl.slice(0, 90)}: ${e?.message || e}`);
         }
-    }
+    })));
     if (allJobs.length) {
         console.log(`[nhs] HTTP scrape saved ${allJobs.length} jobs`);
+        
+        // --- DIFF-BASED FETCHING ---
+        const existingUrls = new Set<string>();
+        try {
+            const urlsToQuery = allJobs.map(j => j.url).filter(Boolean) as string[];
+            const CHUNK_SIZE = 500;
+            for (let i = 0; i < urlsToQuery.length; i += CHUNK_SIZE) {
+                const chunk = urlsToQuery.slice(i, i + CHUNK_SIZE);
+                const { data, error } = await supabase
+                    .from('jobs')
+                    .select('url')
+                    .in('url', chunk);
+                if (data && !error) {
+                    data.forEach(row => existingUrls.add(row.url));
+                }
+            }
+        } catch (err: any) {
+            console.warn(`[nhs] Error fetching existing URLs: ${err.message}`);
+        }
+
+        const newJobs = allJobs.filter(job => job.url && !existingUrls.has(job.url));
+        console.log(`[nhs] Found ${existingUrls.size} existing jobs, ${newJobs.length} new jobs. Fetching JDs for all new jobs using Playwright to avoid WAF blocks.`);
+
+        // Use Playwright for all JDs to avoid strict NHS WAF blocks on rapid native fetch
+        const descLimit = pLimit(5);
+        const browser = await getSharedBrowser();
+        const context = await browser.newContext({
+            userAgent: NHS_HTTP_HEADERS['User-Agent'],
+            extraHTTPHeaders: {
+                'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+                Accept: NHS_HTTP_HEADERS.Accept,
+            },
+        });
+        
+        // Disable images and CSS to speed up headless scraping
+        await context.route('**/*', (route) => {
+            const type = route.request().resourceType();
+            if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+                route.abort();
+            } else {
+                route.continue();
+            }
+        });
+
+        await Promise.all(newJobs.map(async (job: Job) => {
+            if (!job.url) return descLimit(async () => {});
+
+            return descLimit(async () => {
+                const page = await context.newPage();
+                try {
+                    const response = await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+                    if (response && !response.ok()) {
+                        console.warn(`[nhs-jd] ${job.url}: HTTP ${response.status()}`);
+                    } else {
+                        const html = await page.content();
+                        const descHtml = parseNhsJobDescriptionHtml(html);
+                        if (descHtml && descHtml.length > 50) {
+                            job.description = descHtml;
+                        }
+                    }
+                } catch (err: any) {
+                    console.warn(`[nhs-jd] ${job.url}: ${err.message}`);
+                } finally {
+                    await page.close().catch(() => {});
+                }
+            });
+        }));
+        await context.close().catch(() => {});
         return allJobs;
     }
     console.warn('[nhs] HTTP scrape returned 0 — Playwright fallback');
@@ -4463,6 +4705,62 @@ async function fetchNHS(token: string): Promise<Job[]> {
 
             // Optional: safety break at 500 pages (5000 jobs)
             if (pageNum > 500) break;
+        }
+
+        // After collecting jobs, fetch JDs concurrently per job URL (Group C DOM crawl)
+        if (allJobs.length > 0) {
+            // --- DIFF-BASED FETCHING FOR PLAYWRIGHT FALLBACK ---
+            const existingUrls = new Set<string>();
+            try {
+                const urlsToQuery = allJobs.map(j => j.url).filter(Boolean) as string[];
+                const CHUNK_SIZE = 500;
+                for (let i = 0; i < urlsToQuery.length; i += CHUNK_SIZE) {
+                    const chunk = urlsToQuery.slice(i, i + CHUNK_SIZE);
+                    const { data, error } = await supabase
+                        .from('jobs')
+                        .select('url')
+                        .in('url', chunk);
+                    if (data && !error) {
+                        data.forEach(row => existingUrls.add(row.url));
+                    }
+                }
+            } catch (err: any) {
+                console.warn(`[nhs] Error fetching existing URLs: ${err.message}`);
+            }
+
+            const newJobs = allJobs.filter(job => job.url && !existingUrls.has(job.url));
+            const MAX_JD_FETCH = 50;
+            const jobsToFetchJd = newJobs.slice(0, MAX_JD_FETCH);
+            console.log(`[nhs] Playwright fallback: Found ${existingUrls.size} existing jobs, ${newJobs.length} new jobs. Fetching JDs for ${jobsToFetchJd.length} jobs.`);
+
+            const descLimit = pLimit(5);
+            await Promise.all(jobsToFetchJd.map(async (job: Job) => {
+                if (!job.url) return;
+                // Try up to 2 times with increased timeout
+                for (let attempt = 1; attempt <= 2; attempt++) {
+                    try {
+                        const res = await fetchWithTimeout(job.url, { headers: NHS_HTTP_HEADERS }, 30000);
+                        if (!res.ok) {
+                            if (attempt === 2) console.warn(`[nhs-jd] ${job.url}: HTTP ${res.status}`);
+                            continue; // try again if not last attempt
+                        }
+                        const html = await res.text();
+                        const descHtml = parseNhsJobDescriptionHtml(html);
+                        if (descHtml) {
+                            job.description = descHtml;
+                        }
+                        break; // success, break out of retry loop
+                    } catch (err: any) {
+                        if (attempt === 2) {
+                            console.warn(`[nhs-jd] ${job.url}: ${err.message}`);
+                        }
+                        // if not last attempt, wait a bit before retry
+                        if (attempt < 2) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        }
+                    }
+                }
+            }));
         }
 
         await context.close();
@@ -5811,6 +6109,7 @@ function mapPhenomJobs(allJobs: any[], baseUrl: string): Job[] {
             url,
             location,
             department: j.department || j.category || '',
+            description: j.description || undefined,
             atsProvider: 'phenom'
         };
     }).filter((j: any) => j.title && j.url);
@@ -7736,60 +8035,66 @@ export async function syncAll() {
                     rows[0].last_seen_at,
                 );
 
-                const { error: jobErr } = await supabase.from(tableName).upsert(rows, { onConflict: 'url' });
-                if (jobErr) {
-                    console.error(`[${displayProvider}] Initial upsert failed for ${trading_name}: ${jobErr.message}`);
-                    // Graceful degrade when optional columns are missing from the live schema.
-                    const stripSectorEmbedding = /sector_embedding/i.test(jobErr.message);
-                    const stripSector =
-                        /schema cache/i.test(jobErr.message) ||
-                        (/\bsector\b/i.test(jobErr.message) && !stripSectorEmbedding);
-                    const stripSource = /source/i.test(jobErr.message);
-                    const stripSeen = /last_seen_at/i.test(jobErr.message);
-                    const stripJobType = /job_type/i.test(jobErr.message);
-                    const stripLevelSource = /level_source/i.test(jobErr.message);
-                    if (stripSector || stripSectorEmbedding || stripSource || stripSeen || stripJobType || stripLevelSource) {
-                        const stripped = rows.map((row) => {
-                            const next: Record<string, unknown> = {
-                                company_id: row.company_id,
-                                title: row.title,
-                                location: row.location,
-                                url: row.url,
-                                department: row.department,
-                                level: row.level,
-                                updated_at: row.updated_at,
-                                description: row.description,
-                                salary: row.salary,
-                            };
-                            if (!stripSector) next.sector = row.sector;
-                            if (!stripSectorEmbedding && row.sector_embedding) {
-                                next.sector_embedding = row.sector_embedding;
+                const CHUNK_SIZE = 100;
+                let totalSavedRows = 0;
+
+                for (const chunk of chunkArray(rows, CHUNK_SIZE)) {
+                    const { error: jobErr } = await supabase.from(tableName).upsert(chunk, { onConflict: 'url' });
+                    if (jobErr) {
+                        console.error(`[${displayProvider}] Upsert chunk failed for ${trading_name}: ${jobErr.message}`);
+                        // Graceful degrade when optional columns are missing from the live schema.
+                        const stripSectorEmbedding = /sector_embedding/i.test(jobErr.message);
+                        const stripSector =
+                            /schema cache/i.test(jobErr.message) ||
+                            (/\bsector\b/i.test(jobErr.message) && !stripSectorEmbedding);
+                        const stripSource = /source/i.test(jobErr.message);
+                        const stripSeen = /last_seen_at/i.test(jobErr.message);
+                        const stripJobType = /job_type/i.test(jobErr.message);
+                        const stripLevelSource = /level_source/i.test(jobErr.message);
+                        
+                        if (stripSector || stripSectorEmbedding || stripSource || stripSeen || stripJobType || stripLevelSource) {
+                            const stripped = chunk.map((row) => {
+                                const next: Record<string, unknown> = {
+                                    company_id: row.company_id,
+                                    title: row.title,
+                                    location: row.location,
+                                    url: row.url,
+                                    department: row.department,
+                                    level: row.level,
+                                    updated_at: row.updated_at,
+                                    description: row.description,
+                                    salary: row.salary,
+                                };
+                                if (!stripSector) next.sector = row.sector;
+                                if (!stripSectorEmbedding && row.sector_embedding) {
+                                    next.sector_embedding = row.sector_embedding;
+                                }
+                                if (!stripSource && row.source) next.source = row.source;
+                                if (!stripSeen) next.last_seen_at = row.last_seen_at;
+                                if (!stripJobType) next.job_type = row.job_type;
+                                if (!stripLevelSource && row.level_source) next.level_source = row.level_source;
+                                return next;
+                            });
+                            const { error: fallbackErr } = await supabase
+                                .from(tableName)
+                                .upsert(stripped as any, { onConflict: 'url' });
+                            if (!fallbackErr) {
+                                totalSavedRows += chunk.length;
+                                continue;
                             }
-                            if (!stripSource && row.source) next.source = row.source;
-                            if (!stripSeen) next.last_seen_at = row.last_seen_at;
-                            if (!stripJobType) next.job_type = row.job_type;
-                            if (!stripLevelSource && row.level_source) next.level_source = row.level_source;
-                            return next;
-                        });
-                        const { error: fallbackErr } = await supabase
-                            .from(tableName)
-                            .upsert(stripped as any, { onConflict: 'url' });
-                        if (!fallbackErr) {
-                            console.warn(`[${displayProvider}] ${trading_name} ${tableName} upsert retried with reduced columns.`);
-                            const purged = await purgeMissingFromThisFetch(batchSeenAt);
-                            stalePurgedCount += purged;
-                            return rows.length;
+                            console.error(`[${displayProvider}] ${trading_name} ${tableName} chunk retry failed: ${fallbackErr.message}`);
+                            continue;
                         }
-                        console.error(`[${displayProvider}] ${trading_name} ${tableName} retry failed: ${fallbackErr.message}`);
-                        return 0;
+                        continue;
                     }
-                    console.error(`[${displayProvider}] ${trading_name} ${tableName} upsert failed: ${jobErr.message}`);
-                    return 0;
+                    totalSavedRows += chunk.length;
                 }
 
-                const purged = await purgeMissingFromThisFetch(batchSeenAt);
-                stalePurgedCount += purged;
-                return rows.length;
+                if (totalSavedRows > 0) {
+                    const purged = await purgeMissingFromThisFetch(batchSeenAt);
+                    stalePurgedCount += purged;
+                }
+                return totalSavedRows;
             };
 
             if (!fallbackOnlyDryRun) {
@@ -8000,6 +8305,8 @@ export async function syncAll() {
     await closePythonWorker();
   }
 }
+
+export { fetchNHS, buildRowsForJobs };
 
 const isDirectExecution = process.argv[1]
     ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)

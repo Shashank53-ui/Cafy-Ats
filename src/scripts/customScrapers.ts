@@ -13,34 +13,51 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 puppeteer.use(StealthPlugin());
 async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promise<void> {
-    const limit = pLimit(10);
+    const limit = pLimit(5);
     await Promise.all(jobs.map(j => limit(async () => {
         if (j.description && j.description.length > 50) return;
 
-        try {
-            const res = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            if (!res.ok) return;
-            const html = await res.text();
-            let $ = cheerio.load(html);
+        // Small delay to prevent rate limits / IP blocks (406 Not Acceptable)
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 200));
 
-            // JLR / SuccessFactors edge case: Some return a script wrapping HTML or block entirely without cookies, but we try parsing anyway.
-            const selectors = [
-                '[data-id="job-description"]', '.job-description', '#job-description',
-                '.jobDescription', '.jobdescription', '.joblayouttoken', '#jd-description',
-                'div[itemprop="description"]', 'section[itemprop="description"]', '.posting-description',
-                '.job-details', '.description', '.jd-info', 'article', 'main.content', 'main'
-            ];
-
-            for (const sel of selectors) {
-                if ($(sel).length && $(sel).first().text().trim().length > 100) {
-                    j.description = cleanInlineJD($(sel).first().html() || '');
-                    if (j.description) return;
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                const res = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                if (!res.ok) {
+                    if (res.status === 406 || res.status === 429) {
+                        console.log(`[enrichHtml] Rate limited (${res.status}) on ${j.url}, retrying in 5s...`);
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        retries--;
+                        continue;
+                    }
+                    console.log(`[enrichHtml] Failed to fetch JD for ${j.url}: HTTP ${res.status}`);
+                    return;
                 }
-            }
+                const html = await res.text();
+                let $ = cheerio.load(html);
 
-            j.description = cleanInlineJD($('body').html() || '');
-        } catch (err: any) {
-            console.log(`[enrichHtml] Error fetching JD for ${j.url}: ${err.message}`);
+                // JLR / SuccessFactors edge case: Some return a script wrapping HTML or block entirely without cookies, but we try parsing anyway.
+                const selectors = [
+                    '[data-id="job-description"]', '.job-description', '#job-description',
+                    '.jobDescription', '.jobdescription', '.joblayouttoken', '#jd-description',
+                    'div[itemprop="description"]', 'section[itemprop="description"]', '.posting-description',
+                    '.job-details', '.description', '.jd-info', '.article__content', 'article', 'main.content', 'main'
+                ];
+
+                for (const sel of selectors) {
+                    if ($(sel).length && $(sel).first().text().trim().length > 100) {
+                        j.description = cleanInlineJD($(sel).first().html() || '');
+                        if (j.description) return;
+                    }
+                }
+
+                j.description = cleanInlineJD($('body').html() || '');
+                return; // Success
+            } catch (err: any) {
+                console.log(`[enrichHtml] Error fetching JD for ${j.url}: ${err.message}`);
+                return;
+            }
         }
     })));
 }
@@ -510,7 +527,11 @@ export function cleanInlineJD(rawHtmlOrText?: string): string | undefined {
         text = text.replace(/^ | $/gm, ''); // remove leading/trailing spaces on each line
         text = text.replace(/\n{3,}/g, '\n\n'); // collapse multiple newlines
 
-        const cleanText = text.trim();
+        let cleanText = text.trim();
+        
+        // Strip common unwanted UI text from the beginning/anywhere
+        cleanText = cleanText.replace(/(?:^[ \t]*•?[ \t]*\n*)*Back to (?:job )?search results\s*/ig, '');
+        
         if (cleanText.length < 300) return undefined;
 
         // Return perfectly formatted plain text
@@ -579,11 +600,11 @@ async function fetchSerco(url: string): Promise<Job[]> {
             const html = await initRes.text();
 
             if (!csrfToken) {
-                const csrfMatch = html.match(/"csrfToken"s*:s*"([^"]+)"/);
+                const csrfMatch = html.match(/"csrfToken"\s*:\s*"([^"]+)"/);
                 if (csrfMatch) csrfToken = csrfMatch[1];
             }
 
-            const match = html.match(/"eagerLoadRefineSearch"s*:s*({[sS]*?})s*,s*"jobwidgetsettings"/);
+            const match = html.match(/"eagerLoadRefineSearch"\s*:\s*(\{[\s\S]*?\})\s*,\s*"jobwidgetsettings"/);
             if (!match) break;
             
             const data = JSON.parse(match[1]);
@@ -2629,6 +2650,7 @@ async function fetchDepop(url: string): Promise<Job[]> {
                         url: j.absolute_url || url,
                         location: j.location || j.city || '',
                         department: j.team || '',
+                        description: j.job_description || undefined,
                         salary: undefined
                     });
                 }
@@ -2813,12 +2835,13 @@ async function fetchApple(url: string): Promise<Job[]> {
                 $('script').each((i, el) => {
                     const text = $(el).html();
                     if (text && text.includes('__staticRouterHydrationData = JSON.parse(')) {
-                        const match = text.match(/JSON.parse((".+?"));/);
+                        const match = text.match(/JSON\.parse\((".+?")\);/);
                         if (match) {
                             try {
                                 const jsonStr = JSON.parse(match[1]); 
                                 const data = JSON.parse(jsonStr);     
                                 const searchData = data?.loaderData?.search || {};
+                                console.log(`[Custom: Apple] Parsed searchData for ${locCode}, totalRecords:`, searchData.totalRecords);
                                 if (page === 1) {
                                     const totalRecords = searchData.totalRecords || 0;
                                     totalPages = Math.ceil(totalRecords / 20) || 1;
@@ -2835,11 +2858,16 @@ async function fetchApple(url: string): Promise<Job[]> {
                         }
                     }
                 });
-                if (!foundData) break;
+                if (!foundData) {
+                    console.log(`[Custom: Apple] No data found on page ${page} for ${locCode}. HTML length: ${html.length}`);
+                    break;
+                }
                 page++;
                 await new Promise(r => setTimeout(r, 1000));
             }
         }
+
+        console.log(`[Custom: Apple] Finished fetching pages. rawJobs length: ${rawJobs.length}`);
 
         const limit = pLimit(10);
         await Promise.all(rawJobs.map(item => limit(async () => {
@@ -2867,7 +2895,7 @@ async function fetchApple(url: string): Promise<Job[]> {
                         $d('script').each((i, el) => {
                             const text = $d(el).html();
                             if (text && text.includes('__staticRouterHydrationData = JSON.parse(')) {
-                                const match = text.match(/JSON.parse((".+?"));/);
+                                const match = text.match(/JSON\.parse\((".+?")\);/);
                                 if (match) {
                                     try {
                                         const jsonStr = JSON.parse(match[1]);
@@ -3027,13 +3055,24 @@ async function fetchTesco(url: string): Promise<Job[]> {
     try {
         while (foundJobs && offset <= 5000) { // Safety limit 5000 jobs
             const searchUrl = `https://careers.tesco.com/en_GB/careers/SearchJobs/?jobRecordsPerPage=100&jobOffset=${offset}`;
-            const res = await fetchWithTimeout(searchUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
+            
+            let res = await fetchWithTimeout(searchUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
             });
             
             if (!res.ok) {
-                console.log(`[Custom: Tesco] Failed to fetch offset ${offset}: ${res.statusText}`);
-                break;
+                if (res.status === 406 || res.status === 429) {
+                    console.log(`[Custom: Tesco] Rate limited (${res.status}) at offset ${offset}. Waiting 30s before retry...`);
+                    await new Promise(r => setTimeout(r, 30000));
+                    res = await fetchWithTimeout(searchUrl, {
+                        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15' }
+                    });
+                }
+                
+                if (!res.ok) {
+                    console.log(`[Custom: Tesco] Failed to fetch offset ${offset}: ${res.statusText}`);
+                    break;
+                }
             }
             
             const html = await res.text();
@@ -3072,12 +3111,21 @@ async function fetchTesco(url: string): Promise<Job[]> {
                 break;
             }
             
-            await new Promise(r => setTimeout(r, 500));
+            // Increased delay between pages to avoid IP blocks
+            await new Promise(r => setTimeout(r, Math.random() * 1000 + 1000));
         }
     } catch (e: any) {
         console.error('[Custom: Tesco] Error:', e.message);
     }
-    return jobs;
+    
+    // Deduplicate by URL to save JD fetching time
+    const uniqueJobs = new Map<string, Job>();
+    for (const job of jobs) {
+        if (!uniqueJobs.has(job.url)) {
+            uniqueJobs.set(job.url, job);
+        }
+    }
+    return Array.from(uniqueJobs.values());
 }
 
 
@@ -3557,17 +3605,30 @@ async function fetchQualcomm(): Promise<Job[]> {
             const url = `https://careers.qualcomm.com/api/pcsx/search?domain=qualcomm.com&query=&start=${start}&sort_by=timestamp`;
             console.log(`[Custom: Qualcomm] Fetching start=${start} -> ${url}`);
 
-            const res = await fetchWithTimeout(url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-                    'Accept': 'application/json'
-                }
-            });
+            let res: Response | null = null;
+            let retries = 3;
+            
+            while (retries > 0) {
+                res = await fetchWithTimeout(url, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+                        'Accept': 'application/json'
+                    }
+                });
 
-            if (!res.ok) {
-                console.log(`[Custom: Qualcomm] HTTP error ${res.status}`);
-                break;
+                if (res.ok) {
+                    break;
+                } else if (res.status === 429) {
+                    console.log(`[Custom: Qualcomm] 429 Rate Limit for search API start=${start}. Retrying...`);
+                    retries--;
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                } else {
+                    console.log(`[Custom: Qualcomm] HTTP error ${res.status}`);
+                    break;
+                }
             }
+
+            if (!res || !res.ok) break;
 
             const d = await res.json();
             const positions = d.data?.positions || [];
@@ -3587,22 +3648,69 @@ async function fetchQualcomm(): Promise<Job[]> {
     }
 
     // Concurrently fetch job descriptions for all collected positions
-    const limit = pLimit(10);
+    // Reduced concurrency to 1 and added delays to avoid strict 403 CloudFront WAF blocks
+    const limit = pLimit(1);
     const allJobs: Job[] = [];
 
-    await Promise.all(rawPositions.map(p => limit(async () => {
+    // Pre-filter UK jobs to only fetch JDs for relevant jobs (avoids fetching 2000+ JDs and getting WAF banned)
+    const ukPositions = [];
+    const nonUkPositions = [];
+    
+    for (const p of rawPositions) {
+        const loc = p.locations?.[0] || p.standardizedLocations?.[0] || '';
+        const title = p.name || '';
+        const isUk = isUKJob({ locations: [loc], isRemote: title.toLowerCase().includes('remote') || loc.toLowerCase().includes('remote'), isTrustedSource: false });
+        if (isUk) {
+            ukPositions.push(p);
+        } else {
+            nonUkPositions.push(p);
+        }
+    }
+
+    // Push non-UK jobs without description so syncAll.ts can correctly log them as rejected
+    for (const p of nonUkPositions) {
+        allJobs.push({
+            title: p.name || '',
+            location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
+            url: `https://careers.qualcomm.com${p.positionUrl}?domain=qualcomm.com`,
+            department: p.department || '',
+            salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
+        });
+    }
+
+    await Promise.all(ukPositions.map(p => limit(async () => {
         try {
             const detailUrl = `https://careers.qualcomm.com/api/apply/v2/jobs/${p.id}?domain=qualcomm.com`;
-            const detailRes = await fetchWithTimeout(detailUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0',
-                    'Accept': 'application/json'
-                }
-            });
             let description = '';
-            if (detailRes.ok) {
-                const detailData = await detailRes.json();
-                description = detailData.job_description || '';
+            let retries = 3;
+            
+            // Mandatory delay between requests to stay under WAF radar
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1500));
+
+            while (retries > 0) {
+                const detailRes = await fetchWithTimeout(detailUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (detailRes.ok) {
+                    const text = await detailRes.text();
+                    try {
+                        const detailData = JSON.parse(text);
+                        description = detailData.job_description || '';
+                    } catch (e) {
+                        // Ignore parse error
+                    }
+                    break;
+                } else if (detailRes.status === 429 || detailRes.status === 403) {
+                    console.log(`[Custom: Qualcomm] ${detailRes.status} Rate Limit for detail ${p.id}. Retrying in 15s...`);
+                    retries--;
+                    await new Promise(resolve => setTimeout(resolve, 15000));
+                } else {
+                    break;
+                }
             }
 
             allJobs.push({

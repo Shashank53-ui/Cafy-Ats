@@ -90,9 +90,9 @@ async function scrapeJPMorgan() {
     if (ukJobs.length > 0) {
         const { data: company } = await supabase.from('companies').select('id, company_sector').eq('trading_name', 'JPMorgan Chase & Co.').single();
         if (company) {
-            // Fetch descriptions concurrently
+            // Fetch descriptions concurrently via Taleo Details API (more reliable than HTML scraping)
             const limit = pLimit(10);
-            console.log(`[Custom: JPMorgan Chase] Fetching JDs for ${ukJobs.length} jobs concurrently...`);
+            console.log(`[Custom: JPMorgan Chase] Fetching JDs for ${ukJobs.length} jobs via Taleo Details API...`);
             let validJobsCount = 0;
             let skippedJobsCount = 0;
 
@@ -101,44 +101,65 @@ async function scrapeJPMorgan() {
             await Promise.all(ukJobs.map((job: any, i: number) => limit(async () => {
                 let description = '';
                 try {
-                    const res = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                    // Use Taleo Details API to get the full job description (including HTML)
+                    const detailUrl = `https://jpmc.fa.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails?finder=requisitionDetails;Id=${job.Id},SiteNumber=CX_1001`;
+                    const res = await fetchWithTimeout(detailUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
                     if (!res.ok) {
-                        console.error(`[Custom: JPMorgan Chase] HTTP ${res.status} for ${job.url}`);
+                        console.error(`[Custom: JPMorgan Chase] HTTP ${res.status} for detail API: ${detailUrl}`);
                         return;
                     }
-                    const html = await res.text();
-                    const $ = cheerio.load(html);
+                    const detailData = await res.json();
 
-                    // Try common selectors for Oracle Taleo job description
-                    const selectors = [
-                        '#jobDescription',
-                        '.jobdescription',
-                        '[id="jobDescription"]',
-                        '.description',
-                        '.job_desc',
-                        '.job-description',
-                        '.section.job-description',
-                        '.jobcontent',
-                        '.jobinfo',
-                        '.display',
-                        'div[class*="jobdesc"]',
-                        'div[class*="description"]'
-                    ];
-
-                    let found = false;
-                    for (const sel of selectors) {
-                        if ($(sel).length && $(sel).first().text().trim().length > 100) {
-                            description = $(sel).first().html() || '';
-                            found = true;
-                            break;
+                    // Parse the Taleo Details API response structure
+                    // Expected: { items: [ { requisitionDetails: [ { Description: <string> } ] } ] }
+                    if (detailData.items && detailData.items.length > 0) {
+                        const requisitionDetails = detailData.items[0].requisitionDetails;
+                        if (requisitionDetails && requisitionDetails.length > 0) {
+                            description = requisitionDetails[0].Description || '';
                         }
                     }
 
-                    if (!found) {
-                        // Fallback to body if nothing else found
-                        description = $('body').html() || '';
-                    }
+                    // Fallback: if API didn't return description, try HTML scraping (original method)
+                    if (!description || description.trim().length === 0) {
+                        console.log(`[Custom: JPMorgan Chase] API returned no description, falling back to HTML scraping for ${job.url}`);
+                        const htmlRes = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                        if (!htmlRes.ok) {
+                            console.error(`[Custom: JPMorgan Chase] HTTP ${htmlRes.status} for ${job.url}`);
+                            return;
+                        }
+                        const html = await htmlRes.text();
+                        const $ = cheerio.load(html);
 
+                        // Try common selectors for Oracle Taleo job description
+                        const selectors = [
+                            '#jobDescription',
+                            '.jobdescription',
+                            '[id="jobDescription"]',
+                            '.description',
+                            '.job_desc',
+                            '.job-description',
+                            '.section.job-description',
+                            '.jobcontent',
+                            '.jobinfo',
+                            '.display',
+                            'div[class*="jobdesc"]',
+                            'div[class*="description"]'
+                        ];
+
+                        let found = false;
+                        for (const sel of selectors) {
+                            if ($(sel).length && $(sel).first().text().trim().length > 100) {
+                                description = $(sel).first().html() || '';
+                                found = true;
+                                break;
+                            }
+                        }
+
+                        if (!found) {
+                            // Fallback to body if nothing else found
+                            description = $('body').html() || '';
+                        }
+                    }
                 } catch (e: any) {
                     console.error(`[Custom: JPMorgan Chase] Error fetching JD for ${job.url}: ${e.message}`);
                     return;
