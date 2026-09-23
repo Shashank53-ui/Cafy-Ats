@@ -17,7 +17,8 @@
     "improve:sector-embeddings": "tsx src/scripts/improveSectorEmbeddingsLoop.ts",
     "golden:export": "tsx src/scripts/exportSectorGoldenSet.ts",
     "golden:score": "tsx src/scripts/scoreSectorGoldenSet.ts",
-    "embeddings:install": "bash scripts/install-embeddings-ec2.sh"
+    "embeddings:install": "bash scripts/install-embeddings-ec2.sh",
+    "backfill:nhs": "tsx src/scripts/syncNHSJDs.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",

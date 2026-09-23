@@ -7,6 +7,9 @@ import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
 import { resolveJobType } from '../lib/parseJobType';
 import { sanitizeJobLocation } from '../lib/refineLocation';
+import pLimit from 'p-limit';
+import { fetchWithTimeout } from './syncAll';
+import { cleanInlineJD } from './customScrapers';
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
     try {
@@ -22,7 +25,7 @@ async function scrapeGoogle() {
     const { data: companies, error: searchError } = await supabase
         .from('companies')
         .select('*')
-        .ilike('trading_name', `%${companyNameSearch}%`);
+        .eq('trading_name', companyNameSearch);
 
     if (searchError || !companies || companies.length === 0) {
         console.error(`Could not find ${companyNameSearch} in DB!`);
@@ -143,7 +146,70 @@ async function scrapeGoogle() {
         const levelResolved = await resolveJobLevelsBatch(
             uniqueJobs.map((job: any) => ({ title: job.title })),
         );
-        const jobsToInsert = uniqueJobs.map((job: any, i: number) => {
+
+        // Fetch JDs concurrently
+        const limit = pLimit(10);
+        console.log(`[Custom: Google] Fetching JDs for ${uniqueJobs.length} jobs concurrently...`);
+        let validJobsCount = 0;
+        let skippedJobsCount = 0;
+
+        const jobsToInsert: any[] = [];
+
+        await Promise.all(uniqueJobs.map((job: any, i: number) => limit(async () => {
+            let description = '';
+            try {
+                const res = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                const text = await res.text();
+                const scripts = [...text.matchAll(/AF_initDataCallback\((.*?)\);<\/script>/g)];
+                let htmlStrings: string[] = [];
+
+                for (const match of scripts) {
+                    let content = match[1];
+                    if (content.includes("Minimum qualifications:")) {
+                        const dataMatch = content.match(/data:([\s\S]*?), sideChannel/);
+                        if (dataMatch) {
+                            try {
+                                const dataArr = JSON.parse(dataMatch[1]);
+                                function traverse(obj: any) {
+                                    if (typeof obj === 'string') {
+                                        if (obj.includes('<p>') || obj.includes('<h3') || obj.includes('<ul') || obj.includes('</li')) {
+                                            if (!obj.startsWith('http')) {
+                                                htmlStrings.push(obj);
+                                            }
+                                        }
+                                    } else if (Array.isArray(obj)) {
+                                        obj.forEach(traverse);
+                                    }
+                                }
+                                traverse(dataArr);
+                            } catch (e) {
+                                console.error(`[Custom: Google] JSON parse error on ${job.url}:`, e);
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                if (htmlStrings.length > 0) {
+                    let uniqueStrs = [...new Set(htmlStrings)];
+                    uniqueStrs = uniqueStrs.filter((str, i, arr) => {
+                        return !arr.some((other, j) => i !== j && other.includes(str));
+                    });
+                    description = uniqueStrs.join('<br><br>');
+                }
+
+            } catch (e: any) {
+                console.error(`[Custom: Google] Error fetching JD for ${job.url}: ${e.message}`);
+            }
+
+            const cleanDesc = cleanInlineJD(description) || '';
+
+            if (cleanDesc.length < 300) {
+                console.log(`[Custom: Google] Skipping job due to insufficient description: ${job.url}`);
+                skippedJobsCount++;
+                return;
+            }
+
             const { sector, department } = classifyJobTaxonomy(
                 job.title,
                 job.department,
@@ -151,7 +217,13 @@ async function scrapeGoogle() {
             );
             const resolved = levelResolved[i]!;
             const level = resolved.level;
-            return {
+
+            // Debug first job
+            if (jobsToInsert.length === 0) {
+                console.log(`[Custom: Google] First job description length: ${cleanDesc.length}`);
+                console.log(`[Custom: Google] First job description preview: ${cleanDesc.slice(0, 200)}`);
+            }
+            jobsToInsert.push({
                 company_id: company.id,
                 title: job.title,
                 location: sanitizeJobLocation(job.location, 'uk', job.title, job.url),
@@ -160,21 +232,31 @@ async function scrapeGoogle() {
                 sector,
                 level,
                 level_source: resolved.source,
+                description: cleanDesc,
                 job_type: resolveJobType({ title: job.title, level }),
-            };
-        });
+            });
+            validJobsCount++;
+        })));
 
-        const { error: jobErr } = await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
+        if (jobsToInsert.length > 0) {
+            const { error: jobErr } = await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
+            if (jobErr) console.error("Error inserting jobs", jobErr);
+        }
 
-        if (jobErr) console.error("Error inserting jobs", jobErr);
+        console.log(`[Custom: Google] Saving stats: ${validJobsCount} saved, ${skippedJobsCount} skipped (no JD).`);
+
+        // 5. Update Exact Count Tracking
+        await supabase.from('companies').update({
+            active_jobs_count: jobsToInsert.length
+        }).eq('id', company.id);
+
+        console.log(`Successfully completed Google ingestion! Inserted ${jobsToInsert.length} jobs.`);
+    } else {
+        await supabase.from('companies').update({
+            active_jobs_count: 0
+        }).eq('id', company.id);
+        console.log("No jobs to insert for Google.");
     }
-
-    // 5. Update Exact Count Tracking
-    await supabase.from('companies').update({
-        active_jobs_count: uniqueJobs.length
-    }).eq('id', company.id);
-
-    console.log(`Successfully completed Google ingestion! Inserted ${uniqueJobs.length} jobs.`);
 }
 
 scrapeGoogle().catch(console.error);

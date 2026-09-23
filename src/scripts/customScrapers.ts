@@ -1,11 +1,68 @@
 import * as cheerio from 'cheerio';
 import { Job, CompanyRow, fetchWithTimeout, fetchPhenom, fetchOracleCloud } from './syncAll';
-import { inferJobTypeFromListing, parseJobType } from '../lib/parseJobType';
+import { supabase } from '../lib/supabase';
+import { inferJobTypeFromListing, parseJobType, resolveJobType } from '../lib/parseJobType';
+import { sanitizeJobLocation } from '../lib/refineLocation';
+import { isUKJob } from '../lib/ukFilter';
+import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
+import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
+import { chromium } from 'playwright';
+import pLimit from "p-limit";
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 puppeteer.use(StealthPlugin());
-export async function fetchCustom(url: string, company?: CompanyRow): Promise<Job[]> {
+async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promise<void> {
+    const limit = pLimit(5);
+    await Promise.all(jobs.map(j => limit(async () => {
+        if (j.description && j.description.length > 50) return;
+
+        // Small delay to prevent rate limits / IP blocks (406 Not Acceptable)
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 200));
+
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                const res = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                if (!res.ok) {
+                    if (res.status === 406 || res.status === 429) {
+                        console.log(`[enrichHtml] Rate limited (${res.status}) on ${j.url}, retrying in 5s...`);
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        retries--;
+                        continue;
+                    }
+                    console.log(`[enrichHtml] Failed to fetch JD for ${j.url}: HTTP ${res.status}`);
+                    return;
+                }
+                const html = await res.text();
+                let $ = cheerio.load(html);
+
+                // JLR / SuccessFactors edge case: Some return a script wrapping HTML or block entirely without cookies, but we try parsing anyway.
+                const selectors = [
+                    '[data-id="job-description"]', '.job-description', '#job-description',
+                    '.jobDescription', '.jobdescription', '.joblayouttoken', '#jd-description',
+                    'div[itemprop="description"]', 'section[itemprop="description"]', '.posting-description',
+                    '.job-details', '.description', '.jd-info', '.article__content', 'article', 'main.content', 'main'
+                ];
+
+                for (const sel of selectors) {
+                    if ($(sel).length && $(sel).first().text().trim().length > 100) {
+                        j.description = cleanInlineJD($(sel).first().html() || '');
+                        if (j.description) return;
+                    }
+                }
+
+                j.description = cleanInlineJD($('body').html() || '');
+                return; // Success
+            } catch (err: any) {
+                console.log(`[enrichHtml] Error fetching JD for ${j.url}: ${err.message}`);
+                return;
+            }
+        }
+    })));
+}
+
+async function fetchCustomInternal(url: string, company?: CompanyRow): Promise<Job[]> {
     console.log(`[fetchCustom] Routing provider. Company ID: ${company?.id}, URL: "${url}"`);
     if (company?.id === 294 || url.includes('bbc.co.uk')) {
         return fetchBBC(url);
@@ -201,11 +258,250 @@ export async function fetchCustom(url: string, company?: CompanyRow): Promise<Jo
     // ID 8001 = Qualcomm (custom Eightfold)
     if (company?.id === 8001 || url.includes('careers.qualcomm.com')) { return fetchQualcomm(); }
 
+    // ID 1733 = Google (custom) — route by URL domain to survive DB ID changes
+    if (url.includes('google.com/about/careers') || url.includes('google.com/about/careers/applications')) { return fetchGoogle(company || { id: 1733, trading_name: 'Google' } as CompanyRow); }
+
     // ID 8003 = Dell (Oracle Cloud)
     if (company?.id === 8003 || url.includes('enterpriseplatform.dell.com')) { return fetchOracleCloud('enterpriseplatform.dell.com|careers'); }
 
     // Future custom scrapers will be routed here based on domain or company ID
     return [];
+}
+
+async function fetchGoogle(company: CompanyRow): Promise<Job[]> {
+    console.log(`\\n--- Fetching Google Careers Jobs for ${company.trading_name} (ID: ${company.id}) ---`);
+
+    // 1. Find Company (already passed, but we can double-check)
+    const { data: companies, error: searchError } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', company.id);
+
+    if (searchError || !companies || companies.length === 0) {
+        console.error(`Could not find company with ID ${company.id} in DB!`);
+        return [];
+    }
+
+    const companyData = companies[0];
+    console.log(`Found Company: ${companyData.trading_name} (ID: ${companyData.id})`);
+
+    // 2. Map ats provider as custom (optional, but we can set if not already)
+    // We'll skip updating the DB here to avoid unnecessary writes on every sync.
+    // The syncAll pipeline expects the provider to be set to 'custom_site' for this to be called.
+    // If you need to set it, do it once via a separate script or manually.
+
+    // 3. Setup Fetch Loop
+    const allJobs: any[] = [];
+    let page = 1;
+
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 1080 }
+        });
+        const pageSession = await context.newPage();
+
+        // Google paginates explicitly via page parameter
+        while (true) {
+            const uiUrl = `https://www.google.com/about/careers/applications/jobs/results?location=United%20Kingdom&page=${page}`;
+            console.log(`Navigating to Google Careers Page ${page}: ${uiUrl}...`);
+
+            await pageSession.goto(uiUrl, { waitUntil: 'networkidle', timeout: 60000 });
+
+            // Wait briefly to allow Google WIZ to hydrate the DOM
+            try {
+                // Wait for the job card container to be visible
+                await pageSession.waitForSelector('.sMn82b', { timeout: 10000 });
+            } catch (waitErr) {
+                console.log(`No job cards found on page ${page} (timeout). Reached end of pagination.`);
+                break;
+            }
+
+            // A small artificial wait to ensure texts have painted
+            await pageSession.waitForTimeout(2000);
+
+            const html = await pageSession.content();
+            const $ = cheerio.load(html);
+
+            const batchJobs: any[] = [];
+
+            $('div.sMn82b').each((i: number, el: any) => {
+                const title = $(el).find('h3.Qk805e').text().trim() || $(el).find('h3').text().trim();
+                // No fallback to a fake "United Kingdom" default here — an unparsed location
+                // must not be manufactured into a confirmed-UK signal for the filter below.
+                let location = $(el).find('span.r0wTof').text().trim();
+
+                // Cleanup "London, UKLondon, UK" duplicate strings often caused by screenreader spans
+                if (location.length > 5) {
+                    const half = Math.floor(location.length / 2);
+                    if (location.substring(0, half) === location.substring(half)) {
+                        location = location.substring(0, half);
+                    }
+                }
+
+                // Find hidden Job ID Link
+                const linkStr = $(el).html()?.match(/jobs\/results\/[a-zA-Z0-9-]+/);
+                let hrefUrl = '';
+                if (linkStr) {
+                    hrefUrl = `https://www.google.com/about/careers/applications/${linkStr[0]}`;
+                }
+
+                if (title && hrefUrl) {
+                    batchJobs.push({
+                        title: title,
+                        location: location,
+                        url: hrefUrl,
+                        department: 'General'
+                    });
+                }
+            });
+
+            if (batchJobs.length === 0) {
+                console.log(`Page ${page} returned 0 jobs. Reached end of pagination.`);
+                break;
+            }
+
+            allJobs.push(...batchJobs);
+            console.log(`Fetched page ${page} (${batchJobs.length} jobs) via Google WIZ Extract`);
+
+            page++;
+        }
+    } catch (e) {
+        console.error("Error fetching Google Jobs:", e);
+        return [];
+    } finally {
+        if (browser) await browser.close();
+    }
+
+    // 4. Remove Duplicates (Google infinite scroll sometimes overlays)
+    const dedupedJobs = Array.from(new Map(allJobs.map(item => [item.url, item])).values());
+
+    // The location=United%20Kingdom query param is not a guaranteed hard filter —
+    // re-validate every result before it goes anywhere near the jobs table.
+    const uniqueJobs = dedupedJobs.filter((job: any) => isUKJob({
+        locations: [job.location].filter(Boolean),
+        isRemote: /\bremote\b/i.test(job.location || ''),
+        isTrustedSource: false
+    }));
+    const rejectedCount = dedupedJobs.length - uniqueJobs.length;
+    if (rejectedCount > 0) {
+        console.log(`Filtered out ${rejectedCount} non-UK/unparsed-location jobs from the scrape results.`);
+    }
+
+    console.log(`Attempting to save ${uniqueJobs.length} Google jobs to DB.`);
+
+    if (uniqueJobs.length === 0) {
+        console.log("No jobs to insert for Google.");
+        return [];
+    }
+
+    const levelResolved = await resolveJobLevelsBatch(
+        uniqueJobs.map((job: any) => ({ title: job.title }))
+    );
+
+    // Fetch JDs concurrently
+    const limit = pLimit(10);
+    console.log(`[Custom: Google] Fetching JDs for ${uniqueJobs.length} jobs concurrently...`);
+    let validJobsCount = 0;
+    let skippedJobsCount = 0;
+
+    const jobsToInsert: Job[] = [];
+
+    await Promise.all(uniqueJobs.map((job: any, i: number) => limit(async () => {
+        let description = '';
+        try {
+            const res = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            const text = await res.text();
+            const scripts = [...text.matchAll(/AF_initDataCallback\((.*?)\);<\/script>/g)];
+            let htmlStrings: string[] = [];
+
+            for (const match of scripts) {
+                let content = match[1];
+                if (content.includes("Minimum qualifications:")) {
+                    const dataMatch = content.match(/data:([\s\S]*?), sideChannel/);
+                    if (dataMatch) {
+                        try {
+                            const dataArr = JSON.parse(dataMatch[1]);
+                            function traverse(obj: any) {
+                                if (typeof obj === 'string') {
+                                    if (obj.includes('<p>') || obj.includes('<h3') || obj.includes('<ul') || obj.includes('</li')) {
+                                        if (!obj.startsWith('http')) {
+                                            htmlStrings.push(obj);
+                                        }
+                                    }
+                                } else if (Array.isArray(obj)) {
+                                    obj.forEach(traverse);
+                                }
+                            }
+                            traverse(dataArr);
+                        } catch (e) {
+                            console.error(`[Custom: Google] JSON parse error on ${job.url}:`, e);
+                        }
+                    }
+                    break;
+                }
+            }
+
+            if (htmlStrings.length > 0) {
+                let uniqueStrs = [...new Set(htmlStrings)];
+                uniqueStrs = uniqueStrs.filter((str, i, arr) => {
+                    return !arr.some((other, j) => i !== j && other.includes(str));
+                });
+                description = uniqueStrs.join('<br><br>');
+            }
+
+        } catch (e: any) {
+            console.error(`[Custom: Google] Error fetching JD for ${job.url}: ${e.message}`);
+        }
+
+        const cleanDesc = cleanInlineJD(description) || '';
+
+        if (cleanDesc.length < 300) {
+            console.log(`[Custom: Google] Skipping job due to insufficient description: ${job.url}`);
+            skippedJobsCount++;
+            return;
+        }
+
+        const { sector, department } = classifyJobTaxonomy(
+            job.title,
+            job.department,
+            companyData.company_sector,
+        );
+        const resolved = levelResolved[i]!;
+        const level = resolved.level;
+
+        // Debug first job
+        if (jobsToInsert.length === 0) {
+            console.log(`[Custom: Google] First job description length: ${cleanDesc.length}`);
+            console.log(`[Custom: Google] First job description preview: ${cleanDesc.slice(0, 200)}`);
+        }
+
+        jobsToInsert.push({
+            title: job.title,
+            location: sanitizeJobLocation(job.location, 'uk', job.title, job.url),
+            url: job.url,
+            department,
+            description: cleanDesc,
+        } as any);
+        validJobsCount++;
+    })));
+
+    if (jobsToInsert.length > 0) {
+        const { error: jobErr } = await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
+        if (jobErr) console.error("Error inserting jobs", jobErr);
+    }
+
+    console.log(`[Custom: Google] Saving stats: ${validJobsCount} saved, ${skippedJobsCount} skipped (no JD).`);
+
+    // 5. Update Exact Count Tracking
+    await supabase.from('companies').update({
+        active_jobs_count: jobsToInsert.length
+    }).eq('id', companyData.id);
+
+    console.log(`Successfully completed Google ingestion! Inserted ${jobsToInsert.length} jobs.`);
+    return jobsToInsert;
 }
 
 export function cleanInlineJD(rawHtmlOrText?: string): string | undefined {
@@ -231,7 +527,11 @@ export function cleanInlineJD(rawHtmlOrText?: string): string | undefined {
         text = text.replace(/^ | $/gm, ''); // remove leading/trailing spaces on each line
         text = text.replace(/\n{3,}/g, '\n\n'); // collapse multiple newlines
 
-        const cleanText = text.trim();
+        let cleanText = text.trim();
+        
+        // Strip common unwanted UI text from the beginning/anywhere
+        cleanText = cleanText.replace(/(?:^[ \t]*•?[ \t]*\n*)*Back to (?:job )?search results\s*/ig, '');
+        
         if (cleanText.length < 300) return undefined;
 
         // Return perfectly formatted plain text
@@ -283,7 +583,10 @@ async function fetchAmpa(url: string): Promise<Job[]> {
 }
 
 async function fetchSerco(url: string): Promise<Job[]> {
+    const rawJobs: any[] = [];
     const allJobs: Job[] = [];
+    let csrfToken = '';
+
     try {
         let from = 0;
         let totalHits = 1;
@@ -295,6 +598,12 @@ async function fetchSerco(url: string): Promise<Job[]> {
             if (!initRes.ok) break;
             
             const html = await initRes.text();
+
+            if (!csrfToken) {
+                const csrfMatch = html.match(/"csrfToken"\s*:\s*"([^"]+)"/);
+                if (csrfMatch) csrfToken = csrfMatch[1];
+            }
+
             const match = html.match(/"eagerLoadRefineSearch"\s*:\s*(\{[\s\S]*?\})\s*,\s*"jobwidgetsettings"/);
             if (!match) break;
             
@@ -308,23 +617,51 @@ async function fetchSerco(url: string): Promise<Job[]> {
             if (jobs[0].jobId === lastFirstJobId) break;
             lastFirstJobId = jobs[0].jobId;
             
-            for (const j of jobs) {
-                const slug = (j.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-                allJobs.push({
-                    title: j.title || '',
-                    location: j.location || j.cityStateCountry || '',
-                    url: `https://careers.serco.com/gb/en/job/${j.jobId}/${slug}`,
-                    department: j.category || '',
-                    salary: undefined
-                });
-            }
+            rawJobs.push(...jobs);
             
             from += jobs.length;
-            // sleep is not imported in customScrapers.ts, so we use a small manual delay
             await new Promise(r => setTimeout(r, 1000));
         }
-    } catch (e) {
-        console.error('[Custom: Serco] Error:', e);
+
+        const limit = pLimit(10);
+        await Promise.all(rawJobs.map(j => limit(async () => {
+            let description = '';
+            try {
+                const jobSeqNo = String(j.jobSeqNo || j.jobseqno || '');
+                const locale = String(j.locale || 'en_gb');
+                const req = await fetchWithTimeout("https://careers.serco.com/widgets", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0",
+                        "X-CSRF-Token": csrfToken
+                    },
+                    body: JSON.stringify({
+                        lang: locale, deviceType: "desktop", country: locale.split('_')[1] || "gb",
+                        pageName: "job-details", ddoKey: "jobDetail", jobSeqNo, siteType: "external"
+                    })
+                });
+                if (req.ok) {
+                    const d = await req.json();
+                    const jobDetail = d.jobDetail?.data?.job || d.data?.job;
+                    description = jobDetail?.description || jobDetail?.ml_Description || '';
+                }
+            } catch (err: any) {
+                console.log(`[Custom: Serco] Error fetching JD: ${err.message}`);
+            }
+
+            const slug = (j.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            allJobs.push({
+                title: j.title || '',
+                location: j.location || j.cityStateCountry || '',
+                url: `https://careers.serco.com/gb/en/job/${j.jobId}/${slug}`,
+                department: j.category || '',
+                salary: undefined,
+                description: cleanInlineJD(description)
+            });
+        })));
+    } catch (err) {
+        console.error('[Custom: Serco]', err);
     }
     return allJobs;
 }
@@ -377,6 +714,7 @@ async function fetchKPMG(url: string): Promise<Job[]> {
     const baseUrl = 'https://www.kpmgcareers.co.uk';
     const startUrl = `${baseUrl}/search/vacancies/`;
     let page = 1;
+    const rawJobs: any[] = [];
 
     try {
         // KPMG exposes jobs through a server-rendered HTML search page with pagination
@@ -385,7 +723,7 @@ async function fetchKPMG(url: string): Promise<Job[]> {
             const res = await fetchWithTimeout(pageUrl, {
                 headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
             });
-            
+
             if (!res.ok) {
                 console.log(`[Custom: KPMG] Failed to fetch page ${page}: ${res.statusText}`);
                 break;
@@ -393,48 +731,112 @@ async function fetchKPMG(url: string): Promise<Job[]> {
 
             const html = await res.text();
             const $ = cheerio.load(html);
-            
+
             const jobElements = $('.vacancy-result').toArray();
             if (jobElements.length === 0) {
                 break; // No more jobs
             }
-            
+
             jobElements.forEach(el => {
                 const title = $(el).find('h3').text().trim();
                 const location = $(el).find('.vacancy-location b').text().trim();
                 const department = $(el).find('.vacancy-service-line b').text().trim();
                 const href = $(el).find('a.view-job-description').attr('href');
-                
+
                 const jobUrl = href?.startsWith('/') ? `${baseUrl}${href}` : (href || '');
                 const vacancyId = $(el).attr('data-vacancy-id') || '';
-                const details = vacancyId
-                    ? $(`.vacancy-description[data-vacancy-id="${vacancyId}"]`)
-                    : $(el);
-                const employmentField = details
-                    .find('.vacancy-details-fields')
-                    .toArray()
-                    .map((n) => $(n).text().replace(/\s+/g, ' ').trim())
-                    .filter((t) => /employment type|contract type/i.test(t));
-                const jobType = inferJobTypeFromListing({ employmentField });
-                
+
                 if (title && jobUrl) {
-                    jobs.push({
+                    rawJobs.push({
                         title,
                         location,
-                        url: jobUrl,
                         department,
-                        ...(jobType ? { job_type: jobType } : {}),
+                        url: jobUrl,
+                        vacancyId
                     });
                 }
             });
-            
+
             page++;
         }
-        console.log(`[Custom: KPMG] Extracted ${jobs.length} jobs`);
+        console.log(`[Custom: KPMG] Extracted ${rawJobs.length} job summaries`);
+
+        // Now fetch descriptions concurrently for each job
+        const limit = pLimit(10);
+        const kpmgJobs: Job[] = [];
+
+        await Promise.all(rawJobs.map(job => limit(async () => {
+            let description = '';
+            try {
+                // Try to fetch the job description from the detail page
+                const detailRes = await fetchWithTimeout(job.url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+                });
+
+                if (detailRes.ok) {
+                    const detailHtml = await detailRes.text();
+                    const $$ = cheerio.load(detailHtml);
+
+                    // Try multiple selectors for KPMG job description
+                    const descriptionSelectors = [
+                        '.vacancy-description',
+                        '[data-vacancy-id]',
+                        '.job-description',
+                        '.description',
+                        '.job-details',
+                        '[itemprop="description"]',
+                        '.vacancy-details',
+                        '.job-info'
+                    ];
+
+                    for (const selector of descriptionSelectors) {
+                        const descElem = $$(selector).first();
+                        if (descElem.length && descElem.text().trim().length > 100) {
+                            description = descElem.html() || descElem.text();
+                            break;
+                        }
+                    }
+
+                    // Fallback: get main content if specific selectors fail
+                    if (!description || description.trim().length < 100) {
+                        const mainContent = $$('main').first() || $$('.content').first() || $$('article').first();
+                        if (mainContent.length) {
+                            description = mainContent.html() || mainContent.text();
+                        }
+                    }
+                }
+            } catch (err: any) {
+                console.log(`[Custom: KPMG] Error fetching description for ${job.url}: ${err.message}`);
+            }
+
+            // Clean and validate the description
+            const cleanDescription = cleanInlineJD(description);
+
+            // Only add job if we have a valid description (>300 chars after cleaning)
+            if (cleanDescription && cleanDescription.length >= 300) {
+                const jobType = inferJobTypeFromListing({
+                    employmentField: job.department // Using department as employment field fallback
+                });
+
+                kpmgJobs.push({
+                    title: job.title,
+                    location: job.location,
+                    url: job.url,
+                    department: job.department,
+                    ...(jobType ? { job_type: jobType } : {}),
+                    description: cleanDescription
+                });
+            } else {
+                console.log(`[Custom: KPMG] Skipping job due to insufficient description: ${job.url}`);
+            }
+        })));
+
+        jobs.push(...kpmgJobs);
+        console.log(`[Custom: KPMG] Found ${kpmgJobs.length} jobs with valid descriptions`);
     } catch (e) {
         console.error(`[Custom: KPMG] Error:`, e);
     }
-    
+
     return jobs;
 }
 
@@ -446,7 +848,7 @@ async function fetchBBC(url: string): Promise<Job[]> {
         const res = await fetchWithTimeout(sitemapUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
         });
-        
+
         if (!res.ok) {
             console.log(`[Custom: BBC] Failed to fetch sitemap: ${res.statusText}`);
             return [];
@@ -455,42 +857,121 @@ async function fetchBBC(url: string): Promise<Job[]> {
         const xml = await res.text();
         const urls = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map(m => m[1]);
 
-        for (const jobUrl of urls) {
-            if (jobUrl.includes('/job/')) {
-                // jobUrl format: https://careers.bbc.co.uk/job/London-Senior-Software-Engineer-W1A-1AA/1366730157/
-                const parts = jobUrl.split('/job/');
-                if (parts.length > 1) {
-                    const slugPart = parts[1].split('/')[0]; // e.g. London-Senior-Software-Engineer-W1A-1AA
-                    const decoded = decodeURIComponent(slugPart);
-                    const segments = decoded.split('-');
-                    
-                    // BBC slug format: City-JobTitle-... or City-JobTitle-Postcode-...
-                    // First segment is typically the city/location, not part of the title.
-                    // Postcodes appear as two consecutive segments (e.g. "W1A" "1AA").
-                    const postCodePattern = /^[A-Z]{1,2}[0-9][0-9A-Z]?$/;
-                    const nonTitleSegments = new Set<number>();
-                    for (let i = 0; i < segments.length - 1; i++) {
-                        if (postCodePattern.test(segments[i]) && /^[0-9][A-Z]{2}$/.test(segments[i + 1])) {
-                            nonTitleSegments.add(i);
-                            nonTitleSegments.add(i + 1);
+        // Filter to only job URLs
+        const jobUrls = urls.filter(jobUrl => jobUrl.includes('/job/'));
+        console.log(`[Custom: BBC] Found ${jobUrls.length} job URLs in sitemap`);
+
+        // Process jobs concurrently with p-limit to avoid rate limiting
+        const limit = pLimit(10);
+        const bbcJobs: Job[] = [];
+
+        await Promise.all(jobUrls.map(jobUrl => limit(async () => {
+            try {
+                // Fetch the individual job page
+                const jobRes = await fetchWithTimeout(jobUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+                });
+
+                if (!jobRes.ok) {
+                    console.log(`[Custom: BBC] Failed to fetch job page ${jobUrl}: ${jobRes.status}`);
+                    return;
+                }
+
+                const html = await jobRes.text();
+                const $ = cheerio.load(html);
+
+                // Extract title from the job page
+                let title = $('h1').first().text().trim() ||
+                           $('title').first().text().replace(' - BBC Careers', '').trim();
+
+                // Extract location - BBC often has it in structured data or specific elements
+                let location = 'United Kingdom';
+                const locationSelectors = [
+                    '[data-testid="location"]',
+                    '.location',
+                    '[class*="location"]',
+                    'dd[data-testid="location"]'
+                ];
+
+                for (const selector of locationSelectors) {
+                    const locElem = $(selector).first();
+                    if (locElem.length && locElem.text().trim()) {
+                        location = locElem.text().trim();
+                        break;
+                    }
+                }
+
+                // Extract job description
+                let description = '';
+                const descriptionSelectors = [
+                    '[data-testid="job-description"]',
+                    '.job-description',
+                    '#job-description',
+                    '.jobDescription',
+                    '[itemprop="description"]',
+                    '.description',
+                    '.job-details',
+                    '.posting-description',
+                    'section[data-testid="job-description"]',
+                    'div[data-testid="job-description"]'
+                ];
+
+                for (const selector of descriptionSelectors) {
+                    const descElem = $(selector).first();
+                    if (descElem.length && descElem.text().trim().length > 100) {
+                        description = descElem.html() || descElem.text();
+                        break;
+                    }
+                }
+
+                // Fallback: get main content if specific selectors fail
+                if (!description || description.trim().length < 100) {
+                    const mainContent = $('main').first() || $('.content').first() || $('article').first();
+                    if (mainContent.length) {
+                        description = mainContent.html() || mainContent.text();
+                    }
+                }
+
+                // Clean and validate the description
+                const cleanDescription = cleanInlineJD(description);
+
+                // Only add job if we have a valid description (>300 chars after cleaning)
+                if (cleanDescription && cleanDescription.length >= 300) {
+                    // Extract department if available
+                    let department = '';
+                    const deptSelectors = [
+                        '[data-testid="department"]',
+                        '.department',
+                        '[class*="department"]',
+                        'dd[data-testid="department"]'
+                    ];
+
+                    for (const selector of deptSelectors) {
+                        const deptElem = $(selector).first();
+                        if (deptElem.length && deptElem.text().trim()) {
+                            department = deptElem.text().trim();
+                            break;
                         }
                     }
-                    // Location = first segment; title = remaining minus postcode segments
-                    const location = segments[0] ? segments[0].replace(/-/g, ' ') : 'United Kingdom';
-                    const titleSegments = segments.slice(1).filter((_, i) => !nonTitleSegments.has(i + 1));
-                    const title = titleSegments.join(' ').trim() || decoded.replace(/-/g, ' ');
-                    
-                    jobs.push({
+
+                    bbcJobs.push({
                         title: title,
                         location: location,
                         url: jobUrl,
-                        department: '',
-                        salary: undefined
+                        department: department,
+                        salary: undefined,
+                        description: cleanDescription
                     });
+                } else {
+                    console.log(`[Custom: BBC] Skipping job due to insufficient description: ${jobUrl}`);
                 }
+            } catch (err: any) {
+                console.log(`[Custom: BBC] Error processing job ${jobUrl}: ${err.message}`);
             }
-        }
-        console.log(`[Custom: BBC] Found ${jobs.length} jobs in sitemap`);
+        })));
+
+        jobs.push(...bbcJobs);
+        console.log(`[Custom: BBC] Found ${bbcJobs.length} jobs with valid descriptions`);
     } catch (e) {
         console.error(`[Custom: BBC] Error fetching jobs:`, e);
     }
@@ -545,17 +1026,42 @@ async function fetchVodafone(url: string): Promise<Job[]> {
             return results;
         });
 
-        for (const item of extracted) {
-            if (item.name && item.positionUrl) {
+        // Concurrently fetch job descriptions for all extracted jobs
+        const limit = pLimit(10);
+        await Promise.all(extracted.map(item => limit(async () => {
+            let description = '';
+            try {
+                if (item.positionUrl) {
+                    const detailRes = await fetchWithTimeout(item.positionUrl, {
+                        headers: { 'User-Agent': 'Mozilla/5.0' }
+                    });
+                    if (detailRes.ok) {
+                        const detailHtml = await detailRes.text();
+                        const $ = cheerio.load(detailHtml);
+                        let descElem = $('meta[property="og:description"]').first();
+                        if (descElem.length) description = descElem.attr('content') || '';
+                        else {
+                            const content = $('article, .job-description, .description, .details').first();
+                            if (content.length) description = content.text();
+                        }
+                        if (!description || description.trim().length < 100) description = item.name || '';
+                    }
+                }
+            } catch (err: any) {
+                console.log(`[Custom: Vodafone] Error fetching JD for ${item.id}: ${err.message}`);
+            }
+            const cleanDescription = cleanInlineJD(description);
+            if (cleanDescription && cleanDescription.length >= 300) {
                 jobs.push({
                     title: item.name,
                     location: (item.locations && item.locations.length > 0) ? item.locations[0] : (item.location || ''),
                     department: item.department || '',
                     url: item.positionUrl.startsWith('http') ? item.positionUrl : `https://jobs.vodafone.com${item.positionUrl}`,
+                    description: cleanDescription
                 });
             }
-        }
-        
+        })));
+
         console.log(`[Custom: Vodafone] Found ${jobs.length} jobs.`);
     } catch (e) {
         console.error(`[Custom: Vodafone] Error:`, e);
@@ -732,7 +1238,7 @@ async function fetchBaeSystems(url: string): Promise<Job[]> {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                     'Accept-Language': 'en-US,en;q=0.9'
                 }
-            }, 30000);
+            });
             
             if (!res.ok) {
                 break;
@@ -1480,11 +1986,16 @@ async function fetchCollinson(url: string): Promise<Job[]> {
 async function fetchElastic(url: string): Promise<Job[]> {
     // The /api/filter/jobs endpoint is gone (404). Elastic now uses AppSearchAPIConnector.
     // Scrape via Playwright to intercept the App Search API call.
-    const jobs: Job[] = [];
+    const basicJobs: {
+        title: string;
+        url: string;
+        location: string;
+    }[] = [];
     console.log('[Custom: Elastic] Fetching via Playwright (App Search intercept)...');
 
     const { chromium } = require('playwright');
     const browser = await chromium.launch({ headless: true });
+    let jobs: Job[] = []; // Declare here to be accessible in finally and return
     try {
         const page = await browser.newPage();
         const apiResults: any[] = [];
@@ -1509,28 +2020,177 @@ async function fetchElastic(url: string): Promise<Job[]> {
                 const title = item.title?.raw || item.title || '';
                 const jobUrl = item.url?.raw || item.absolute_url?.raw || item.url || '';
                 const location = item.location?.raw || item.city?.raw || item.location || 'United Kingdom';
-                if (title && jobUrl) jobs.push({ title, url: jobUrl, location });
+                if (title && jobUrl) {
+                    basicJobs.push({ title, url: jobUrl, location });
+                }
             }
         }
 
-        // Fallback: scrape DOM job cards
-        if (jobs.length === 0) {
-            const domJobs = await page.evaluate(() => {
-                const results: any[] = [];
-                document.querySelectorAll('[class*="job"] a, article a, li a').forEach((el: Element) => {
-                    const title = el.textContent?.trim() || '';
-                    const href = el.getAttribute('href') || '';
-                    if (title && href && href.includes('/jobs/')) results.push({ title, url: href });
-                });
-                return results;
+        // Scrape DOM job cards directly — Elastic list page uses .list-group .job-group-item
+        const listJobs = await page.evaluate(() => {
+            const results: any[] = [];
+            document.querySelectorAll('.list-group .job-group-item').forEach((el) => {
+                const a = el.querySelector('a');
+                if (a) {
+                    const title = a.textContent?.trim() || (el.textContent || '').trim();
+                    const href = (a.getAttribute('href') || '');
+                    if (title && href && href.includes('/jobs/')) {
+                        results.push({ title, url: href.startsWith('http') ? href : 'https://jobs.elastic.co' + href });
+                    }
+                }
             });
-            for (const item of domJobs) {
-                const jobUrl = item.url.startsWith('http') ? item.url : `https://jobs.elastic.co${item.url}`;
-                jobs.push({ title: item.title, url: jobUrl, location: 'United Kingdom' });
+            // Also try broader selectors if first fails
+            if (results.length === 0) {
+                document.querySelectorAll('a[href*="/jobs/"]').forEach((a) => {
+                    const href = a.getAttribute('href') || '';
+                    const title = a.textContent?.trim() || '';
+                    if (title && href && !results.find(r => r.url === href)) {
+                        results.push({ title, url: href.startsWith('http') ? href : 'https://jobs.elastic.co' + href });
+                    }
+                });
+            }
+            return results;
+        });
+        for (const item of listJobs) {
+            basicJobs.push({ title: item.title, url: item.url, location: 'United Kingdom' });
+        }
+
+        // Fallback: original intercept + DOM
+        if (basicJobs.length === 0) {
+            for (const data of apiResults) {
+                const results = data.results || data.hits || data.jobs || [];
+                for (const item of results) {
+                    const title = item.title?.raw || item.title || '';
+                    const jobUrl = item.url?.raw || item.absolute_url?.raw || item.url || '';
+                    const location = item.location?.raw || item.city?.raw || item.location || 'United Kingdom';
+                    if (title && jobUrl) basicJobs.push({ title, url: jobUrl, location });
+                }
+            }
+            if (basicJobs.length === 0) {
+                const domJobs = await page.evaluate(() => {
+                    const results: any[] = [];
+                    document.querySelectorAll('[class*="job"] a, article a, li a').forEach((el: Element) => {
+                        const title = el.textContent?.trim() || '';
+                        const href = el.getAttribute('href') || '';
+                        if (title && href && href.includes('/jobs/')) results.push({ title, url: href });
+                    });
+                    return results;
+                });
+                for (const item of domJobs) {
+                    const jobUrl = item.url.startsWith('http') ? item.url : `https://jobs.elastic.co${item.url}`;
+                    basicJobs.push({ title: item.title, url: jobUrl, location: 'United Kingdom' });
+                }
             }
         }
 
-        console.log(`[Custom: Elastic] Found ${jobs.length} jobs.`);
+        console.log(`[Custom: Elastic] Found ${basicJobs.length} basic jobs. Fetching descriptions...`);
+
+        // Fetch descriptions concurrently with validation
+        const limit = pLimit(10);
+        jobs = []; // Initialize
+
+        await Promise.all(basicJobs.map(basicJob => limit(async () => {
+            try {
+                // Fetch the individual job page
+                const jobRes = await fetchWithTimeout(basicJob.url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+                });
+
+                if (!jobRes.ok) {
+                    console.log(`[Custom: Elastic] Failed to fetch job page ${basicJob.url}: ${jobRes.status}`);
+                    return;
+                }
+
+                const html = await jobRes.text();
+                const $ = cheerio.load(html);
+
+                // Extract job description
+                let description = '';
+
+                // Elastic recently moved their job data into a Next.js / Vue stringified JSON object inside #app
+                const appNode = $('#app');
+                if (appNode.length) {
+                    const dataPage = appNode.attr('data-page');
+                    if (dataPage) {
+                        try {
+                            const json = JSON.parse(dataPage);
+                            const props = json.props || {};
+
+                            description = props.job_object?.description
+                                || props.job_object?.content
+                                || props.templateJobContent?.description
+                                || (typeof props.templateJobContent === 'string' ? props.templateJobContent : '')
+                                || props.content
+                                || '';
+                        } catch (e) {
+                            console.error(`[Custom: Elastic] Failed to parse data-page JSON for ${basicJob.url}`);
+                        }
+                    }
+                }
+
+                // If that fails, try the whole #job-desc text first
+                if (!description || description.length < 100) {
+                    description = $('#job-desc').text().trim();
+                }
+
+                // If that is too short, try to get text from collapsable sections
+                if (description.length < 100) {
+                    const descBlocks: string[] = [];
+                    const descSelectors = [
+                        '#job-desc .optCollapsableSection',
+                        '#job-desc .optSectionWrap .optCollapsableSection',
+                        '.optCollapsableSection',
+                        '.optSectionWrap.open .optCollapsableSection',
+                        '.optSectionWrap .optCollapsableSection.open'
+                    ];
+                    for (const sel of descSelectors) {
+                        $(sel).each((i, el) => {
+                            const text = $(el).text().trim();
+                            if (text.length > 50) {
+                                descBlocks.push(text);
+                            }
+                        });
+                    }
+                    if (descBlocks.length) {
+                        description = descBlocks.join('\n\n');
+                    }
+                }
+
+                // Fallback: get main content if still too short
+                if (description.length < 100) {
+                    const mainContent = $('main').first() || $('.content').first() || $('article').first();
+                    if (mainContent.length) {
+                        description = mainContent.text().trim();
+                    }
+                }
+
+                // Clean and validate the description
+                const cleanDescription = cleanInlineJD(description);
+
+                // Only add job if we have a valid description (>300 chars after cleaning)
+                if (cleanDescription && cleanDescription.length >= 300) {
+                    // Infer job type from title - use cardText field since we don't have specific employmentField
+                    const jobType = inferJobTypeFromListing({ cardText: basicJob.title });
+
+                    jobs.push({
+                        title: basicJob.title,
+                        location: basicJob.location,
+                        url: basicJob.url,
+                        department: '',
+                        salary: undefined,
+                        description: cleanDescription,
+                        job_type: jobType,
+                        atsProvider: 'custom'
+                    });
+                } else {
+                    console.log(`[Custom: Elastic] Skipping job due to insufficient description: ${basicJob.url}`);
+                }
+            } catch (err: any) {
+                console.log(`[Custom: Elastic] Error processing job ${basicJob.url}: ${err.message}`);
+            }
+        })));
+
+        console.log(`[Custom: Elastic] Found ${jobs.length} jobs with valid descriptions`);
     } catch (e) {
         console.error('[Custom: Elastic] Error:', e);
     } finally {
@@ -1864,7 +2524,7 @@ async function fetchCapgemini(url: string): Promise<Job[]> {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'application/json'
                 }
-            }, 30000); // 30s per page
+            }, 60000) // 60s per page
 
             if (!res.ok) {
                 console.error(`[Custom: Capgemini] API failed with status ${res.status}: ${res.statusText}`);
@@ -1990,6 +2650,7 @@ async function fetchDepop(url: string): Promise<Job[]> {
                         url: j.absolute_url || url,
                         location: j.location || j.city || '',
                         department: j.team || '',
+                        description: j.job_description || undefined,
                         salary: undefined
                     });
                 }
@@ -2015,7 +2676,8 @@ async function fetchStripe(baseUrl: string): Promise<Job[]> {
 
             const html = await res.text();
             const $ = cheerio.load(html);
-            
+
+            const pageJobs: any[] = [];
             let pageCount = 0;
             $('tr').each((i, el) => {
                 if (i === 0) return; // headers
@@ -2024,7 +2686,7 @@ async function fetchStripe(baseUrl: string): Promise<Job[]> {
                     const title = linkEl.text().trim();
                     let href = linkEl.attr('href');
                     if (href && href.startsWith('/')) href = 'https://stripe.com' + href;
-                    
+
                     const tds = $(el).find('td');
                     let department = '';
                     let location = '';
@@ -2034,8 +2696,8 @@ async function fetchStripe(baseUrl: string): Promise<Job[]> {
                     } else if (tds.length === 2) {
                         location = $(tds[1]).text().trim();
                     }
-                    
-                    jobs.push({
+
+                    pageJobs.push({
                         title,
                         url: href || url,
                         department,
@@ -2049,6 +2711,96 @@ async function fetchStripe(baseUrl: string): Promise<Job[]> {
             if (pageCount < 10) {
                 break;
             }
+
+            // Fetch descriptions for the jobs on this page concurrently
+            const limit = pLimit(10);
+            await Promise.all(pageJobs.map((basicJob) => limit(async () => {
+                let description = '';
+                try {
+                    const res = await fetchWithTimeout(basicJob.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                    const text = await res.text();
+                    const $ = cheerio.load(text);
+
+                    // Try to extract from __NEXT_DATA__
+                    const nextData = JSON.parse($('#__NEXT_DATA__').html() || '{}');
+
+                    // Look for job data in nextData
+                    function findJobData(obj: any, path: string = ''): { field: string; value: string } | null {
+                        if (!obj || typeof obj !== 'object') return null;
+                        if (Array.isArray(obj)) {
+                            for (let i = 0; i < obj.length; i++) {
+                                const found = findJobData(obj[i], `${path}[${i}]`);
+                                if (found) return found;
+                            }
+                            return null;
+                        } else {
+                            const keys = Object.keys(obj);
+                            // Look for common job description fields
+                            const descKeys = ['content', 'jobDescription', 'description', 'body', 'text'];
+                            for (const key of descKeys) {
+                                if (keys.includes(key) && typeof obj[key] === 'string' && obj[key].length > 100) {
+                                    return { field: key, value: obj[key] };
+                                }
+                            }
+                            // Recurse into objects
+                            for (const k of Object.keys(obj)) {
+                                const found = findJobData(obj[k], path ? `${path}.${k}` : k);
+                                if (found) return found;
+                            }
+                            return null;
+                        }
+                    }
+
+                    const jobData = findJobData(nextData.props || nextData);
+                    if (jobData) {
+                        description = jobData.value;
+                    } else {
+                        // Fallback: try to get from DOM selectors
+                        const selectors = [
+                            'section',
+                            '[data-testid*="job-description"]',
+                            '[data-testid*="description"]',
+                            '.job-description',
+                            '.JobDescription',
+                            '.job-detail',
+                            '.JobDetail',
+                            '[class*="content"]',
+                            'article',
+                            '.rich-text',
+                            '.markdown'
+                        ];
+                        for (const selector of selectors) {
+                            const el = $(selector);
+                            if (el.length) {
+                                const text = el.text().trim();
+                                if (text.length > 200) {
+                                    description = text;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                } catch (e: any) {
+                    console.error(`[Custom: Stripe] Error fetching JD for ${basicJob.url}: ${e.message}`);
+                }
+
+                const cleanDesc = cleanInlineJD(description) || '';
+
+                if (cleanDesc.length < 300) {
+                    console.log(`[Custom: Stripe] Skipping job due to insufficient description: ${basicJob.url}`);
+                    return;
+                }
+
+                jobs.push({
+                    title: basicJob.title,
+                    location: sanitizeJobLocation(basicJob.location, 'uk', basicJob.title, basicJob.url),
+                    url: basicJob.url,
+                    department: basicJob.department,
+                    description: cleanDesc,
+                } as any);
+            })));
+
             skip += 100;
             if (skip > 3000) break; // safety cap
         }
@@ -2059,27 +2811,23 @@ async function fetchStripe(baseUrl: string): Promise<Job[]> {
 }
 
 async function fetchApple(url: string): Promise<Job[]> {
+    const rawJobs: any[] = [];
     const jobs: Job[] = [];
-    let page = 1;
-    let totalPages = 1;
-    
     console.log('[Custom: Apple] Fetching API...');
     
     try {
         for (const locCode of ['united-kingdom-GBR', 'ireland-IRL']) {
-            page = 1;
-            totalPages = 1;
-            while (page <= totalPages && page <= 50) { // Safety limit of 50 pages
+            let page = 1;
+            let totalPages = 1;
+            while (page <= totalPages && page <= 50) { 
                 const pageUrl = `https://jobs.apple.com/en-in/search?location=${locCode}&page=${page}`;
                 const res = await fetchWithTimeout(pageUrl, {
                     headers: { 'User-Agent': 'Mozilla/5.0' }
                 });
-                
                 if (!res.ok) {
-                    console.log(`[Custom: Apple] Failed to fetch page ${page} for ${locCode}: ${res.statusText}`);
+                    console.log(`[Custom: Apple] Failed to fetch page ${page} for ${locCode}`);
                     break;
                 }
-                
                 const html = await res.text();
                 const $ = cheerio.load(html);
                 let foundData = false;
@@ -2087,60 +2835,96 @@ async function fetchApple(url: string): Promise<Job[]> {
                 $('script').each((i, el) => {
                     const text = $(el).html();
                     if (text && text.includes('__staticRouterHydrationData = JSON.parse(')) {
-                        const match = text.match(/JSON\.parse\((".*?")\);/);
+                        const match = text.match(/JSON\.parse\((".+?")\);/);
                         if (match) {
                             try {
                                 const jsonStr = JSON.parse(match[1]); 
                                 const data = JSON.parse(jsonStr);     
                                 const searchData = data?.loaderData?.search || {};
+                                console.log(`[Custom: Apple] Parsed searchData for ${locCode}, totalRecords:`, searchData.totalRecords);
                                 if (page === 1) {
                                     const totalRecords = searchData.totalRecords || 0;
                                     totalPages = Math.ceil(totalRecords / 20) || 1;
                                 }
-                                
                                 const searchResults = searchData.searchResults || [];
                                 for (const item of searchResults) {
-                                    const title = item.postingTitle;
-                                    const jobId = item.positionId;
-                                    const jobUrl = `https://jobs.apple.com/en-in/details/${jobId}`;
-                                    const location = item.locations?.[0]?.name || (locCode === 'ireland-IRL' ? 'Ireland' : 'United Kingdom');
-                                    
-                                    if (title && jobId) {
-                                        const jobType = inferJobTypeFromListing({
-                                            employmentField: [
-                                                item.positionType,
-                                                item.roleType,
-                                                item.jobType,
-                                                item.weeklyHours != null
-                                                    ? `${item.weeklyHours} hours per week`
-                                                    : null,
-                                            ],
-                                        });
-                                        jobs.push({
-                                            title,
-                                            url: jobUrl,
-                                            location,
-                                            ...(jobType ? { job_type: jobType } : {}),
-                                        });
-                                    }
+                                    item._locCode = locCode;
+                                    rawJobs.push(item);
                                 }
-                                foundData = true;
-                            } catch(e: any) {
-                                console.error('[Custom: Apple] JSON parse error:', e.message);
+                                if (searchResults.length > 0) foundData = true;
+                            } catch (e) {
+                                console.error("[Custom: Apple] Parse error:", e);
                             }
                         }
                     }
                 });
-                
-                if (!foundData) break;
-                
+                if (!foundData) {
+                    console.log(`[Custom: Apple] No data found on page ${page} for ${locCode}. HTML length: ${html.length}`);
+                    break;
+                }
                 page++;
-                await new Promise(r => setTimeout(r, 500)); // Respectful delay
+                await new Promise(r => setTimeout(r, 1000));
             }
         }
-        console.log(`[Custom: Apple] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error('[Custom: Apple] Error:', e);
+
+        console.log(`[Custom: Apple] Finished fetching pages. rawJobs length: ${rawJobs.length}`);
+
+        const limit = pLimit(10);
+        await Promise.all(rawJobs.map(item => limit(async () => {
+            const title = item.postingTitle;
+            const jobId = item.positionId;
+            const jobUrl = `https://jobs.apple.com/en-in/details/${jobId}`;
+            const location = item.locations?.[0]?.name || (item._locCode === 'ireland-IRL' ? 'Ireland' : 'United Kingdom');
+            
+            if (title && jobId) {
+                const jobType = inferJobTypeFromListing({
+                    employmentField: [
+                        item.positionType,
+                        item.roleType,
+                        item.jobType,
+                        item.weeklyHours != null ? `${item.weeklyHours} hours per week` : null,
+                    ],
+                });
+
+                let description = cleanInlineJD(item.jobSummary) || '';
+                try {
+                    const dRes = await fetchWithTimeout(jobUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                    if (dRes.ok) {
+                        const dHtml = await dRes.text();
+                        const $d = cheerio.load(dHtml);
+                        $d('script').each((i, el) => {
+                            const text = $d(el).html();
+                            if (text && text.includes('__staticRouterHydrationData = JSON.parse(')) {
+                                const match = text.match(/JSON\.parse\((".+?")\);/);
+                                if (match) {
+                                    try {
+                                        const jsonStr = JSON.parse(match[1]);
+                                        const data = JSON.parse(jsonStr);
+                                        const jd = data?.loaderData?.jobDetails?.jobsData?.[0] || data?.loaderData?.jobDetails?.jobsData || {};
+                                        if (jd.description) {
+                                            const fullDesc = (jd.jobSummary || '') + '\n\n' + (jd.description || '') + '\n\n' + (jd.minimumQualifications || '') + '\n\n' + (jd.preferredQualifications || '');
+                                            description = cleanInlineJD(fullDesc) || description;
+                                        }
+                                    } catch(e){}
+                                }
+                            }
+                        });
+                    }
+                } catch(e) {}
+                jobs.push({
+                    title,
+                    url: jobUrl,
+                    location,
+                    salary: undefined,
+                    job_type: jobType,
+                    atsProvider: 'custom',
+                    description: cleanInlineJD(description)
+                });
+            }
+        })));
+        
+    } catch (err: any) {
+        console.log(`[Custom: Apple] Error: ${err.message}`);
     }
     
     return jobs;
@@ -2271,13 +3055,24 @@ async function fetchTesco(url: string): Promise<Job[]> {
     try {
         while (foundJobs && offset <= 5000) { // Safety limit 5000 jobs
             const searchUrl = `https://careers.tesco.com/en_GB/careers/SearchJobs/?jobRecordsPerPage=100&jobOffset=${offset}`;
-            const res = await fetchWithTimeout(searchUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
+            
+            let res = await fetchWithTimeout(searchUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
             });
             
             if (!res.ok) {
-                console.log(`[Custom: Tesco] Failed to fetch offset ${offset}: ${res.statusText}`);
-                break;
+                if (res.status === 406 || res.status === 429) {
+                    console.log(`[Custom: Tesco] Rate limited (${res.status}) at offset ${offset}. Waiting 30s before retry...`);
+                    await new Promise(r => setTimeout(r, 30000));
+                    res = await fetchWithTimeout(searchUrl, {
+                        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15' }
+                    });
+                }
+                
+                if (!res.ok) {
+                    console.log(`[Custom: Tesco] Failed to fetch offset ${offset}: ${res.statusText}`);
+                    break;
+                }
             }
             
             const html = await res.text();
@@ -2316,12 +3111,21 @@ async function fetchTesco(url: string): Promise<Job[]> {
                 break;
             }
             
-            await new Promise(r => setTimeout(r, 500));
+            // Increased delay between pages to avoid IP blocks
+            await new Promise(r => setTimeout(r, Math.random() * 1000 + 1000));
         }
     } catch (e: any) {
         console.error('[Custom: Tesco] Error:', e.message);
     }
-    return jobs;
+    
+    // Deduplicate by URL to save JD fetching time
+    const uniqueJobs = new Map<string, Job>();
+    for (const job of jobs) {
+        if (!uniqueJobs.has(job.url)) {
+            uniqueJobs.set(job.url, job);
+        }
+    }
+    return Array.from(uniqueJobs.values());
 }
 
 
@@ -2792,42 +3596,49 @@ async function fetchUHG(url: string): Promise<Job[]> {
 }
 
 async function fetchQualcomm(): Promise<Job[]> {
-    const allJobs: Job[] = [];
+    const rawPositions: any[] = [];
     let start = 0;
     const PAGE_SIZE = 10;
-    
+
     while (start < 3000) { // Safety limit to cover ~3000 jobs
         try {
             const url = `https://careers.qualcomm.com/api/pcsx/search?domain=qualcomm.com&query=&start=${start}&sort_by=timestamp`;
             console.log(`[Custom: Qualcomm] Fetching start=${start} -> ${url}`);
-            
-            const res = await fetchWithTimeout(url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-                    'Accept': 'application/json'
-                }
-            });
 
-            if (!res.ok) {
-                console.log(`[Custom: Qualcomm] HTTP error ${res.status}`);
-                break;
-            }
+            let res: Response | null = null;
+            let retries = 3;
             
+            while (retries > 0) {
+                res = await fetchWithTimeout(url, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (res.ok) {
+                    break;
+                } else if (res.status === 429) {
+                    console.log(`[Custom: Qualcomm] 429 Rate Limit for search API start=${start}. Retrying...`);
+                    retries--;
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                } else {
+                    console.log(`[Custom: Qualcomm] HTTP error ${res.status}`);
+                    break;
+                }
+            }
+
+            if (!res || !res.ok) break;
+
             const d = await res.json();
             const positions = d.data?.positions || [];
-            
+
             if (positions.length === 0) break;
 
-            allJobs.push(...positions.map((p: any) => ({
-                title: p.name || '',
-                location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
-                url: `https://careers.qualcomm.com${p.positionUrl}?domain=qualcomm.com`,
-                department: p.department || '',
-                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
-            })));
+            rawPositions.push(...positions);
 
             if (positions.length < PAGE_SIZE) break;
-            
+
             start += positions.length;
             await new Promise(resolve => setTimeout(resolve, 500));
         } catch (err: any) {
@@ -2835,6 +3646,100 @@ async function fetchQualcomm(): Promise<Job[]> {
             break;
         }
     }
+
+    // Concurrently fetch job descriptions for all collected positions
+    // Reduced concurrency to 1 and added delays to avoid strict 403 CloudFront WAF blocks
+    const limit = pLimit(1);
+    const allJobs: Job[] = [];
+
+    // Pre-filter UK jobs to only fetch JDs for relevant jobs (avoids fetching 2000+ JDs and getting WAF banned)
+    const ukPositions = [];
+    const nonUkPositions = [];
     
+    for (const p of rawPositions) {
+        const loc = p.locations?.[0] || p.standardizedLocations?.[0] || '';
+        const title = p.name || '';
+        const isUk = isUKJob({ locations: [loc], isRemote: title.toLowerCase().includes('remote') || loc.toLowerCase().includes('remote'), isTrustedSource: false });
+        if (isUk) {
+            ukPositions.push(p);
+        } else {
+            nonUkPositions.push(p);
+        }
+    }
+
+    // Push non-UK jobs without description so syncAll.ts can correctly log them as rejected
+    for (const p of nonUkPositions) {
+        allJobs.push({
+            title: p.name || '',
+            location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
+            url: `https://careers.qualcomm.com${p.positionUrl}?domain=qualcomm.com`,
+            department: p.department || '',
+            salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
+        });
+    }
+
+    await Promise.all(ukPositions.map(p => limit(async () => {
+        try {
+            const detailUrl = `https://careers.qualcomm.com/api/apply/v2/jobs/${p.id}?domain=qualcomm.com`;
+            let description = '';
+            let retries = 3;
+            
+            // Mandatory delay between requests to stay under WAF radar
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1500));
+
+            while (retries > 0) {
+                const detailRes = await fetchWithTimeout(detailUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (detailRes.ok) {
+                    const text = await detailRes.text();
+                    try {
+                        const detailData = JSON.parse(text);
+                        description = detailData.job_description || '';
+                    } catch (e) {
+                        // Ignore parse error
+                    }
+                    break;
+                } else if (detailRes.status === 429 || detailRes.status === 403) {
+                    console.log(`[Custom: Qualcomm] ${detailRes.status} Rate Limit for detail ${p.id}. Retrying in 15s...`);
+                    retries--;
+                    await new Promise(resolve => setTimeout(resolve, 15000));
+                } else {
+                    break;
+                }
+            }
+
+            allJobs.push({
+                title: p.name || '',
+                location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
+                url: `https://careers.qualcomm.com${p.positionUrl}?domain=qualcomm.com`,
+                department: p.department || '',
+                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined,
+                description: cleanInlineJD(description)
+            });
+        } catch (err: any) {
+            console.log(`[Custom: Qualcomm] Error fetching detail for ${p.id}: ${err.message}`);
+            allJobs.push({
+                title: p.name || '',
+                location: p.locations?.[0] || p.standardizedLocations?.[0] || '',
+                url: `https://careers.qualcomm.com${p.positionUrl}?domain=qualcomm.com`,
+                department: p.department || '',
+                salary: (typeof p !== 'undefined' && (p as any)?.salary) ? String(typeof (p as any).salary === 'object' ? JSON.stringify((p as any).salary) : (p as any).salary) : undefined
+            });
+        }
+    })));
+
     return allJobs;
+}
+
+export async function fetchCustom(url: string, company?: CompanyRow): Promise<Job[]> {
+    const jobs = await fetchCustomInternal(url, company);
+    if (jobs && jobs.length > 0) {
+        await enrichHtmlJobDescriptionsConcurrently(jobs);
+    }
+    return jobs;
 }
