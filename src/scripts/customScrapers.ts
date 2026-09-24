@@ -12,7 +12,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 puppeteer.use(StealthPlugin());
-async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promise<void> {
+export async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promise<void> {
     const limit = pLimit(5);
     await Promise.all(jobs.map(j => limit(async () => {
         if (j.description && j.description.length > 50) return;
@@ -23,7 +23,13 @@ async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promise<void>
         let retries = 3;
         while (retries > 0) {
             try {
-                const res = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                const res = await fetchWithTimeout(j.url, { 
+                    headers: { 
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9'
+                    } 
+                });
                 if (!res.ok) {
                     if (res.status === 406 || res.status === 429) {
                         console.log(`[enrichHtml] Rate limited (${res.status}) on ${j.url}, retrying in 5s...`);
@@ -37,8 +43,8 @@ async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promise<void>
                 const html = await res.text();
                 let $ = cheerio.load(html);
 
-                // JLR / SuccessFactors edge case: Some return a script wrapping HTML or block entirely without cookies, but we try parsing anyway.
                 const selectors = [
+                    '.ats-description', // Radancy strict JD
                     '[data-id="job-description"]', '.job-description', '#job-description',
                     '.jobDescription', '.jobdescription', '.joblayouttoken', '#jd-description',
                     'div[itemprop="description"]', 'section[itemprop="description"]', '.posting-description',
@@ -1134,11 +1140,16 @@ async function fetchIBM(url: string): Promise<Job[]> {
             for (const hit of hitsInfo.hits) {
                 const source = hit._source;
                 if (source && source.title && source.url) {
+                    let desc = '';
+                    if (source.description) {
+                        desc = cleanInlineJD(source.description) || '';
+                    }
                     jobs.push({
                         title: source.title,
                         location: (source.field_keyword_19 ? source.field_keyword_19 + ', United Kingdom' : 'United Kingdom'),
                         department: source.field_keyword_08 || '',
                         url: source.url,
+                        description: desc || undefined
                     });
                 }
             }
@@ -3738,8 +3749,5 @@ async function fetchQualcomm(): Promise<Job[]> {
 
 export async function fetchCustom(url: string, company?: CompanyRow): Promise<Job[]> {
     const jobs = await fetchCustomInternal(url, company);
-    if (jobs && jobs.length > 0) {
-        await enrichHtmlJobDescriptionsConcurrently(jobs);
-    }
     return jobs;
 }

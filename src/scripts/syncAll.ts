@@ -25,7 +25,7 @@ import pLimit from 'p-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
-import { fetchCustom, cleanInlineJD } from './customScrapers';
+import { fetchCustom, cleanInlineJD, enrichHtmlJobDescriptionsConcurrently } from './customScrapers';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
 import {
@@ -395,6 +395,35 @@ async function deleteStaleJobsClearingFks(companyId: string | number, staleBefor
         .delete({ count: 'exact' })
         .eq('company_id', companyId)
         .lt('last_seen_at', staleBefore);
+}
+
+// --- GLOBAL JD FETCH GUARD ---
+// Prevents API fetchers from making 1x1 detail requests for jobs that will be discarded by the location filter.
+export function shouldFetchJD(job: Job, company?: any, existingJobsMap?: Map<string, string>): boolean {
+    if (existingJobsMap?.has(job.url) && (existingJobsMap.get(job.url)?.trim().length || 0) > 10) {
+        job.description = existingJobsMap.get(job.url);
+        return false;
+    }
+    
+    if (company) {
+        const locText = String(job.location || '').trim();
+        const locationInput = buildLocationInput(job);
+        
+        const isTrustedUKCompany = company.trusted_uk_company === true;
+        const trustOk =
+            isTrustedUKCompany &&
+            (!locText || locationInput.isRemote || /^(uk|u\.k\.|united kingdom|great britain|england|scotland|wales|northern ireland)$/i.test(locText));
+            
+        const matchesUK = isUKJob(locationInput) || trustOk;
+        
+        const irelandOnlyMarket = company.ireland_permit_employer && !company.licensed_sponsor;
+        const matchesIreland = irelandOnlyMarket
+            ? isIrelandJob(locText, locationInput.locations)
+            : false;
+            
+        if (!matchesUK && !matchesIreland) return false;
+    }
+    return true;
 }
 
 export function buildLocationInput(job: Job) {
@@ -1764,7 +1793,7 @@ async function fetchAshby(token: string, company?: CompanyRow, existingJobsMap?:
 
         const descLimit = pLimit(4);
         await Promise.all(jobs.map((j: Job) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             try {
                 const pr = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
                 if (!pr.ok) return;
@@ -1923,7 +1952,7 @@ async function fetchWorkable(token: string, company?: CompanyRow, existingJobsMa
     const descriptionLimit = pLimit(2);
     async function attachDescriptions(jobs: Array<Job & { _shortcode?: string }>): Promise<Job[]> {
         await Promise.all(jobs.map((j) => descriptionLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             if (!j._shortcode) return;
             try {
                 const r = await workableFetchWithRetry(
@@ -2141,7 +2170,7 @@ export async function fetchBambooHR(token: string, company?: CompanyRow, existin
 
             const descLimit = pLimit(4);
             await Promise.all(jobs.map((j: any) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
                 if (!j._id) return;
                 const detail = await fetchBambooHRJobDetail(token, j._id);
                 j.description = detail.description;
@@ -2242,7 +2271,7 @@ async function fetchSmartRecruiters(token: string, company?: CompanyRow, existin
 
     const descLimit = pLimit(4);
     await Promise.all(allJobs.map((j) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
         if (!j._id) return;
         j.description = await fetchSmartRecruitersDescription(token, j._id);
     })));
@@ -2336,7 +2365,7 @@ export async function fetchBreezy(token: string, company?: CompanyRow, existingJ
 
         const descLimit = pLimit(4);
         await Promise.all(apiJobs.map((j: Job) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             if (!j.url) return;
             const detail = await fetchBreezyJobDetail(j.url);
             j.description = detail.description;
@@ -2453,7 +2482,7 @@ async function fetchJobvite(token: string, company?: CompanyRow, existingJobsMap
 
         const descLimit = pLimit(4);
         await Promise.all(allJobs.map(j => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             if (!j.url || j.description) return;
             const detail = await fetchJobviteJobDetail(j.url);
             j.description = detail.description;
@@ -2534,7 +2563,7 @@ async function fetchAvature(token: string, company?: CompanyRow, existingJobsMap
 
         const descLimit = pLimit(4);
         await Promise.all(apiJobs.map((j: Job) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             if (!j.url) return;
             const detail = await fetchAvatureJobDetail(j.url);
             j.description = detail.description;
@@ -2638,7 +2667,7 @@ async function fetchAvatureSearchJobsHtml(portalBase: string, _company?: Company
     await Promise.all(
         jobs.map((job) =>
             limit(async () => {
-                    if (existingJobsMap?.has(job.url) && (existingJobsMap.get(job.url)?.trim().length || 0) > 10) { job.description = existingJobsMap.get(job.url); return; }
+                    if (!shouldFetchJD(job, _company, existingJobsMap)) return;
                 try {
                     const detailRes = await fetchWithTimeout(job.url, {
                         headers: { 'User-Agent': 'Mozilla/5.0' },
@@ -3041,7 +3070,7 @@ export async function fetchWorkday(token: string, company?: CompanyRow, existing
 
                     const limitDetails = pLimit(2);
                     const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
                         let job_type_val = j.timeType || j.bulletFields;
                         let description = undefined;
                         try {
@@ -3102,7 +3131,7 @@ export async function fetchWorkday(token: string, company?: CompanyRow, existing
                         irTotal = Math.min(irData.total || irTotal, 200); // cap at 200 safety limit
                         const limitDetails = pLimit(10);
                         const enrichedIrPosts = await Promise.all(irPosts.map((j: any) => limitDetails(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
                             let job_type_val = j.timeType || j.bulletFields;
                             if (!job_type_val || !parseJobType(job_type_val)) {
                                 try {
@@ -3147,10 +3176,7 @@ export async function fetchWorkday(token: string, company?: CompanyRow, existing
                 const descLimit = pLimit(4);
                 await Promise.all(allJobs.map((j) => descLimit(async () => {
                     if (!j.url.startsWith(publicBase)) return;
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) {
-                        j.description = existingJobsMap.get(j.url);
-                        return;
-                    }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
                     const externalPath = j.url.slice(publicBase.length);
                     try {
                         const detailRes = await fetchWithTimeout(`${detailBase}${externalPath}`, {
@@ -3362,7 +3388,7 @@ async function fetchSuccessFactorsJsonApi(csbBaseUrl: string, _company?: Company
 async function attachSuccessFactorsDescriptions(jobs: Job[], existingJobsMap?: Map<string, string>): Promise<void> {
     const descLimit = pLimit(4);
     await Promise.all(jobs.map((j) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, undefined, existingJobsMap)) return;
         try {
             const r = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
             if (!r.ok) return;
@@ -3474,7 +3500,7 @@ async function fetchSuccessFactorsHtmlSearch(
     return jobs;
 }
 
-async function fetchHibob(token: string): Promise<Job[]> {
+async function fetchHibob(token: string, company?: any, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         // token is the company identifier, e.g. "ustwo"
         const domain = token.includes('.') ? token : `${token}.careers.hibob.com`;
@@ -3626,7 +3652,7 @@ export async function fetchEightfold(token: string, company?: CompanyRow, existi
 
     const descLimit = pLimit(4);
     await Promise.all(allJobs.map((j: any) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
         if (!j._id) return;
         const detail = await fetchEightfoldJobDetail(host, apiDomain, j._id);
         j.description = detail.description;
@@ -3714,7 +3740,7 @@ async function fetchICIMS(token: string, company?: CompanyRow, existingJobsMap?:
 
         const descLimit = pLimit(4);
         await Promise.all(allJobs.map(j => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             if (!j.url) return;
             const detail = await fetchICIMSJobDetail(j.url);
             j.description = detail.description;
@@ -3786,7 +3812,7 @@ async function fetchRippling(token: string, company?: CompanyRow, existingJobsMa
 
         const descLimit = pLimit(4);
         await Promise.all(jobs.map((j) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             try {
                 const r = await fetchWithTimeout(j.url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' } });
                 if (!r.ok) return;
@@ -3994,48 +4020,8 @@ async function fetchGoldmanSachs(token: string): Promise<Job[]> {
         if (context) await context.close().catch(() => { });
     }
 
-    // Fetch descriptions concurrently with validation — no hallucination, only real HTML
-    const limit = pLimit(10);
-    const jobsWithDescription: Job[] = [];
-    await Promise.all(allJobs.map((basicJob) => limit(async () => {
-        let description = '';
-        try {
-            const res = await fetchWithTimeout(basicJob.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            if (!res.ok) return;
-            const html = await res.text();
-            const $ = cheerio.load(html);
-            const selectors = [
-                '[data-id="job-description"]', '.job-description', '#job-description',
-                '.jobDescription', '.jobdescription', '.joblayouttoken', '#jd-description',
-                'div[itemprop="description"]', 'section[itemprop="description"]', '.posting-description',
-                '.job-details', '.description', '.jd-info', 'article', 'main.content', 'main',
-                '.gs-job-description', '.job-description-text', '.description-text'
-            ];
-            let found = false;
-            for (const sel of selectors) {
-                if ($(sel).length && $(sel).first().text().trim().length > 100) {
-                    description = $(sel).first().html() || '';
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) description = $('body').html() || '';
-        } catch (e: any) { return; }
-
-        const cleanDesc = cleanInlineJD(description) || '';
-        if (cleanDesc && cleanDesc.length >= 300) {
-            jobsWithDescription.push({
-                title: basicJob.title,
-                location: basicJob.location,
-                url: basicJob.url,
-                department: basicJob.department,
-                description: cleanDesc,
-            });
-        }
-    })));
-
-    console.log(`[Custom: Goldman Sachs] Found ${jobsWithDescription.length} jobs with valid descriptions`);
-    return jobsWithDescription;
+    console.log(`[Custom: Goldman Sachs] Found ${allJobs.length} jobs in list.`);
+    return allJobs;
 }
 
 async function fetchGoogle(token: string): Promise<Job[]> {
@@ -4269,10 +4255,7 @@ async function fetchLinkedin(token: string, company?: CompanyRow, existingJobsMa
 
                 try {
                     // Skip if we already have a good description from cache
-                    if (existingJobsMap?.has(jobCard.url) && (existingJobsMap.get(jobCard.url)?.trim().length || 0) > 50) {
-                        jobCard.description = existingJobsMap.get(jobCard.url);
-                        return;
-                    }
+                    if (!shouldFetchJD(jobCard, company, existingJobsMap)) return;
 
                     if (!context) return;
                     const jobPage = await context.newPage();
@@ -4525,74 +4508,6 @@ async function fetchNHS(token: string): Promise<Job[]> {
     })));
     if (allJobs.length) {
         console.log(`[nhs] HTTP scrape saved ${allJobs.length} jobs`);
-        
-        // --- DIFF-BASED FETCHING ---
-        const existingUrls = new Set<string>();
-        try {
-            const urlsToQuery = allJobs.map(j => j.url).filter(Boolean) as string[];
-            const CHUNK_SIZE = 500;
-            for (let i = 0; i < urlsToQuery.length; i += CHUNK_SIZE) {
-                const chunk = urlsToQuery.slice(i, i + CHUNK_SIZE);
-                const { data, error } = await supabase
-                    .from('jobs')
-                    .select('url')
-                    .in('url', chunk);
-                if (data && !error) {
-                    data.forEach(row => existingUrls.add(row.url));
-                }
-            }
-        } catch (err: any) {
-            console.warn(`[nhs] Error fetching existing URLs: ${err.message}`);
-        }
-
-        const newJobs = allJobs.filter(job => job.url && !existingUrls.has(job.url));
-        console.log(`[nhs] Found ${existingUrls.size} existing jobs, ${newJobs.length} new jobs. Fetching JDs for all new jobs using Playwright to avoid WAF blocks.`);
-
-        // Use Playwright for all JDs to avoid strict NHS WAF blocks on rapid native fetch
-        const descLimit = pLimit(5);
-        const browser = await getSharedBrowser();
-        const context = await browser.newContext({
-            userAgent: NHS_HTTP_HEADERS['User-Agent'],
-            extraHTTPHeaders: {
-                'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
-                Accept: NHS_HTTP_HEADERS.Accept,
-            },
-        });
-        
-        // Disable images and CSS to speed up headless scraping
-        await context.route('**/*', (route) => {
-            const type = route.request().resourceType();
-            if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
-                route.abort();
-            } else {
-                route.continue();
-            }
-        });
-
-        await Promise.all(newJobs.map(async (job: Job) => {
-            if (!job.url) return descLimit(async () => {});
-
-            return descLimit(async () => {
-                const page = await context.newPage();
-                try {
-                    const response = await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
-                    if (response && !response.ok()) {
-                        console.warn(`[nhs-jd] ${job.url}: HTTP ${response.status()}`);
-                    } else {
-                        const html = await page.content();
-                        const descHtml = parseNhsJobDescriptionHtml(html);
-                        if (descHtml && descHtml.length > 50) {
-                            job.description = descHtml;
-                        }
-                    }
-                } catch (err: any) {
-                    console.warn(`[nhs-jd] ${job.url}: ${err.message}`);
-                } finally {
-                    await page.close().catch(() => {});
-                }
-            });
-        }));
-        await context.close().catch(() => {});
         return allJobs;
     }
     console.warn('[nhs] HTTP scrape returned 0 — Playwright fallback');
@@ -4707,61 +4622,7 @@ async function fetchNHS(token: string): Promise<Job[]> {
             if (pageNum > 500) break;
         }
 
-        // After collecting jobs, fetch JDs concurrently per job URL (Group C DOM crawl)
-        if (allJobs.length > 0) {
-            // --- DIFF-BASED FETCHING FOR PLAYWRIGHT FALLBACK ---
-            const existingUrls = new Set<string>();
-            try {
-                const urlsToQuery = allJobs.map(j => j.url).filter(Boolean) as string[];
-                const CHUNK_SIZE = 500;
-                for (let i = 0; i < urlsToQuery.length; i += CHUNK_SIZE) {
-                    const chunk = urlsToQuery.slice(i, i + CHUNK_SIZE);
-                    const { data, error } = await supabase
-                        .from('jobs')
-                        .select('url')
-                        .in('url', chunk);
-                    if (data && !error) {
-                        data.forEach(row => existingUrls.add(row.url));
-                    }
-                }
-            } catch (err: any) {
-                console.warn(`[nhs] Error fetching existing URLs: ${err.message}`);
-            }
-
-            const newJobs = allJobs.filter(job => job.url && !existingUrls.has(job.url));
-            const MAX_JD_FETCH = 50;
-            const jobsToFetchJd = newJobs.slice(0, MAX_JD_FETCH);
-            console.log(`[nhs] Playwright fallback: Found ${existingUrls.size} existing jobs, ${newJobs.length} new jobs. Fetching JDs for ${jobsToFetchJd.length} jobs.`);
-
-            const descLimit = pLimit(5);
-            await Promise.all(jobsToFetchJd.map(async (job: Job) => {
-                if (!job.url) return;
-                // Try up to 2 times with increased timeout
-                for (let attempt = 1; attempt <= 2; attempt++) {
-                    try {
-                        const res = await fetchWithTimeout(job.url, { headers: NHS_HTTP_HEADERS }, 30000);
-                        if (!res.ok) {
-                            if (attempt === 2) console.warn(`[nhs-jd] ${job.url}: HTTP ${res.status}`);
-                            continue; // try again if not last attempt
-                        }
-                        const html = await res.text();
-                        const descHtml = parseNhsJobDescriptionHtml(html);
-                        if (descHtml) {
-                            job.description = descHtml;
-                        }
-                        break; // success, break out of retry loop
-                    } catch (err: any) {
-                        if (attempt === 2) {
-                            console.warn(`[nhs-jd] ${job.url}: ${err.message}`);
-                        }
-                        // if not last attempt, wait a bit before retry
-                        if (attempt < 2) {
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                        }
-                    }
-                }
-            }));
-        }
+        // JDs will be fetched globally after filtering
 
         await context.close();
     } catch (e: any) {
@@ -5543,12 +5404,20 @@ async function fetchGXO(_token: string): Promise<Job[]> {
             seen.add(url);
 
             const cleanTitle = title.replace(/\s*\([^)]*\)\s*$/, '').trim() || title;
+            
+            let description = item.find('description').first().text().trim();
+            if (description) {
+                const $desc = cheerio.load(description);
+                description = $desc.text().replace(/\s+/g, ' ').trim();
+            }
+
             jobs.push({
                 title: cleanTitle,
                 location: location || 'United Kingdom',
                 url,
                 department: '',
                 salary: undefined,
+                description,
             });
         });
 
@@ -6308,7 +6177,7 @@ export async function fetchOracleCloud(token: string, company?: CompanyRow, exis
 
         const descLimit = pLimit(10);
         await Promise.all(allJobs.map((j) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             if (!j._id) return;
             const detail = await fetchOracleCloudDescription(domain, site, j._id);
             if (!detail) return;
@@ -6366,7 +6235,7 @@ export async function fetchJazzHR(token: string, company?: CompanyRow, existingJ
 
         const descLimit = pLimit(4);
         await Promise.all(jobs.map((j) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             j.description = await fetchJazzHRDescription(j.url);
         })));
 
@@ -6555,7 +6424,7 @@ export async function fetchTalentTrack(token: string, company?: CompanyRow, exis
         // endpoint the site's own Angular app calls. Verified live (Barchester).
         const detailLimit = pLimit(5);
         await Promise.all(deduped.map((j) => detailLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             if (!j.__jobId) return;
             try {
                 const dr = await fetchWithTimeout(
@@ -6678,7 +6547,7 @@ export async function fetchSoftscape(token: string, company?: CompanyRow, existi
         // (+ cleaner location / salary / category) — verified live (HC-One).
         const detailLimit = pLimit(5);
         await Promise.all(deduped.map((j) => detailLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             const d = await fetchEployJsonLdJob(j.url);
             if (!d) return;
             if (d.description) j.description = d.description;
@@ -6838,7 +6707,7 @@ export async function fetchGem(token: string, company?: CompanyRow, existingJobs
 
         const sectionLimit = pLimit(5);
         const jobs = await Promise.all(postings.map((j: any) => sectionLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             const extId = j.extId || j.id;
             const sections = extId ? await fetchGemJobSections(token, String(extId)) : null;
 
@@ -6902,7 +6771,7 @@ export async function fetchJoinCom(token: string, company?: CompanyRow, existing
         // the single-job endpoint as `description` (markdown). Verified live.
         const descLimit = pLimit(4);
         await Promise.all(allJobs.map((j) => descLimit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             try {
                 const r = await fetchWithTimeout(`https://join.com/api/public/jobs/${j.id}?locale=en-us`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
                 if (r.ok) j.__detail = await r.json();
@@ -7112,7 +6981,7 @@ async function enrichPhenomDescriptions(
 ): Promise<void> {
     const limit = pLimit(5);
     await Promise.all(rawJobs.map((j) => limit(async () => {
-                    if (existingJobsMap?.has(j.url) && (existingJobsMap.get(j.url)?.trim().length || 0) > 10) { j.description = existingJobsMap.get(j.url); return; }
+                    if (!shouldFetchJD(j, undefined, existingJobsMap)) return;
         if (j.description && String(j.description).length > 400) return; // widgets API already gave a real body
         const seq = j.jobSeqNo || j.jobseqno;
         if (!seq) return;
@@ -7164,7 +7033,7 @@ async function fetchPhenomHtmlPages(
     return mapPhenomJobs(sliced, baseUrl);
 }
 
-export async function fetchRecruiterbox(token: string): Promise<Job[]> {
+export async function fetchRecruiterbox(token: string, company?: any, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     try {
         let allJobs: any[] = [];
         let offset = 0;
@@ -7960,6 +7829,104 @@ export async function syncAll() {
                 console.log(
                     `[${displayProvider.padEnd(12)}] ${trading_name.padEnd(30)} Γ¢ö Skip IR write ΓÇö not permit/sponsor (${irelandJobs.length} matched)`
                 );
+            }
+
+            // --- FETCH DESCRIPTIONS FOR FILTERED JOBS ONLY ---
+            const jobsToEnrich = [];
+            if (canWriteUk && !irelandOnlyMarket) jobsToEnrich.push(...ukJobs);
+            if (canWriteIreland) jobsToEnrich.push(...irelandJobs);
+            
+            if (jobsToEnrich.length > 0) {
+                if (company.ats_provider === 'nhs' || company.id === 1730 || company.ats_provider === 'goldmansachs') {
+                    // Custom Playwright scrape for NHS & BAE Systems to bypass WAF / 429s
+                    const descLimit = pLimit(5);
+                    const browser = await getSharedBrowser();
+                    
+                    const pHeaders = company.ats_provider === 'nhs' ? {
+                        userAgent: NHS_HTTP_HEADERS['User-Agent'],
+                        extraHTTPHeaders: {
+                            'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+                            Accept: NHS_HTTP_HEADERS.Accept,
+                        },
+                    } : {
+                        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        extraHTTPHeaders: {
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                        },
+                    };
+                    
+                    const context = await browser.newContext(pHeaders);
+                    
+                    await context.route('**/*', (route) => {
+                        const type = route.request().resourceType();
+                        if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+                            route.abort();
+                        } else {
+                            route.continue();
+                        }
+                    });
+
+                    await Promise.all(jobsToEnrich.map(async (job: Job) => {
+                        if (!job.url || (job.description && job.description.length > 50)) return;
+                        return descLimit(async () => {
+                            const page = await context.newPage();
+                            try {
+                                await new Promise(r => setTimeout(r, Math.random() * 500 + 500));
+                                const response = await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+                                if (response && !response.ok()) {
+                                    console.warn(`[playwright-jd] ${job.url}: HTTP ${response.status()}`);
+                                } else {
+                                    if (company.ats_provider === 'goldmansachs') {
+                                        try {
+                                            await page.waitForSelector('.job-description', { timeout: 15000 });
+                                        } catch (e) {}
+                                    }
+                                    const html = await page.content();
+                                    let descHtml = '';
+                                    if (company.ats_provider === 'nhs') {
+                                        descHtml = parseNhsJobDescriptionHtml(html);
+                                    } else {
+                                        const $ = cheerio.load(html);
+                                        descHtml = cleanInlineJD($('.job-description').html() || '') || '';
+                                    }
+                                    if (descHtml && descHtml.length > 50) {
+                                        job.description = descHtml;
+                                    }
+                                }
+                            } catch (err: any) {
+                                console.warn(`[playwright-jd] ${job.url}: ${err.message}`);
+                            } finally {
+                                await page.close().catch(() => {});
+                            }
+                        });
+                    }));
+                    await context.close().catch(() => {});
+                } else if (company.ats_provider === 'royalmail') {
+                    // Royal Mail is a Phenom site but their JD pages are SPAs that block Playwright heavily (502 Gateway).
+                    // However, their backend /widgets API is entirely open for JD fetches.
+                    const rmLimit = pLimit(10);
+                    await Promise.all(jobsToEnrich.map(async (job: Job) => {
+                        if (!job.url || (job.description && job.description.length > 50)) return;
+                        return rmLimit(async () => {
+                            try {
+                                const mUrl = job.url.match(/\/job\/([^/]+)/);
+                                if (mUrl) {
+                                    const baseUrl = new URL(job.url).origin;
+                                    const desc = await fetchPhenomJobDescription(baseUrl, mUrl[1], '', '');
+                                    if (desc && desc.length > 50) {
+                                        job.description = desc;
+                                    }
+                                }
+                            } catch (err: any) {
+                                console.warn(`[Royal Mail] JD fetch failed for ${job.url}: ${err.message}`);
+                            }
+                        });
+                    }));
+                } else if (!['workday', 'phenom', 'amazon'].includes(company.ats_provider || '')) {
+                    // Generic fallback for custom scrapers and others (Workday/Phenom have their own flows)
+                    await enrichHtmlJobDescriptionsConcurrently(jobsToEnrich);
+                }
             }
 
             const ukRows = !canWriteUk || irelandOnlyMarket
