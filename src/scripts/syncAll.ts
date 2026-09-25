@@ -252,7 +252,7 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 // only that context, never the shared browser itself.
 let sharedBrowserPromise: Promise<Browser> | null = null;
 
-function getSharedBrowser(): Promise<Browser> {
+export function getSharedBrowser(): Promise<Browser> {
     if (!sharedBrowserPromise) {
         sharedBrowserPromise = chromium.launch({
             headless: true,
@@ -260,6 +260,12 @@ function getSharedBrowser(): Promise<Browser> {
             // these): reduces automation fingerprinting broadly, and --no-sandbox
             // avoids container/CI sandbox failures on AWS.
             args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+        }).then(browser => {
+            // Auto-recover if Chromium crashes (e.g. out of memory) mid-sync
+            browser.on('disconnected', () => {
+                sharedBrowserPromise = null;
+            });
+            return browser;
         }).catch((err) => {
             sharedBrowserPromise = null; // allow a retry on the next call
             throw err;
@@ -282,20 +288,18 @@ async function closeSharedBrowser(): Promise<void> {
 
 export async function fetchWithTimeout(url: string, options: any = {}, timeout = 15000) {
     const controller = new AbortController();
-    // Keep the abort timer running through the body read, not just headers
+    // Timeout for the network connection and header resolution
     const id = setTimeout(() => controller.abort(), timeout);
     try {
         const response = await fetch(url, {
             ...options,
             signal: controller.signal
         });
-        // Wrap body methods to clear timer after body is fully read
-        const originalText = response.text.bind(response);
-        const originalJson = response.json.bind(response);
-        const originalBuffer = response.arrayBuffer.bind(response);
-        (response as any).text = async () => { const r = await originalText(); clearTimeout(id); return r; };
-        (response as any).json = async () => { const r = await originalJson(); clearTimeout(id); return r; };
-        (response as any).arrayBuffer = async () => { const r = await originalBuffer(); clearTimeout(id); return r; };
+        // CLEAR TIMEOUT IMMEDIATELY AFTER HEADERS RESOLVE to prevent event loop leaks
+        // on non-200 responses where the body is never read.
+        clearTimeout(id);
+        
+        // Return response directly (no need to wrap body methods anymore)
         return response;
     } catch (error) {
         clearTimeout(id);
@@ -4034,7 +4038,7 @@ async function fetchGoldmanSachs(token: string): Promise<Job[]> {
     return allJobs;
 }
 
-async function fetchGoogle(token: string): Promise<Job[]> {
+async function fetchGoogle(token: string, company?: CompanyRow, existingJobsMap?: Map<string, string>): Promise<Job[]> {
     const allJobs: Job[] = [];
     let page = 1;
     let browser: Browser | undefined;
@@ -4084,6 +4088,8 @@ async function fetchGoogle(token: string): Promise<Job[]> {
     // Fetch JDs concurrently — verified AF_initDataCallback parsing (no hallucination)
     const limit = pLimit(10);
     await Promise.all(basicJobs.map((job: any) => limit(async () => {
+        if (!shouldFetchJD(job as Job, company, existingJobsMap)) return;
+        
         try {
             const res = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
             if (!res.ok) return;
@@ -4260,7 +4266,7 @@ async function fetchLinkedin(token: string, company?: CompanyRow, existingJobsMa
         // Fetch descriptions concurrently for non-empty jobs
         if (jobCards.length > 0) {
             const limit = pLimit(5);
-            await Promise.all(jobCards.map(async (jobCard: any) => {
+            await Promise.all(jobCards.map((jobCard: any) => limit(async () => {
                 if (!jobCard.url) return;
 
                 try {
@@ -4269,8 +4275,8 @@ async function fetchLinkedin(token: string, company?: CompanyRow, existingJobsMa
 
                     if (!context) return;
                     const jobPage = await context.newPage();
-                    await jobPage.goto(jobCard.url, { waitUntil: 'networkidle', timeout: 30000 });
-                    await jobPage.waitForTimeout(2000);
+                    await jobPage.goto(jobCard.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                    await jobPage.waitForTimeout(1000);
 
                     const description = await jobPage.evaluate(() => {
                         // Try multiple selectors for LinkedIn job description
@@ -4305,7 +4311,7 @@ async function fetchLinkedin(token: string, company?: CompanyRow, existingJobsMa
                     console.warn(`Failed to fetch description for ${jobCard.url}: ${err.message}`);
                     // Continue without description - will be filtered out later if too short
                 }
-            }));
+            })));
         }
 
         allJobs.push(...jobCards);
@@ -7710,13 +7716,19 @@ export async function syncAll() {
         };
 
         try {
-                        const [{ data: existingJobsUK }, { data: existingJobsIR }] = await Promise.all([
-                supabase.from('jobs').select('url, description').eq('company_id', id),
-                supabase.from('jobs_IR').select('url, description').eq('company_id', id),
-            ]);
+            // Many providers fetch JDs natively in their API list responses and do not need to query the DB for existing cache.
+            const NO_JD_DB_PROVIDERS = new Set(['greenhouse', 'lever', 'ashby', 'recruitee', 'personio', 'pinpoint', 'amazon', 'jpmorgan', 'goldmansachs', 'radancy', 'nhs', 'wipro', 'teachfirst', 'networkrail', 'astrazeneca', 'takeda']);
+            const shouldFetchDbCache = !NO_JD_DB_PROVIDERS.has(result.provider);
+
             const existingJobsMap = new Map<string, string>();
-            if (existingJobsUK) existingJobsUK.forEach(j => existingJobsMap.set(j.url, j.description));
-            if (existingJobsIR) existingJobsIR.forEach(j => existingJobsMap.set(j.url, j.description));
+            if (shouldFetchDbCache) {
+                const [{ data: existingJobsUK }, { data: existingJobsIR }] = await Promise.all([
+                    supabase.from('jobs').select('url, description').eq('company_id', id),
+                    supabase.from('jobs_IR').select('url, description').eq('company_id', id),
+                ]);
+                if (existingJobsUK) existingJobsUK.forEach(j => existingJobsMap.set(j.url, j.description));
+                if (existingJobsIR) existingJobsIR.forEach(j => existingJobsMap.set(j.url, j.description));
+            }
 
             const fetchOutcome = await fetchJobsWithFallback(company, { fallbackOnly: fallbackOnlyDryRun, existingJobsMap });
             const providerKey = (
@@ -8159,20 +8171,19 @@ export async function syncAll() {
                 result.savedIreland = irelandRows.length;
                 totalSaved += result.saved;
             }
-            if (healthTrackingEnabled && !fallbackOnlyDryRun) {
-                await supabase.from('companies').update({
-                    ats_status: 'ok',
-                    ats_failure_count: 0,
-                    ats_last_validated: new Date().toISOString(),
-                }).eq('id', id);
-            }
-
-            // Update active jobs count ΓÇö skip for Ireland-only market so they don't dominate UK browse.
-            if (!fallbackOnlyDryRun && !irelandOnlyMarket) {
-                const { count: finalCount } = await supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('company_id', id);
-                await supabase.from('companies').update({ active_jobs_count: finalCount || 0 }).eq('id', id);
-            } else if (!fallbackOnlyDryRun && irelandOnlyMarket) {
-                await supabase.from('companies').update({ active_jobs_count: 0 }).eq('id', id);
+            if (!fallbackOnlyDryRun) {
+                const updatePayload: any = {};
+                
+                if (healthTrackingEnabled) {
+                    updatePayload.ats_status = 'ok';
+                    updatePayload.ats_failure_count = 0;
+                    updatePayload.ats_last_validated = new Date().toISOString();
+                }
+                
+                // Update active jobs count — skip for Ireland-only market so they don't dominate UK browse.
+                updatePayload.active_jobs_count = irelandOnlyMarket ? 0 : ukRows.length;
+                
+                await supabase.from('companies').update(updatePayload).eq('id', id);
             }
 
             const statusEmoji = (result.ukJobs + result.irelandJobs) > 0 ? 'Γ£à' : 'ΓÜ¬';

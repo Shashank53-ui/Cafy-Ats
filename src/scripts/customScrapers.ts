@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { Job, CompanyRow, fetchWithTimeout, fetchPhenom, fetchOracleCloud } from './syncAll';
+import { Job, CompanyRow, fetchWithTimeout, fetchPhenom, fetchOracleCloud, getSharedBrowser } from './syncAll';
 import { supabase } from '../lib/supabase';
 import { inferJobTypeFromListing, parseJobType, resolveJobType } from '../lib/parseJobType';
 import { sanitizeJobLocation } from '../lib/refineLocation';
@@ -8,47 +8,48 @@ import { classifyJobTaxonomy } from '../lib/classifyJobTaxonomy';
 import { resolveJobLevelsBatch } from '../lib/resolveJobLevel';
 import { chromium } from 'playwright';
 import pLimit from "p-limit";
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
-puppeteer.use(StealthPlugin());
 export async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promise<void> {
     const limit = pLimit(5);
     await Promise.all(jobs.map(j => limit(async () => {
-        if (j.description && j.description.length > 50) return;
+        // Skip if already has a meaningful description (matches shouldFetchJD threshold in syncAll)
+        if (j.description && j.description.length > 200) return;
 
-        // Small delay to prevent rate limits / IP blocks (406 Not Acceptable)
+        // Small jitter delay to avoid burst rate-limiting
         await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 200));
 
         let retries = 3;
         while (retries > 0) {
             try {
-                const res = await fetchWithTimeout(j.url, { 
-                    headers: { 
+                const res = await fetchWithTimeout(j.url, {
+                    headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.9'
-                    } 
+                        'Accept-Language': 'en-US,en;q=0.9',
+                    },
                 });
+
                 if (!res.ok) {
                     if (res.status === 406 || res.status === 429) {
-                        console.log(`[enrichHtml] Rate limited (${res.status}) on ${j.url}, retrying in 5s...`);
+                        console.log(`[enrichHtml] Rate limited (${res.status}) on ${j.url}, retrying in 5s…`);
                         await new Promise(resolve => setTimeout(resolve, 5000));
                         retries--;
                         continue;
                     }
-                    console.log(`[enrichHtml] Failed to fetch JD for ${j.url}: HTTP ${res.status}`);
+                    // Non-retryable HTTP error
+                    console.log(`[enrichHtml] Non-retryable HTTP ${res.status} for ${j.url}`);
                     return;
                 }
+
                 const html = await res.text();
-                let $ = cheerio.load(html);
+                const $ = cheerio.load(html);
 
                 const selectors = [
-                    '.ats-description', // Radancy strict JD
+                    '.ats-description',
                     '[data-id="job-description"]', '.job-description', '#job-description',
                     '.jobDescription', '.jobdescription', '.joblayouttoken', '#jd-description',
                     'div[itemprop="description"]', 'section[itemprop="description"]', '.posting-description',
-                    '.job-details', '.description', '.jd-info', '.article__content', 'article', 'main.content', 'main'
+                    '.job-details', '.description', '.jd-info', '.article__content', 'article', 'main.content', 'main',
                 ];
 
                 for (const sel of selectors) {
@@ -58,11 +59,18 @@ export async function enrichHtmlJobDescriptionsConcurrently(jobs: Job[]): Promis
                     }
                 }
 
+                // Last resort: strip full body (often catches simple SSR pages)
                 j.description = cleanInlineJD($('body').html() || '');
-                return; // Success
-            } catch (err: any) {
-                console.log(`[enrichHtml] Error fetching JD for ${j.url}: ${err.message}`);
                 return;
+
+            } catch (err: any) {
+                retries--;
+                if (retries > 0) {
+                    console.log(`[enrichHtml] Network error for ${j.url} (${err.message}), retrying… (${retries} left)`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } else {
+                    console.log(`[enrichHtml] Giving up on ${j.url}: ${err.message}`);
+                }
             }
         }
     })));
@@ -223,7 +231,6 @@ async function fetchCustomInternal(url: string, company?: CompanyRow): Promise<J
     if (url.includes('oraclecloud.com')) { return fetchOracleCloud(url); }
     if (url.includes('aize.io')) { return fetchAize(url); }
     if (url.includes('helloclue.com')) { return fetchClue(url); }
-    if (url.includes('blackwall')) { return fetchBlackwall(url); }
     if (url.includes('booking.com')) { return fetchBooking(url); }
     // ID 1377 = Cynergy Bank (custom) — correct ID assignment
     if (company?.id === 1377 || url.includes('cynergy')) { return fetchCynergy(url); }
@@ -275,71 +282,49 @@ async function fetchCustomInternal(url: string, company?: CompanyRow): Promise<J
 }
 
 async function fetchGoogle(company: CompanyRow): Promise<Job[]> {
-    console.log(`\\n--- Fetching Google Careers Jobs for ${company.trading_name} (ID: ${company.id}) ---`);
+    console.log(`[Custom: Google] Fetching jobs for ${company.trading_name} (ID: ${company.id})`);
 
-    // 1. Find Company (already passed, but we can double-check)
-    const { data: companies, error: searchError } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', company.id);
-
-    if (searchError || !companies || companies.length === 0) {
-        console.error(`Could not find company with ID ${company.id} in DB!`);
-        return [];
-    }
-
-    const companyData = companies[0];
-    console.log(`Found Company: ${companyData.trading_name} (ID: ${companyData.id})`);
+    const rawJobs: Array<{ title: string; location: string; url: string }> = [];
+    let page = 1;
+    let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 
     // 2. Map ats provider as custom (optional, but we can set if not already)
     // We'll skip updating the DB here to avoid unnecessary writes on every sync.
     // The syncAll pipeline expects the provider to be set to 'custom_site' for this to be called.
     // If you need to set it, do it once via a separate script or manually.
 
-    // 3. Setup Fetch Loop
-    const allJobs: any[] = [];
-    let page = 1;
-
-    let browser;
     try {
         browser = await chromium.launch({ headless: true });
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1280, height: 1080 }
+            viewport: { width: 1280, height: 1080 },
         });
         const pageSession = await context.newPage();
 
-        // Google paginates explicitly via page parameter
         while (true) {
             const uiUrl = `https://www.google.com/about/careers/applications/jobs/results?location=United%20Kingdom&page=${page}`;
-            console.log(`Navigating to Google Careers Page ${page}: ${uiUrl}...`);
+            console.log(`[Custom: Google] Navigating to page ${page}…`);
 
-            await pageSession.goto(uiUrl, { waitUntil: 'networkidle', timeout: 60000 });
+            // domcontentloaded is sufficient — waitForSelector below already gates WIZ hydration
+            await pageSession.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-            // Wait briefly to allow Google WIZ to hydrate the DOM
             try {
-                // Wait for the job card container to be visible
                 await pageSession.waitForSelector('.sMn82b', { timeout: 10000 });
-            } catch (waitErr) {
-                console.log(`No job cards found on page ${page} (timeout). Reached end of pagination.`);
+            } catch {
+                console.log(`[Custom: Google] No job cards on page ${page}. End of pagination.`);
                 break;
             }
-
-            // A small artificial wait to ensure texts have painted
-            await pageSession.waitForTimeout(2000);
 
             const html = await pageSession.content();
             const $ = cheerio.load(html);
 
-            const batchJobs: any[] = [];
+            const batchJobs: Array<{ title: string; location: string; url: string }> = [];
 
-            $('div.sMn82b').each((i: number, el: any) => {
+            $('div.sMn82b').each((_: number, el: any) => {
                 const title = $(el).find('h3.Qk805e').text().trim() || $(el).find('h3').text().trim();
-                // No fallback to a fake "United Kingdom" default here — an unparsed location
-                // must not be manufactured into a confirmed-UK signal for the filter below.
                 let location = $(el).find('span.r0wTof').text().trim();
 
-                // Cleanup "London, UKLondon, UK" duplicate strings often caused by screenreader spans
+                // Deduplicate "London, UKLondon, UK" caused by screenreader spans
                 if (location.length > 5) {
                     const half = Math.floor(location.length / 2);
                     if (location.substring(0, half) === location.substring(half)) {
@@ -347,168 +332,113 @@ async function fetchGoogle(company: CompanyRow): Promise<Job[]> {
                     }
                 }
 
-                // Find hidden Job ID Link
-                const linkStr = $(el).html()?.match(/jobs\/results\/[a-zA-Z0-9-]+/);
-                let hrefUrl = '';
-                if (linkStr) {
-                    hrefUrl = `https://www.google.com/about/careers/applications/${linkStr[0]}`;
-                }
+                const linkMatch = $(el).html()?.match(/jobs\/results\/[a-zA-Z0-9-]+/);
+                if (!linkMatch) return;
+                const jobUrl = `https://www.google.com/about/careers/applications/${linkMatch[0]}`;
 
-                if (title && hrefUrl) {
-                    batchJobs.push({
-                        title: title,
-                        location: location,
-                        url: hrefUrl,
-                        department: 'General'
-                    });
-                }
+                if (title && jobUrl) batchJobs.push({ title, location, url: jobUrl });
             });
 
             if (batchJobs.length === 0) {
-                console.log(`Page ${page} returned 0 jobs. Reached end of pagination.`);
+                console.log(`[Custom: Google] Page ${page} returned 0 jobs. End of pagination.`);
                 break;
             }
 
-            allJobs.push(...batchJobs);
-            console.log(`Fetched page ${page} (${batchJobs.length} jobs) via Google WIZ Extract`);
-
+            rawJobs.push(...batchJobs);
+            console.log(`[Custom: Google] Page ${page}: ${batchJobs.length} jobs`);
             page++;
         }
     } catch (e) {
-        console.error("Error fetching Google Jobs:", e);
+        console.error('[Custom: Google] Browser error:', e);
         return [];
     } finally {
         if (browser) await browser.close();
     }
 
-    // 4. Remove Duplicates (Google infinite scroll sometimes overlays)
-    const dedupedJobs = Array.from(new Map(allJobs.map(item => [item.url, item])).values());
+    // Dedup by URL (Google can return same card across pages)
+    const dedupedJobs = Array.from(new Map(rawJobs.map(j => [j.url, j])).values());
 
-    // The location=United%20Kingdom query param is not a guaranteed hard filter —
-    // re-validate every result before it goes anywhere near the jobs table.
-    const uniqueJobs = dedupedJobs.filter((job: any) => isUKJob({
+    // Re-validate — location=United%20Kingdom is advisory, not a hard filter
+    const ukJobs = dedupedJobs.filter(job => isUKJob({
         locations: [job.location].filter(Boolean),
         isRemote: /\bremote\b/i.test(job.location || ''),
-        isTrustedSource: false
+        isTrustedSource: false,
     }));
-    const rejectedCount = dedupedJobs.length - uniqueJobs.length;
-    if (rejectedCount > 0) {
-        console.log(`Filtered out ${rejectedCount} non-UK/unparsed-location jobs from the scrape results.`);
-    }
 
-    console.log(`Attempting to save ${uniqueJobs.length} Google jobs to DB.`);
+    const rejectedCount = dedupedJobs.length - ukJobs.length;
+    if (rejectedCount > 0) console.log(`[Custom: Google] Filtered out ${rejectedCount} non-UK jobs.`);
 
-    if (uniqueJobs.length === 0) {
-        console.log("No jobs to insert for Google.");
+    if (ukJobs.length === 0) {
+        console.log('[Custom: Google] No UK jobs found.');
         return [];
     }
 
-    const levelResolved = await resolveJobLevelsBatch(
-        uniqueJobs.map((job: any) => ({ title: job.title }))
-    );
+    // Fetch JDs concurrently — limit 5 to avoid triggering Google rate-limits
+    const limit = pLimit(5);
+    const jobs: Job[] = [];
 
-    // Fetch JDs concurrently
-    const limit = pLimit(10);
-    console.log(`[Custom: Google] Fetching JDs for ${uniqueJobs.length} jobs concurrently...`);
-    let validJobsCount = 0;
-    let skippedJobsCount = 0;
+    console.log(`[Custom: Google] Fetching JDs for ${ukJobs.length} jobs…`);
 
-    const jobsToInsert: Job[] = [];
-
-    await Promise.all(uniqueJobs.map((job: any, i: number) => limit(async () => {
+    await Promise.all(ukJobs.map(job => limit(async () => {
         let description = '';
         try {
             const res = await fetchWithTimeout(job.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) return;
             const text = await res.text();
+
+            // Google embeds JD as HTML strings inside AF_initDataCallback JSON
             const scripts = [...text.matchAll(/AF_initDataCallback\((.*?)\);<\/script>/g)];
-            let htmlStrings: string[] = [];
+            const htmlStrings: string[] = [];
 
             for (const match of scripts) {
-                let content = match[1];
-                if (content.includes("Minimum qualifications:")) {
-                    const dataMatch = content.match(/data:([\s\S]*?), sideChannel/);
-                    if (dataMatch) {
-                        try {
-                            const dataArr = JSON.parse(dataMatch[1]);
-                            function traverse(obj: any) {
-                                if (typeof obj === 'string') {
-                                    if (obj.includes('<p>') || obj.includes('<h3') || obj.includes('<ul') || obj.includes('</li')) {
-                                        if (!obj.startsWith('http')) {
-                                            htmlStrings.push(obj);
-                                        }
-                                    }
-                                } else if (Array.isArray(obj)) {
-                                    obj.forEach(traverse);
-                                }
+                const content = match[1];
+                if (!content.includes('Minimum qualifications:')) continue;
+                const dataMatch = content.match(/data:([\s\S]*?), sideChannel/);
+                if (!dataMatch) break;
+                try {
+                    const dataArr = JSON.parse(dataMatch[1]);
+                    function traverse(obj: any) {
+                        if (typeof obj === 'string') {
+                            if (
+                                (obj.includes('<p>') || obj.includes('<h3') || obj.includes('<ul') || obj.includes('</li')) &&
+                                !obj.startsWith('http')
+                            ) {
+                                htmlStrings.push(obj);
                             }
-                            traverse(dataArr);
-                        } catch (e) {
-                            console.error(`[Custom: Google] JSON parse error on ${job.url}:`, e);
+                        } else if (Array.isArray(obj)) {
+                            obj.forEach(traverse);
                         }
                     }
-                    break;
-                }
+                    traverse(dataArr);
+                } catch { /* Malformed JSON blob — skip */ }
+                break;
             }
 
             if (htmlStrings.length > 0) {
-                let uniqueStrs = [...new Set(htmlStrings)];
-                uniqueStrs = uniqueStrs.filter((str, i, arr) => {
-                    return !arr.some((other, j) => i !== j && other.includes(str));
-                });
-                description = uniqueStrs.join('<br><br>');
+                let unique = [...new Set(htmlStrings)];
+                // Remove substrings already covered by a longer string
+                unique = unique.filter((s, i, arr) => !arr.some((o, j) => i !== j && o.includes(s)));
+                description = unique.join('<br><br>');
             }
-
         } catch (e: any) {
-            console.error(`[Custom: Google] Error fetching JD for ${job.url}: ${e.message}`);
+            console.error(`[Custom: Google] JD fetch error ${job.url}: ${e.message}`);
         }
 
         const cleanDesc = cleanInlineJD(description) || '';
+        if (cleanDesc.length < 300) return; // Skip jobs with no real description
 
-        if (cleanDesc.length < 300) {
-            console.log(`[Custom: Google] Skipping job due to insufficient description: ${job.url}`);
-            skippedJobsCount++;
-            return;
-        }
-
-        const { sector, department } = classifyJobTaxonomy(
-            job.title,
-            job.department,
-            companyData.company_sector,
-        );
-        const resolved = levelResolved[i]!;
-        const level = resolved.level;
-
-        // Debug first job
-        if (jobsToInsert.length === 0) {
-            console.log(`[Custom: Google] First job description length: ${cleanDesc.length}`);
-            console.log(`[Custom: Google] First job description preview: ${cleanDesc.slice(0, 200)}`);
-        }
-
-        jobsToInsert.push({
+        jobs.push({
             title: job.title,
-            location: sanitizeJobLocation(job.location, 'uk', job.title, job.url),
+            location: job.location, // raw — pipeline's sanitizeJobLocation handles normalisation
             url: job.url,
-            department,
             description: cleanDesc,
-        } as any);
-        validJobsCount++;
+        } as Job);
     })));
 
-    if (jobsToInsert.length > 0) {
-        const { error: jobErr } = await supabase.from('jobs').upsert(jobsToInsert, { onConflict: 'url' });
-        if (jobErr) console.error("Error inserting jobs", jobErr);
-    }
-
-    console.log(`[Custom: Google] Saving stats: ${validJobsCount} saved, ${skippedJobsCount} skipped (no JD).`);
-
-    // 5. Update Exact Count Tracking
-    await supabase.from('companies').update({
-        active_jobs_count: jobsToInsert.length
-    }).eq('id', companyData.id);
-
-    console.log(`Successfully completed Google ingestion! Inserted ${jobsToInsert.length} jobs.`);
-    return jobsToInsert;
+    console.log(`[Custom: Google] Done — ${jobs.length} jobs with valid JDs.`);
+    return jobs;
 }
+
 
 export function cleanInlineJD(rawHtmlOrText?: string): string | undefined {
     if (!rawHtmlOrText || typeof rawHtmlOrText !== 'string') return undefined;
@@ -986,95 +916,74 @@ async function fetchBBC(url: string): Promise<Job[]> {
 
 async function fetchVodafone(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
-    console.log(`[Custom: Vodafone] Launching Puppeteer to scrape Eightfold...`);
+    console.log(`[Custom: Vodafone] Fetching Eightfold API...`);
     
-    let browser;
+    let start = 0;
+    let total = 100;
+    const rawPositions: any[] = [];
+    
     try {
-        browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-        
-        const page = await browser.newPage();
-        const startUrl = 'https://jobs.vodafone.com/careers?start=0&pid=563018697741452&sort_by=timestamp';
-        
-        await page.goto(startUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-
-        const extracted = await page.evaluate(async () => {
-            const results: any[] = [];
-            let start = 0;
-            let total = 100; // Will be updated on first request
-            
-            while (start < total) {
-                // Rate limit slightly
-                await new Promise(r => setTimeout(r, 200));
-                
-                try {
-                    const res = await fetch(`https://jobs.vodafone.com/api/pcsx/search?domain=vodafone.com&start=${start}&num=10&sort_by=timestamp`);
-                    if (res.ok) {
-                        const json = await res.json();
-                        const data = json.data;
-                        if (data && data.positions) {
-                            total = data.count || data.positions.length;
-                            results.push(...data.positions);
-                            start += data.positions.length;
-                            if (data.positions.length === 0) break;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
-                } catch (e) {
-                    break;
+        while (start < total) {
+            await new Promise(r => setTimeout(r, 500)); // Rate limit
+            const apiUrl = `https://jobs.vodafone.com/api/pcsx/search?domain=vodafone.com&start=${start}&num=10&sort_by=timestamp`;
+            const res = await fetchWithTimeout(apiUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0',
+                    'Accept': 'application/json'
                 }
+            });
+            
+            if (!res.ok) {
+                console.log(`[Custom: Vodafone] API returned ${res.status}`);
+                break;
             }
-            return results;
-        });
-
-        // Concurrently fetch job descriptions for all extracted jobs
+            
+            const json = await res.json();
+            const data = json.data;
+            if (data && data.positions) {
+                total = data.count || data.positions.length;
+                rawPositions.push(...data.positions);
+                start += data.positions.length;
+                if (data.positions.length === 0) break;
+            } else {
+                break;
+            }
+        }
+        
+        // Fetch JDs concurrently
         const limit = pLimit(10);
-        await Promise.all(extracted.map(item => limit(async () => {
+        await Promise.all(rawPositions.map(item => limit(async () => {
             let description = '';
+            
             try {
-                if (item.positionUrl) {
-                    const detailRes = await fetchWithTimeout(item.positionUrl, {
-                        headers: { 'User-Agent': 'Mozilla/5.0' }
-                    });
-                    if (detailRes.ok) {
-                        const detailHtml = await detailRes.text();
-                        const $ = cheerio.load(detailHtml);
-                        let descElem = $('meta[property="og:description"]').first();
-                        if (descElem.length) description = descElem.attr('content') || '';
-                        else {
-                            const content = $('article, .job-description, .description, .details').first();
-                            if (content.length) description = content.text();
-                        }
-                        if (!description || description.trim().length < 100) description = item.name || '';
-                    }
+                // Fetch JD via Eightfold detail API rather than HTML
+                const detailUrl = `https://jobs.vodafone.com/api/apply/v2/jobs/${item.id}?domain=vodafone.com`;
+                const detailRes = await fetchWithTimeout(detailUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+                });
+                
+                if (detailRes.ok) {
+                    const detailData = await detailRes.json();
+                    description = detailData.job_description || '';
                 }
             } catch (err: any) {
                 console.log(`[Custom: Vodafone] Error fetching JD for ${item.id}: ${err.message}`);
             }
-            const cleanDescription = cleanInlineJD(description);
-            if (cleanDescription && cleanDescription.length >= 300) {
-                jobs.push({
-                    title: item.name,
-                    location: (item.locations && item.locations.length > 0) ? item.locations[0] : (item.location || ''),
-                    department: item.department || '',
-                    url: item.positionUrl.startsWith('http') ? item.positionUrl : `https://jobs.vodafone.com${item.positionUrl}`,
-                    description: cleanDescription
-                });
-            }
+            
+            const cleanDescription = cleanInlineJD(description) || item.name || '';
+            
+            jobs.push({
+                title: item.name,
+                location: (item.locations && item.locations.length > 0) ? item.locations[0] : (item.location || ''),
+                department: item.department || '',
+                url: item.positionUrl.startsWith('http') ? item.positionUrl : `https://jobs.vodafone.com${item.positionUrl}`,
+                description: cleanDescription
+            });
         })));
 
         console.log(`[Custom: Vodafone] Found ${jobs.length} jobs.`);
     } catch (e) {
         console.error(`[Custom: Vodafone] Error:`, e);
-    } finally {
-        if (browser) {
-            await browser.close();
-        }
     }
     
     return jobs;
@@ -1583,10 +1492,6 @@ async function fetchClue(url: string): Promise<Job[]> {
     return jobs;
 }
 
-async function fetchBlackwall(url: string): Promise<Job[]> {
-    return [];
-}
-
 async function fetchBooking(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
     console.log('[Custom: Booking.com] Fetching API...');
@@ -2004,8 +1909,7 @@ async function fetchElastic(url: string): Promise<Job[]> {
     }[] = [];
     console.log('[Custom: Elastic] Fetching via Playwright (App Search intercept)...');
 
-    const { chromium } = require('playwright');
-    const browser = await chromium.launch({ headless: true });
+    const browser = await getSharedBrowser();
     let jobs: Job[] = []; // Declare here to be accessible in finally and return
     try {
         const page = await browser.newPage();
@@ -2204,9 +2108,7 @@ async function fetchElastic(url: string): Promise<Job[]> {
         console.log(`[Custom: Elastic] Found ${jobs.length} jobs with valid descriptions`);
     } catch (e) {
         console.error('[Custom: Elastic] Error:', e);
-    } finally {
-        await browser.close();
-    }
+    } // Cannot close page here since it's scoped, but avoiding closing shared browser is critical.
 
     return jobs;
 }
@@ -3140,236 +3042,132 @@ async function fetchTesco(url: string): Promise<Job[]> {
 }
 
 
-async function fetchBabcock(url: string): Promise<Job[]> {
+
+/**
+ * Shared pagination helper for SuccessFactors HTML career portals.
+ *
+ * @param baseUrl   - The search page base URL (must end WITHOUT a trailing slash)
+ * @param host      - Hostname used to resolve relative hrefs (e.g. 'jobs.babcockinternational.com')
+ * @param label     - Logging label (e.g. 'Babcock')
+ * @param pageSize  - Number of results per page (SuccessFactors page step, typically 25 or 50)
+ * @param rowSel    - CSS selector for job row elements (default '.data-row')
+ * @param titleSel  - CSS selector for job title link (default '.jobTitle a')
+ * @param locSel    - CSS selector for location text (default '.colLocation .jobLocation')
+ * @param inferType - Whether to attempt job_type inference from shift-type column
+ */
+async function fetchSuccessFactorsHtml(
+    baseUrl: string,
+    host: string,
+    label: string,
+    pageSize: number,
+    rowSel = '.data-row',
+    titleSel = '.jobTitle a',
+    locSel = '.colLocation .jobLocation',
+    inferType = true,
+): Promise<Job[]> {
     const jobs: Job[] = [];
-    const baseUrl = 'https://jobs.babcockinternational.com/Babcock/search/';
     let startrow = 0;
-    
-    console.log('[Custom: Babcock] Fetching from SuccessFactors...');
-    
+
+    console.log(`[Custom: ${label}] Fetching from SuccessFactors…`);
+
     try {
         while (true) {
             const pageUrl = `${baseUrl}?startrow=${startrow}`;
-            const res = await fetchWithTimeout(pageUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
+            const res = await fetchWithTimeout(pageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
             if (!res.ok) break;
-            
+
             const html = await res.text();
             const $ = cheerio.load(html);
-            const rows = $('.data-row').toArray();
-            
+            const rows = $(rowSel).toArray();
+
             if (rows.length === 0) break;
-            
+
             for (const el of rows) {
+                // SuccessFactors sometimes renders the title twice (screenreader + visible).
+                // Prefer the .hidden-phone span which contains the de-duplicated text.
                 let title = $(el).find('.jobTitle .hidden-phone').text().trim();
                 if (!title) {
-                    const rawTitle = $(el).find('.jobTitle a').text().trim();
-                    if (rawTitle.length % 2 === 0) {
-                        const half = rawTitle.length / 2;
-                        title = rawTitle.substring(0, half) === rawTitle.substring(half) ? rawTitle.substring(0, half) : rawTitle;
+                    const raw = $(el).find(titleSel).text().trim();
+                    // Fix known SF duplication bug: "ManagerManager" → "Manager"
+                    if (raw.length > 0 && raw.length % 2 === 0) {
+                        const half = raw.length / 2;
+                        title = raw.substring(0, half) === raw.substring(half) ? raw.substring(0, half) : raw;
                     } else {
-                        title = rawTitle;
+                        title = raw;
                     }
                 }
-                const href = $(el).find('.jobTitle a').attr('href') || '';
-                const jobUrl = href.startsWith('http') ? href : `https://jobs.babcockinternational.com${href}`;
-                let rawLoc = $(el).find('.colLocation .jobLocation').text().trim();
-                if (!rawLoc) {
-                    rawLoc = $(el).find('.jobLocation').first().text().trim();
-                }
+
+                const href = $(el).find(titleSel).attr('href') || '';
+                const jobUrl = href.startsWith('http') ? href : `https://${host}${href}`;
+
+                let rawLoc = $(el).find(locSel).text().trim();
+                if (!rawLoc) rawLoc = $(el).find('.jobLocation').first().text().trim();
                 const location = rawLoc || 'United Kingdom';
-                
-                if (title && jobUrl) {
+
+                if (!title || !jobUrl) continue;
+
+                if (inferType) {
                     const employmentField = $(el)
                         .find('.jobShifttype, .colShifttype, span.jobShifttype')
-                        .first()
-                        .text()
-                        .replace(/\s+/g, ' ')
-                        .trim();
+                        .first().text().replace(/\s+/g, ' ').trim();
                     const jobType = inferJobTypeFromListing({ employmentField });
-                    jobs.push({
-                        title,
-                        url: jobUrl,
-                        location,
-                        ...(jobType ? { job_type: jobType } : {}),
-                    });
-                }
-            }
-            
-            startrow += 25;
-            await new Promise(r => setTimeout(r, 300));
-            if (rows.length < 25) break;
-        }
-        console.log(`[Custom: Babcock] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error('[Custom: Babcock] Error:', e);
-    }
-    
-    return jobs;
-}
-
-
-async function fetchRathbones(url: string): Promise<Job[]> {
-    const jobs: Job[] = [];
-    const baseUrl = 'https://yourcareer.rathbones.com/search/';
-    let startrow = 0;
-    
-    console.log('[Custom: Rathbones] Fetching from SuccessFactors...');
-    
-    try {
-        while (true) {
-            const pageUrl = `${baseUrl}?startrow=${startrow}`;
-            const res = await fetchWithTimeout(pageUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            if (!res.ok) break;
-            
-            const html = await res.text();
-            const $ = cheerio.load(html);
-            const rows = $('.sub-section-desktop').toArray();
-            
-            if (rows.length === 0) break;
-            
-            for (const el of rows) {
-                let title = $(el).find('.jobTitle-link').text().trim();
-                const href = $(el).find('.jobTitle-link').attr('href') || '';
-                const jobUrl = href.startsWith('http') ? href : `https://yourcareer.rathbones.com${href}`;
-                let rawLoc = $(el).find('.section-field.location div[id*="-value"]').text().trim();
-                const location = rawLoc || 'United Kingdom';
-                
-                if (title && jobUrl) {
+                    jobs.push({ title, url: jobUrl, location, ...(jobType ? { job_type: jobType } : {}) });
+                } else {
                     jobs.push({ title, url: jobUrl, location });
                 }
             }
-            
-            startrow += 5;
+
+            startrow += pageSize;
             await new Promise(r => setTimeout(r, 300));
-            if (rows.length < 5) break;
+            if (rows.length < pageSize) break;
         }
-        console.log(`[Custom: Rathbones] Found ${jobs.length} jobs.`);
+
+        console.log(`[Custom: ${label}] Found ${jobs.length} jobs.`);
     } catch (e) {
-        console.error('[Custom: Rathbones] Error:', e);
+        console.error(`[Custom: ${label}] Error:`, e);
     }
-    
+
     return jobs;
+}
+
+async function fetchBabcock(url: string): Promise<Job[]> {
+    return fetchSuccessFactorsHtml(
+        'https://jobs.babcockinternational.com/Babcock/search',
+        'jobs.babcockinternational.com',
+        'Babcock', 25,
+    );
+}
+
+async function fetchRathbones(url: string): Promise<Job[]> {
+    // Rathbones uses a non-standard row selector and a specific location field selector.
+    return fetchSuccessFactorsHtml(
+        'https://yourcareer.rathbones.com/search',
+        'yourcareer.rathbones.com',
+        'Rathbones', 5,
+        '.sub-section-desktop',
+        '.jobTitle-link',
+        '.section-field.location div[id*="-value"]',
+        false, // no shift-type column on this portal
+    );
 }
 
 async function fetchHikma(url: string): Promise<Job[]> {
-    const jobs: Job[] = [];
-    const baseUrl = 'https://talents.hikma.com/search/';
-    let startrow = 0;
-    
-    console.log('[Custom: Hikma] Fetching from SuccessFactors...');
-    
-    try {
-        while (true) {
-            const pageUrl = `${baseUrl}?startrow=${startrow}`;
-            const res = await fetchWithTimeout(pageUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            if (!res.ok) break;
-            
-            const html = await res.text();
-            const $ = cheerio.load(html);
-            const rows = $('.data-row').toArray();
-            
-            if (rows.length === 0) break;
-            
-            for (const el of rows) {
-                let title = $(el).find('.jobTitle .hidden-phone').text().trim();
-                if (!title) {
-                    const rawTitle = $(el).find('.jobTitle a').text().trim();
-                    if (rawTitle.length % 2 === 0) {
-                        const half = rawTitle.length / 2;
-                        title = rawTitle.substring(0, half) === rawTitle.substring(half) ? rawTitle.substring(0, half) : rawTitle;
-                    } else {
-                        title = rawTitle;
-                    }
-                }
-                const href = $(el).find('.jobTitle a').attr('href') || '';
-                const jobUrl = href.startsWith('http') ? href : `https://talents.hikma.com${href}`;
-                
-                let rawLoc = $(el).find('.colLocation .jobLocation').text().trim();
-                if (!rawLoc) {
-                    rawLoc = $(el).find('.jobLocation').first().text().trim();
-                }
-                const location = rawLoc || 'United Kingdom';
-                
-                if (title && jobUrl) {
-                    jobs.push({ title, url: jobUrl, location });
-                }
-            }
-            
-            startrow += 50;
-            await new Promise(r => setTimeout(r, 300));
-            if (rows.length < 50) break;
-        }
-        console.log(`[Custom: Hikma] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error('[Custom: Hikma] Error:', e);
-    }
-    
-    return jobs;
+    return fetchSuccessFactorsHtml(
+        'https://talents.hikma.com/search',
+        'talents.hikma.com',
+        'Hikma', 50,
+    );
 }
 
 async function fetchNetJets(url: string): Promise<Job[]> {
-    const jobs: Job[] = [];
-    const baseUrl = 'https://netjets.jobs.hr.cloud.sap/europe/search/';
-    let startrow = 0;
-    
-    console.log('[Custom: NetJets] Fetching from SuccessFactors...');
-    
-    try {
-        while (true) {
-            const pageUrl = `${baseUrl}?startrow=${startrow}`;
-            const res = await fetchWithTimeout(pageUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            if (!res.ok) break;
-            
-            const html = await res.text();
-            const $ = cheerio.load(html);
-            const rows = $('.data-row').toArray();
-            
-            if (rows.length === 0) break;
-            
-            for (const el of rows) {
-                let title = $(el).find('.jobTitle .hidden-phone').text().trim();
-                if (!title) {
-                    const rawTitle = $(el).find('.jobTitle a').text().trim();
-                    if (rawTitle.length % 2 === 0) {
-                        const half = rawTitle.length / 2;
-                        title = rawTitle.substring(0, half) === rawTitle.substring(half) ? rawTitle.substring(0, half) : rawTitle;
-                    } else {
-                        title = rawTitle;
-                    }
-                }
-                const href = $(el).find('.jobTitle a').attr('href') || '';
-                const jobUrl = href.startsWith('http') ? href : `https://netjets.jobs.hr.cloud.sap${href}`;
-                
-                let rawLoc = $(el).find('.colLocation .jobLocation').text().trim();
-                if (!rawLoc) {
-                    rawLoc = $(el).find('.jobLocation').first().text().trim();
-                }
-                const location = rawLoc || 'United Kingdom';
-                
-                if (title && jobUrl) {
-                    jobs.push({ title, url: jobUrl, location });
-                }
-            }
-            
-            startrow += 25;
-            await new Promise(r => setTimeout(r, 300));
-            if (rows.length < 25) break;
-        }
-        console.log(`[Custom: NetJets] Found ${jobs.length} jobs.`);
-    } catch (e) {
-        console.error('[Custom: NetJets] Error:', e);
-    }
-    
-    return jobs;
+    return fetchSuccessFactorsHtml(
+        'https://netjets.jobs.hr.cloud.sap/europe/search',
+        'netjets.jobs.hr.cloud.sap',
+        'NetJets', 25,
+    );
 }
+
+
 
 async function fetchDocuSign(url: string): Promise<Job[]> {
     const jobs: Job[] = [];
