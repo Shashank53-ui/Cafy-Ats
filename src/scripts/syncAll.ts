@@ -3078,9 +3078,9 @@ export async function fetchWorkday(token: string, company?: CompanyRow, existing
                     const limitDetails = pLimit(2);
                     const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
                         let job_type_val = j.timeType || j.bulletFields;
-                        const tempJob = { title: j.title, location: j.locationsText || j.bulletFields?.[0], url: `${publicBase}${j.externalPath}` };
+                        const tempJob: any = { title: j.title, location: j.locationsText || j.bulletFields?.[0], url: `${publicBase}${j.externalPath}` };
                         if (!shouldFetchJD(tempJob as Job, company, existingJobsMap)) {
-                            return { ...j, resolvedJobType: job_type_val, description: undefined };
+                            return { ...j, resolvedJobType: job_type_val, description: tempJob.description };
                         }
                         let description: string | undefined = undefined;
                         try {
@@ -3142,9 +3142,9 @@ export async function fetchWorkday(token: string, company?: CompanyRow, existing
                         const limitDetails = pLimit(10);
                         const enrichedIrPosts = await Promise.all(irPosts.map((j: any) => limitDetails(async () => {
                             let job_type_val = j.timeType || j.bulletFields;
-                            const tempJob = { title: j.title, location: j.locationsText || j.bulletFields?.[0], url: `${publicBase}${j.externalPath}` };
+                            const tempJob: any = { title: j.title, location: j.locationsText || j.bulletFields?.[0], url: `${publicBase}${j.externalPath}` };
                             if (!shouldFetchJD(tempJob as Job, company, existingJobsMap)) {
-                                return { ...j, resolvedJobType: job_type_val, description: undefined };
+                                return { ...j, resolvedJobType: job_type_val, description: tempJob.description };
                             }
                             let description: string | undefined = undefined;
                             if (!job_type_val || !parseJobType(job_type_val)) {
@@ -6777,7 +6777,7 @@ export async function fetchGem(token: string, company?: CompanyRow, existingJobs
             const extId = j.extId || j.id;
             const location = Array.isArray(j.locations) && j.locations.length > 0 ? (j.locations[0].city || j.locations[0].name || '') : '';
             const url = `https://jobs.gem.com/${token}/${extId}`;
-            const tempJob = { title: j.title || '', location, url };
+            const tempJob: any = { title: j.title || '', location, url };
             
             if (!shouldFetchJD(tempJob as Job, company, existingJobsMap)) {
                 return {
@@ -6785,7 +6785,7 @@ export async function fetchGem(token: string, company?: CompanyRow, existingJobs
                     url: tempJob.url,
                     location: tempJob.location,
                     department: j.job?.department?.name || '',
-                    description: undefined,
+                    description: tempJob.description,
                     atsProvider: 'gem',
                 };
             }
