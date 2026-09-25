@@ -1,0 +1,326 @@
+# JD Analysis Report
+
+Total jobs checked: 36117
+Total jobs missing description: 1223
+Total jobs with suspicious description: 340
+
+## Missing Descriptions by Company ID
+- Company ID 188 (Arm | ATS: linkedin): 5 jobs
+- Company ID 238 (Stream | ATS: linkedin): 1 jobs
+- Company ID 254 (Personio | ATS: linkedin): 8 jobs
+- Company ID 407 (Elastic | ATS: custom): 25 jobs
+- Company ID 457 (Depop | ATS: custom): 22 jobs
+- Company ID 464 (Zen Educate | ATS: lever): 1 jobs
+- Company ID 825 (Capital One | ATS: workday): 1 jobs
+- Company ID 859 (Scopely | ATS: linkedin): 2 jobs
+- Company ID 904 (Watershed | ATS: linkedin): 2 jobs
+- Company ID 1245 (Medtronic | ATS: workday): 1 jobs
+- Company ID 1368 (Vorboss | ATS: vorboss): 3 jobs
+- Company ID 1482 (Aermont | ATS: linkedin): 3 jobs
+- Company ID 1512 (Molten Ventures | ATS: ): 10 jobs
+- Company ID 1548 (Gilead | ATS: workday): 1 jobs
+- Company ID 1574 (Get Living | ATS: linkedin): 1 jobs
+- Company ID 1588 (FRP Advisory | ATS: linkedin): 2 jobs
+- Company ID 1592 (Baringa | ATS: linkedin): 4 jobs
+- Company ID 1726 (Goldman Sachs | ATS: custom_site): 96 jobs
+- Company ID 1728 (Google DeepMind | ATS: custom_site): 105 jobs
+- Company ID 1730 (BAE Systems | ATS: custom): 273 jobs
+- Company ID 1755 (Mimecast | ATS: workday): 2 jobs
+- Company ID 1760 (IBM | ATS: custom): 62 jobs
+- Company ID 1762 (Booking.com | ATS: custom): 1 jobs
+- Company ID 1799 (Healf | ATS: linkedin): 1 jobs
+- Company ID 1862 (Sofina | ATS: linkedin): 4 jobs
+- Company ID 1871 (RTX | ATS: workday): 1 jobs
+- Company ID 1937 (Hedyn | ATS: linkedin): 5 jobs
+- Company ID 1958 (Studio Ulster | ATS: linkedin): 2 jobs
+- Company ID 2039 (Ultralytics | ATS: linkedin): 1 jobs
+- Company ID 2317 (Cisco | ATS: workday): 1 jobs
+- Company ID 2441 (CloudBees | ATS: linkedin): 1 jobs
+- Company ID 3116 (Siemens | ATS: Custom): 104 jobs
+- Company ID 3155 (AstraZeneca | ATS: astrazeneca): 67 jobs
+- Company ID 3156 (Microsoft UK | ATS: microsoft): 9 jobs
+- Company ID 3160 (Tesco | ATS: custom): 15 jobs
+- Company ID 4001 (Boston Scientific | ATS: eightfold): 13 jobs
+- Company ID 4110 (Royal Mail | ATS: royalmail): 232 jobs
+- Company ID 7415 (Labcorp | ATS: workday): 23 jobs
+- Company ID 7451 (Applied Materials | ATS: eightfold): 10 jobs
+- Company ID 8000 (UnitedHealth Group | ATS: custom): 1 jobs
+- Company ID 8001 (Qualcomm | ATS: custom): 36 jobs
+- Company ID 900038 (Northern Trust | ATS: workday): 3 jobs
+- Company ID 900046 (Johnson & Johnson | ATS: workday): 43 jobs
+- Company ID 900167 (Takeda | ATS: takeda): 12 jobs
+- Company ID 940082 (Intel | ATS: workday): 8 jobs
+
+## Suspicious Descriptions by Company ID
+- Company ID 24 (Astroscale | ATS: bamboohr): 1 jobs
+- Company ID 57 (UK Research & Innovation (UKRI) | ATS: oracle_cloud): 1 jobs
+- Company ID 134 (Capital on Tap | ATS: greenhouse): 2 jobs
+- Company ID 163 (Baxter International | ATS: workday): 2 jobs
+- Company ID 220 (University of Nottingham | ATS: custom): 3 jobs
+- Company ID 227 (Dexory | ATS: greenhouse): 9 jobs
+- Company ID 297 (Wintermute | ATS: lever): 1 jobs
+- Company ID 363 (PagerDuty | ATS: greenhouse): 1 jobs
+- Company ID 420 (Monzo | ATS: greenhouse): 2 jobs
+- Company ID 454 (AutogenAI | ATS: greenhouse): 1 jobs
+- Company ID 484 (bp | ATS: workday): 1 jobs
+- Company ID 502 (XYZ Reality | ATS: ashby): 2 jobs
+- Company ID 515 (StackOne | ATS: ashby): 2 jobs
+- Company ID 528 (Fuse Energy | ATS: workable): 2 jobs
+- Company ID 533 (Lyst | ATS: workable): 2 jobs
+- Company ID 566 (Perlego | ATS: workable): 1 jobs
+- Company ID 572 (Isomorphic Labs | ATS: greenhouse): 2 jobs
+- Company ID 592 (Entrepreneurs First (EF) | ATS: hibob): 1 jobs
+- Company ID 609 (Pleo | ATS: ashby): 11 jobs
+- Company ID 633 (Cambridge Consultants | ATS: greenhouse): 16 jobs
+- Company ID 661 (Proton | ATS: greenhouse): 1 jobs
+- Company ID 720 (Deep Science Ventures | ATS: workable): 1 jobs
+- Company ID 727 (Ophelos | ATS: greenhouse): 1 jobs
+- Company ID 747 (SharkNinja | ATS: greenhouse): 1 jobs
+- Company ID 768 (Helsing | ATS: greenhouse): 10 jobs
+- Company ID 794 (Relay | ATS: ashby): 7 jobs
+- Company ID 900 (Financial Times | ATS: greenhouse): 1 jobs
+- Company ID 957 (Synthesia | ATS: ashby): 1 jobs
+- Company ID 1006 (BBC | ATS: custom): 1 jobs
+- Company ID 1009 (Blockchain.com | ATS: greenhouse): 1 jobs
+- Company ID 1087 (Mytos | ATS: lever): 7 jobs
+- Company ID 1097 (Boku | ATS: greenhouse): 2 jobs
+- Company ID 1245 (Medtronic | ATS: workday): 2 jobs
+- Company ID 1314 (Paysend | ATS: teamtailor): 1 jobs
+- Company ID 1406 (OneDome | ATS: breezy): 1 jobs
+- Company ID 1527 (Archangel Lightworks | ATS: breezy): 1 jobs
+- Company ID 1624 (HCA Healthcare UK | ATS: workday): 2 jobs
+- Company ID 1626 (Costello Medical | ATS: workable): 1 jobs
+- Company ID 1645 (KPMG | ATS: custom): 2 jobs
+- Company ID 1652 (EY | ATS: custom): 7 jobs
+- Company ID 1686 (JPMorganChase | ATS: oracle_cloud): 1 jobs
+- Company ID 1690 (NHS | ATS: nhs): 39 jobs
+- Company ID 1712 (GSK | ATS: workday): 12 jobs
+- Company ID 1724 (Octopus Energy | ATS: lever): 4 jobs
+- Company ID 1727 (Amazon | ATS: custom): 10 jobs
+- Company ID 1729 (Samsung Electronics | ATS: workday): 1 jobs
+- Company ID 1756 (NVIDIA | ATS: workday): 11 jobs
+- Company ID 1771 (AbbVie | ATS: smartrecruiters): 1 jobs
+- Company ID 1774 (Capgemini | ATS: custom): 13 jobs
+- Company ID 1780 (Next | ATS: oracle_cloud): 3 jobs
+- Company ID 1781 (Ocado Group | ATS: greenhouse): 16 jobs
+- Company ID 1783 (Babcock | ATS: custom): 13 jobs
+- Company ID 1817 (Wolseley | ATS: workday): 1 jobs
+- Company ID 1878 (Lovable | ATS: ashby): 1 jobs
+- Company ID 1880 (Talan | ATS: smartrecruiters): 1 jobs
+- Company ID 1910 (Vercel | ATS: greenhouse): 1 jobs
+- Company ID 2127 (Applied Intuition | ATS: ashby): 9 jobs
+- Company ID 2189 (Gates Corporation | ATS: custom): 4 jobs
+- Company ID 2281 (SubSea Craft | ATS: bamboohr): 5 jobs
+- Company ID 2306 (Blue Light Card | ATS: custom): 1 jobs
+- Company ID 2413 (Preply | ATS: ashby): 1 jobs
+- Company ID 2552 (Bosch | ATS: smartrecruiters): 1 jobs
+- Company ID 2598 (Antare | ATS: teamtailor): 1 jobs
+- Company ID 2661 (SPAICE | ATS: ashby): 2 jobs
+- Company ID 3044 (DeepL | ATS: ashby): 1 jobs
+- Company ID 3048 (Egis | ATS: smartrecruiters): 6 jobs
+- Company ID 3076 (Leonardo | ATS: workday): 2 jobs
+- Company ID 3098 (Paddington Robotics | ATS: teamtailor): 4 jobs
+- Company ID 3153 (Arcadis | ATS: oracle_cloud): 3 jobs
+- Company ID 3161 (Airbus UK | ATS: workday): 2 jobs
+- Company ID 4001 (Boston Scientific | ATS: eightfold): 1 jobs
+- Company ID 4015 (Sanofi | ATS: custom): 2 jobs
+- Company ID 4026 (Dolby | ATS: eightfold): 2 jobs
+- Company ID 4062 (Kepak Group | ATS: workable): 2 jobs
+- Company ID 7109 (CoreWeave Europe | ATS: greenhouse): 2 jobs
+- Company ID 7214 (Lindalgroup | ATS: personio): 1 jobs
+- Company ID 7240 (Delta Capita | ATS: recruitee): 1 jobs
+- Company ID 7261 (Frasers Group | ATS: smartrecruiters): 1 jobs
+- Company ID 7264 (Intuitive | ATS: smartrecruiters): 7 jobs
+- Company ID 7485 (PM Group | ATS: icims): 2 jobs
+- Company ID 8001 (Qualcomm | ATS: custom): 2 jobs
+- Company ID 900037 (State Street | ATS: workday): 3 jobs
+- Company ID 940000 (Aureol Global Connections | ATS: workable): 3 jobs
+- Company ID 940038 (Manna | ATS: workable): 3 jobs
+- Company ID 940041 (Sonatus | ATS: greenhouse): 1 jobs
+- Company ID 940131 (Boeing | ATS: workday): 1 jobs
+- Company ID 941003 (PACIV | ATS: jazzhr): 1 jobs
+- Company ID 947005 (Anduril Industries Ireland Limited | ATS: greenhouse): 6 jobs
+- Company ID 954010 (John Paul | ATS: workable): 4 jobs
+- Company ID 955015 (Rlb | ATS: jobvite): 1 jobs
+- Company ID 956008 (Socotecukireland | ATS: smartrecruiters): 1 jobs
+- Company ID 960007 (Elsevier | ATS: workday): 1 jobs
+- Company ID 960015 (GKN Aerospace | ATS: successfactors): 2 jobs
+- Company ID 970004 (Spire Healthcare | ATS: oracle_cloud): 6 jobs
+
+## Suspicious Descriptions Samples (max 3 per company)
+- [Company 2598 - Antare] Contains "robot": https://antaretechnology-1748341798.teamtailor.com/jobs/6884266-audio-software-engineer
+- [Company 768 - Helsing] Contains "robot": https://helsing.ai/jobs/4468911101?gh_jid=4468911101
+- [Company 1097 - Boku] Contains "cloudflare": https://boards.greenhouse.io/boku/jobs/6187905004?gh_jid=6187905004
+- [Company 1097 - Boku] Contains "cloudflare": https://boards.greenhouse.io/boku/jobs/6192826004?gh_jid=6192826004
+- [Company 947005 - Anduril Industries Ireland Limited] Contains "robot": https://boards.greenhouse.io/andurilindustries/jobs/5151159007?gh_jid=5151159007
+- [Company 947005 - Anduril Industries Ireland Limited] Contains "robot": https://boards.greenhouse.io/andurilindustries/jobs/5111833007?gh_jid=5111833007
+- [Company 484 - bp] Contains "robot": https://bpinternational.wd3.myworkdayjobs.com/en-US/bpCareers/job/United-Kingdom---Sunbury/Operations-Automation-Specialist_RQ113061-2
+- [Company 1712 - GSK] Contains "robot": https://gsk.wd5.myworkdayjobs.com/en-US/GSKCareers/job/UK---Hertfordshire---Ware/Engineering--Multiple-Roles-and-Locations--Industrial-Placement--2027_447551
+- [Company 633 - Cambridge Consultants] Contains "robot": https://job-boards.eu.greenhouse.io/cambridgeconsultantslimited/jobs/4700351101
+- [Company 633 - Cambridge Consultants] Contains "robot": https://job-boards.eu.greenhouse.io/cambridgeconsultantslimited/jobs/4718809101
+- [Company 633 - Cambridge Consultants] Contains "robot": https://job-boards.eu.greenhouse.io/cambridgeconsultantslimited/jobs/4548159101
+- [Company 1783 - Babcock] Contains "robot": https://jobs.babcockinternational.com/Babcock/job/Rosyth%2C-Dunfermline%2C-Kirkcaldy-Electrical-Engineering-Graduate-Programme-KY11-2YD/1428408533/
+- [Company 4062 - Kepak Group] Contains "robot": https://apply.workable.com/kepak/j/EAE872AB61
+- [Company 420 - Monzo] Contains "please wait": https://job-boards.greenhouse.io/monzo/jobs/5018066
+- [Company 1087 - Mytos] Contains "robot": https://jobs.lever.co/mytos/e76324da-3b43-4d56-b308-f0ff5217c269
+- [Company 1087 - Mytos] Contains "robot": https://jobs.lever.co/mytos/12fa9c01-83df-41d8-928c-76300aaca292
+- [Company 1527 - Archangel Lightworks] Contains "robot": https://archangellightworks.breezy.hr/p/379a8e9c1f3901-control-systems-engineer
+- [Company 1645 - KPMG] Contains "robot": https://www.kpmgcareers.co.uk/Vacancies/GraduateAuditTechnologyAuditLondonAutumn2027/f04646dd-2d98-91f2-4a83-44637a1321d3
+- [Company 1690 - NHS] Contains "robot": https://www.jobs.nhs.uk/candidate/jobadvert/C9259-26-1648
+- [Company 955015 - Rlb] Too short (< 50 chars): https://jobs.jobvite.com/rlb/job/o3039fwZ
+- [Company 8001 - Qualcomm] Contains "robot": https://careers.qualcomm.com/careers/job/446720248470?domain=qualcomm.com
+- [Company 1690 - NHS] Contains "robot": https://www.jobs.nhs.uk/candidate/jobadvert/C9361-26-0560
+- [Company 1690 - NHS] Contains "robot": https://www.jobs.nhs.uk/candidate/jobadvert/C9298-26-0993
+- [Company 7214 - Lindalgroup] Contains "robot": https://lindalgroup.jobs.personio.de/job/2734250?display=en
+- [Company 134 - Capital on Tap] Contains "cloudflare": https://job-boards.greenhouse.io/capitalontap/jobs/8653208002
+- [Company 1781 - Ocado Group] Contains "robot": https://careers.ocadogroup.com/jobs/details?gh_jid=4970998101&gh_jid=4970998101
+- [Company 1781 - Ocado Group] Contains "robot": https://careers.ocadogroup.com/jobs/details?gh_jid=4979648101&gh_jid=4979648101
+- [Company 1781 - Ocado Group] Contains "robot": https://careers.ocadogroup.com/jobs/details?gh_jid=4969840101&gh_jid=4969840101
+- [Company 1645 - KPMG] Contains "robot": https://www.kpmgcareers.co.uk/Vacancies/GraduateAuditTechnologyAuditManchesterAutumn2027/ca3b1d8b-5539-82f6-ccfa-1839954f2aa5
+- [Company 768 - Helsing] Contains "robot": https://helsing.ai/jobs/4923775101?gh_jid=4923775101
+- [Company 1686 - JPMorganChase] Contains "robot": https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/job/210792870
+- [Company 768 - Helsing] Contains "robot": https://helsing.ai/jobs/4334842101?gh_jid=4334842101
+- [Company 1087 - Mytos] Contains "robot": https://jobs.lever.co/mytos/98eb57ab-c6c1-4b48-a317-3be17e27cee9
+- [Company 7240 - Delta Capita] Contains "robot": https://careersdeltacapita.recruitee.com/o/azure-cloudops-engineer
+- [Company 227 - Dexory] Contains "robot": https://job-boards.eu.greenhouse.io/dexory/jobs/4984151101
+- [Company 227 - Dexory] Contains "robot": https://job-boards.eu.greenhouse.io/dexory/jobs/4751390101
+- [Company 1774 - Capgemini] Contains "robot": https://careers.capgemini.com/job/Abingdon-Engineering-Science-Senior-Consultant/1418657133/?feedId=388633&utm_source=CareerSite&tcsource=apply
+- [Company 3076 - Leonardo] Contains "robot": https://leonardocompany.wd3.myworkdayjobs.com/en-US/LeonardoCareerSite/job/GB---Yeovil---Lysander-Rd/Software-Engineer---Mission-Management-Systems_R0029418
+- [Company 2306 - Blue Light Card] Contains "cloudflare": https://careers.bluelightcard.co.uk/jobs/8109480-senior-it-systems-engineer
+- [Company 7109 - CoreWeave Europe] Contains "robot": https://coreweave.com/careers/job?4710628006&board=coreweaveu&gh_jid=4710628006
+- [Company 1712 - GSK] Contains "robot": https://gsk.wd5.myworkdayjobs.com/en-US/GSKCareers/job/UK---Hertfordshire---Ware/Engineering-Multidiscipline-Graduate-Programme---Ware--UK--2027_448232
+- [Company 1712 - GSK] Contains "robot": https://gsk.wd5.myworkdayjobs.com/en-US/GSKCareers/job/UK---County-Durham---Barnard-Castle/Quality-Science-Graduate-Programme---Barnard-Castle--UK--2027_448225
+- [Company 1314 - Paysend] Contains "cloudflare": https://paysend.teamtailor.com/jobs/6669663-system-administrator
+- [Company 609 - Pleo] Contains "please wait": https://jobs.ashbyhq.com/pleo/5931594c-d0e3-40c5-85d2-c685f8b22eba
+- [Company 609 - Pleo] Contains "please wait": https://jobs.ashbyhq.com/pleo/fa9f1ddf-85bc-4cb9-94ad-36669ac33a64
+- [Company 609 - Pleo] Contains "please wait": https://jobs.ashbyhq.com/pleo/d77a779e-825d-476e-85a1-92b0326f2c46
+- [Company 420 - Monzo] Contains "please wait": https://job-boards.greenhouse.io/monzo/jobs/6394676
+- [Company 3048 - Egis] Contains "robot": https://jobs.smartrecruiters.com/egisgroup/744000131608305
+- [Company 3048 - Egis] Contains "robot": https://jobs.smartrecruiters.com/egisgroup/744000131131649
+- [Company 227 - Dexory] Contains "robot": https://job-boards.eu.greenhouse.io/dexory/jobs/4949429101
+- [Company 3161 - Airbus UK] Contains "robot": https://ag.wd3.myworkdayjobs.com/en-US/Airbus/job/Bristol-Area/AGGP2027---Graduate-Structures-Test-Engineer_JR10427264
+- [Company 3161 - Airbus UK] Contains "robot": https://ag.wd3.myworkdayjobs.com/en-US/Airbus/job/Stevenage/Operations-and-Failure-Management-Placement--13-months-_JR10426800
+- [Company 947005 - Anduril Industries Ireland Limited] Contains "robot": https://boards.greenhouse.io/andurilindustries/jobs/5168518007?gh_jid=5168518007
+- [Company 1727 - Amazon] Contains "robot": https://www.amazon.jobs/en/jobs/10557445/senior-reliability-maintenance-engineering-technician
+- [Company 1727 - Amazon] Contains "robot": https://www.amazon.jobs/en/jobs/10556305/reliability-maintenance-engineering-technician-rme
+- [Company 1727 - Amazon] Contains "robot": https://www.amazon.jobs/en/jobs/10555980/reliability-maintenance-engineering-technician
+- [Company 970004 - Spire Healthcare] Contains "robot": https://elij.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/26817
+- [Company 3076 - Leonardo] Contains "robot": https://leonardocompany.wd3.myworkdayjobs.com/en-US/LeonardoCareerSite/job/GB---Yeovil---Lysander-Rd/Autonomy-Technologist_R0029367
+- [Company 661 - Proton] Contains "robot": https://job-boards.eu.greenhouse.io/proton/jobs/4903325101
+- [Company 1652 - EY] Contains "robot": https://careers.ey.com/ey/job/London-Financial-Services-Technology-Risk-Manager-Channel-2-E14-5EY/1419138833/
+- [Company 3153 - Arcadis] Contains "robot": https://ebcs.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/44061
+- [Company 592 - Entrepreneurs First (EF)] Contains "robot": https://entrepreneursfirst.careers.hibob.com/jobs/48ecc822-0510-4d21-8e4b-2236da5b6b1f
+- [Company 2189 - Gates Corporation] Contains "robot": https://careers.gates.com/job/Windsor-Controls-Engineer-ON-N8W-5B1/1410033600/
+- [Company 3048 - Egis] Contains "robot": https://jobs.smartrecruiters.com/egisgroup/744000135458440
+- [Company 1783 - Babcock] Contains "robot": https://jobs.babcockinternational.com/Babcock/job/Bristol-Systems-Engineering-Graduate-Programme-BS16-1EJ/1427965933/
+- [Company 1783 - Babcock] Contains "robot": https://jobs.babcockinternational.com/Babcock/job/Devonport%2C-Plymouth-Systems-Engineering-Graduate-Programme-PL2-2BG/1427576233/
+- [Company 1774 - Capgemini] Contains "robot": https://careers.capgemini.com/job/Abingdon-Chief-Architect/1409691433/?feedId=388633&utm_source=CareerSite&tcsource=apply
+- [Company 7264 - Intuitive] Contains "robot": https://jobs.smartrecruiters.com/intuitive/744000142809359
+- [Company 1006 - BBC] Contains "robot": https://careers.bbc.co.uk/job/Washington-Operations-Engineer%2C-Washington-20036/1371873657/
+- [Company 1780 - Next] Contains "robot": https://ekeq.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/76662
+- [Company 1780 - Next] Contains "robot": https://ekeq.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/76929
+- [Company 1729 - Samsung Electronics] Contains "robot": https://sec.wd3.myworkdayjobs.com/en-US/Samsung_Careers/job/5060-Station-Road-Cambridge-United-Kingdom/Research-Scientist_R118297-1
+- [Company 940131 - Boeing] Contains "robot": https://boeing.wd1.myworkdayjobs.com/en-US/external_careers/job/GBR---Prestwick-UK/Research-and-Technology-Intern--Summer-2027_JR2026520512
+- [Company 1626 - Costello Medical] Contains "please wait": https://apply.workable.com/costello-medical/j/BFE0B47AD5
+- [Company 7109 - CoreWeave Europe] Contains "robot": https://coreweave.com/careers/job?4713411006&board=coreweaveu&gh_jid=4713411006
+- [Company 720 - Deep Science Ventures] Contains "robot": https://apply.workable.com/deep-science-ventures/j/6E203DF7DD
+- [Company 1780 - Next] Contains "robot": https://ekeq.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/76660
+- [Company 960007 - Elsevier] Contains "cloudflare": https://relx.wd3.myworkdayjobs.com/en-US/ElsevierJobs/job/London-Wall/Senior-Software-Engineer_R114509
+- [Company 566 - Perlego] Contains "cloudflare": https://apply.workable.com/perlego/j/ABF0A5F0EE
+- [Company 3098 - Paddington Robotics] Contains "robot": https://paddington-robotics.teamtailor.com/jobs/7459756-robotics-software-engineer
+- [Company 297 - Wintermute] Contains "cloudflare": https://jobs.lever.co/wintermute-trading/0281d99d-aaa5-4e87-8785-9e3a4fbbff16
+- [Company 1724 - Octopus Energy] Contains "human verification": https://jobs.lever.co/octoenergy/466ac356-6383-496f-8434-076af3d4c42b
+- [Company 1724 - Octopus Energy] Contains "robot": https://jobs.lever.co/octoenergy/491f1c10-4a57-4361-8e00-05400f3f57e0
+- [Company 1724 - Octopus Energy] Contains "robot": https://jobs.lever.co/octoenergy/1f0a93ac-963b-4ca4-b568-105311b39bd3
+- [Company 794 - Relay] Contains "robot": https://jobs.ashbyhq.com/relay/f9a3f214-5943-4778-94ec-797f025ff572
+- [Company 1245 - Medtronic] Contains "robot": https://medtronic.wd1.myworkdayjobs.com/en-US/MedtronicCareers/job/Manchester-Manchester-United-Kingdom/Bus-Proc-Impvmt-Analyst_R74019-2
+- [Company 970004 - Spire Healthcare] Contains "robot": https://elij.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/28318
+- [Company 163 - Baxter International] Contains "robot": https://baxter.wd1.myworkdayjobs.com/en-US/baxter/job/Thetford-Norfolk/Eng--Maintenance--Electrical-Bias-_JR-205911-1
+- [Company 163 - Baxter International] Contains "robot": https://baxter.wd1.myworkdayjobs.com/en-US/baxter/job/Thetford-Norfolk/Maintenance-Engineer--Automation-Bias-_JR-205909-1
+- [Company 1756 - NVIDIA] Contains "robot": https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/UK-Remote/HPC-Performance-Engineer_JR2021820
+- [Company 1009 - Blockchain.com] Contains "cloudflare": https://job-boards.greenhouse.io/blockchain/jobs/7792540
+- [Company 2661 - SPAICE] Contains "robot": https://jobs.ashbyhq.com/spaice-tech/144727c3-7cca-433d-b0e6-d67af9dbd7e2
+- [Company 2661 - SPAICE] Contains "robot": https://jobs.ashbyhq.com/spaice-tech/16468d27-11e9-498c-87b6-3469f5f4ee12
+- [Company 515 - StackOne] Contains "cloudflare": https://jobs.ashbyhq.com/stackone/4bc85e1c-0308-4ed3-9f3c-c19c2b9e905a
+- [Company 1878 - Lovable] Contains "cloudflare": https://jobs.ashbyhq.com/lovable/581951b9-537e-49d5-89fb-dd74cdf3256c
+- [Company 515 - StackOne] Contains "cloudflare": https://jobs.ashbyhq.com/stackone/b3973ac2-f4eb-45c9-9584-c078f02fc5b6
+- [Company 970004 - Spire Healthcare] Contains "robot": https://elij.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/26946
+- [Company 727 - Ophelos] Contains "cloudflare": https://job-boards.eu.greenhouse.io/ophelos/jobs/4907554101
+- [Company 957 - Synthesia] Contains "cloudflare": https://jobs.ashbyhq.com/synthesia/46d13eb9-9d94-435b-a141-19524b9e5c34
+- [Company 1652 - EY] Contains "robot": https://careers.ey.com/ey/job/London-Senior-Manager%2C-Supply-Chain-&-Operations-SE1-2AF/1258276501/
+- [Company 2127 - Applied Intuition] Contains "robot": https://jobs.ashbyhq.com/applied/ddac70fe-ec44-485b-9066-29aac135b121
+- [Company 1406 - OneDome] Too short (< 50 chars): https://onedome.breezy.hr/p/02b52a247b2d01-south-wales-sea-jarrad-combellack
+- [Company 502 - XYZ Reality] Contains "robot": https://jobs.ashbyhq.com/xyz-reality/4e61f145-6a08-47f1-8d38-7d83056c0887
+- [Company 363 - PagerDuty] Contains "cloudflare": https://job-boards.greenhouse.io/pagerduty/jobs/6144822004
+- [Company 533 - Lyst] Contains "cloudflare": https://apply.workable.com/lyst/j/10BF268236
+- [Company 2413 - Preply] Contains "cloudflare": https://jobs.ashbyhq.com/preply/88209a76-fbe7-44ea-a4d2-e0bc0b4775b6
+- [Company 1756 - NVIDIA] Contains "robot": https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/UK-Reading/Regional-Sales-Manager--Consumer---Northern-Europe_JR2025304
+- [Company 1756 - NVIDIA] Contains "robot": https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/UK-Remote/Senior-Account-Manager--Agentic-AI-Platform---UK-I_JR2024521
+- [Company 956008 - Socotecukireland] Contains "robot": https://jobs.smartrecruiters.com/socotecukireland/744000146680729
+- [Company 7261 - Frasers Group] Contains "robot": https://jobs.smartrecruiters.com/frasersgroup/744000147438484
+- [Company 3098 - Paddington Robotics] Contains "robot": https://paddington-robotics.teamtailor.com/jobs/7830309-forward-deployed-engineer
+- [Company 3098 - Paddington Robotics] Contains "robot": https://paddington-robotics.teamtailor.com/jobs/7807842-founding-operator-founders-associate
+- [Company 1774 - Capgemini] Contains "robot": https://careers.capgemini.com/job/London-Operational-Excellence-ConsultantSenior-Consultant/1282824401/?feedId=388633&utm_source=CareerSite&tcsource=apply
+- [Company 2189 - Gates Corporation] Contains "robot": https://careers.gates.com/job/Rochester-Hills-Development-Engineer-MI-48309/1426370300/
+- [Company 2189 - Gates Corporation] Contains "robot": https://careers.gates.com/job/Dumfries-Electrician-DGY-DG1-1TS/1389294000/
+- [Company 960015 - GKN Aerospace] Contains "robot": https://careers.gknaerospace.com/job/Bristol-Manufacturing-Engineer/1389306433/
+- [Company 1624 - HCA Healthcare UK] Contains "robot": https://wd3.myworkdaysite.com/en-US/hcacareers/job/London-Bridge-Hospital/Staff-Nurse---Cath-Lab_0053051-3
+- [Company 1624 - HCA Healthcare UK] Contains "robot": https://wd3.myworkdaysite.com/en-US/hcacareers/job/London-Bridge-Hospital/Lead-Scrubs-Practitioner---Neuro--Spine---General_0053210-2
+- [Company 7264 - Intuitive] Contains "robot": https://jobs.smartrecruiters.com/intuitive/744000132730669
+- [Company 2127 - Applied Intuition] Contains "robot": https://jobs.ashbyhq.com/applied/47aa4ad5-62c0-4aba-b414-b60820029ced
+- [Company 2127 - Applied Intuition] Contains "robot": https://jobs.ashbyhq.com/applied/925daeec-0431-4059-9edc-4e1801cacdfc
+- [Company 1910 - Vercel] Contains "cloudflare": https://job-boards.greenhouse.io/vercel/jobs/6121381004
+- [Company 2552 - Bosch] Contains "robot": https://jobs.smartrecruiters.com/BoschGroup/744000149406442
+- [Company 1817 - Wolseley] Too short (< 50 chars): https://wolseleyuk.wd3.myworkdayjobs.com/en-US/Wolseley/job/Basildon/Internal-Accounts-Coordinator_JR115936-1
+- [Company 794 - Relay] Contains "robot": https://jobs.ashbyhq.com/relay/5a6ed15f-e610-4d09-9fd7-f18cd639c4e7
+- [Company 3153 - Arcadis] Contains "robot": https://ebcs.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/42920
+- [Company 3153 - Arcadis] Contains "robot": https://ebcs.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/42925
+- [Company 960015 - GKN Aerospace] Contains "robot": https://careers.gknaerospace.com/job/East-Cowes-Senior-Manufacturing-Engineer-CAM/1391785433/
+- [Company 8001 - Qualcomm] Contains "robot": https://careers.qualcomm.com/careers/job/446718383855?domain=qualcomm.com
+- [Company 1880 - Talan] Too short (< 50 chars): https://jobs.smartrecruiters.com/Talan/744000103978223
+- [Company 2281 - SubSea Craft] Contains "robot": https://subseacraft.bamboohr.com/careers/261
+- [Company 2281 - SubSea Craft] Contains "robot": https://subseacraft.bamboohr.com/careers/262
+- [Company 220 - University of Nottingham] Contains "robot": https://jobs.nottingham.ac.uk/vacancy.aspx?ref=SCI2263426
+- [Company 57 - UK Research & Innovation (UKRI)] Contains "robot": https://fa-evzn-saasfaukgovprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/UKRI-Careers/job/2797
+- [Company 134 - Capital on Tap] Contains "cloudflare": https://job-boards.greenhouse.io/capitalontap/jobs/8603757002
+- [Company 24 - Astroscale] Contains "robot": https://astroscale.bamboohr.com/careers/704
+- [Company 454 - AutogenAI] Contains "cloudflare": https://job-boards.greenhouse.io/autogenai/jobs/5432657008
+- [Company 3044 - DeepL] Contains "robot": https://jobs.ashbyhq.com/DeepL/5dbd07fe-5e63-4f65-88db-d1cf6577ef82
+- [Company 572 - Isomorphic Labs] Contains "robot": https://job-boards.greenhouse.io/isomorphiclabs/jobs/5704870004
+- [Company 572 - Isomorphic Labs] Contains "robot": https://job-boards.greenhouse.io/isomorphiclabs/jobs/5224363004
+- [Company 7264 - Intuitive] Contains "robot": https://jobs.smartrecruiters.com/intuitive/744000149906390
+- [Company 794 - Relay] Contains "robot": https://jobs.ashbyhq.com/relay/9c7dc8a5-28c4-4700-a44d-e3d2abb2f0d2
+- [Company 747 - SharkNinja] Contains "robot": https://job-boards.greenhouse.io/sharkninjaoperatingllc/jobs/4664468006
+- [Company 900 - Financial Times] Contains "cloudflare": https://job-boards.eu.greenhouse.io/financialtimes33/jobs/4754123101
+- [Company 502 - XYZ Reality] Contains "robot": https://jobs.ashbyhq.com/xyz-reality/91cbe769-a10c-4585-9f32-c792d1b4840f
+- [Company 2281 - SubSea Craft] Contains "robot": https://subseacraft.bamboohr.com/careers/249
+- [Company 900037 - State Street] Contains "robot": https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/London-England/Senior-Product-Designer--Global-Markets--VP_R-797934
+- [Company 900037 - State Street] Contains "cloudflare": https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/London-England/Cloud-Network-Engineer---Vice-President_R-788534
+- [Company 900037 - State Street] Contains "robot": https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/London-England/Infrastructure-Access-Product-Owner--Vice-President_R-795863
+- [Company 220 - University of Nottingham] Contains "robot": https://jobs.nottingham.ac.uk/vacancy.aspx?ref=NHE101726
+- [Company 220 - University of Nottingham] Contains "robot": https://jobs.nottingham.ac.uk/vacancy.aspx?ref=NHE283926
+- [Company 528 - Fuse Energy] Contains "robot": https://apply.workable.com/fuseenergy/j/A4CD3869D9
+- [Company 528 - Fuse Energy] Contains "robot": https://apply.workable.com/fuseenergy/j/CF31AA2E61
+- [Company 533 - Lyst] Contains "cloudflare": https://apply.workable.com/lyst/j/1396D18DD5
+- [Company 1245 - Medtronic] Contains "robot": https://medtronic.wd1.myworkdayjobs.com/en-US/MedtronicCareers/job/Manchester-Manchester-United-Kingdom/Business-Developer-Surgical-Robotics_R69943-1
+- [Company 4015 - Sanofi] Contains "robot": https://jobs.sanofi.com/en/job/waterford/batch-release-lead-qualified-person/2649/45101553728
+- [Company 4001 - Boston Scientific] Contains "robot": https://bostonscientific.eightfold.ai/careers/job/563602813622208
+- [Company 954010 - John Paul] Contains "robot": https://apply.workable.com/john-paul-4/j/29C21E7980
+- [Company 954010 - John Paul] Contains "robot": https://apply.workable.com/john-paul-4/j/81800AA2E1
+- [Company 954010 - John Paul] Contains "robot": https://apply.workable.com/john-paul-4/j/D510941509
+- [Company 1652 - EY] Contains "robot": https://careers.ey.com/ey/job/Dublin-2-Indirect-Tax-Senior-Manager-DublinCorkGalwayLimerickWaterford/1415293533/
+- [Company 941003 - PACIV] Contains "robot": https://paciv.applytojob.com/apply/AtXgVe3VOm/Process-Engineer
+- [Company 4026 - Dolby] Contains "robot": https://dolby.eightfold.ai/careers/job/40756224
+- [Company 940041 - Sonatus] Contains "robot": https://job-boards.greenhouse.io/sonatus/jobs/5191320007
+- [Company 4015 - Sanofi] Contains "robot": https://jobs.sanofi.com/en/job/waterford/automation-engineer/2649/44659590464
+- [Company 7485 - PM Group] Contains "robot": https://careers.pmgroup-global.com/jobs/12484
+- [Company 940000 - Aureol Global Connections] Contains "robot": https://apply.workable.com/aureol-global-connections/j/5284051D02
+- [Company 940038 - Manna] Contains "robot": https://apply.workable.com/manna-1/j/4C0519F26A
+- [Company 940038 - Manna] Contains "robot": https://apply.workable.com/manna-1/j/334D223F0C
+- [Company 4026 - Dolby] Contains "robot": https://dolby.eightfold.ai/careers/job/40756229
+- [Company 7485 - PM Group] Contains "robot": https://careers.pmgroup-global.com/jobs/11202
+- [Company 4062 - Kepak Group] Contains "robot": https://apply.workable.com/kepak/j/04E0095D89
+- [Company 940038 - Manna] Contains "robot": https://apply.workable.com/manna-1/j/AEE886D007
+- [Company 940000 - Aureol Global Connections] Contains "robot": https://apply.workable.com/aureol-global-connections/j/DF2ED47BEF
+- [Company 1771 - AbbVie] Contains "robot": https://jobs.smartrecruiters.com/AbbVie/3743990015204576
+- [Company 940000 - Aureol Global Connections] Contains "robot": https://apply.workable.com/aureol-global-connections/j/D25A89D1F9

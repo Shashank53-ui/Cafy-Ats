@@ -416,8 +416,10 @@ export function shouldFetchJD(job: Job, company?: any, existingJobsMap?: Map<str
             
         const matchesUK = isUKJob(locationInput) || trustOk;
         
-        const irelandOnlyMarket = company.ireland_permit_employer && !company.licensed_sponsor;
-        const matchesIreland = irelandOnlyMarket
+        const canWriteIreland = (company.ireland_permit_employer === true || company.ireland_permit_employer === 'true' || company.ireland_permit_employer === 1) || 
+                                (company.licensed_sponsor === true || company.licensed_sponsor === 'true' || company.licensed_sponsor === 1);
+        
+        const matchesIreland = canWriteIreland
             ? isIrelandJob(locText, locationInput.locations)
             : false;
             
@@ -816,6 +818,7 @@ const PROVIDER_ALIAS: Record<string, string> = {
     'oracle_cloud': 'oracle_cloud',
     'ultipro': 'ultipro_html',
     'successfactors': 'successfactors',
+    'astrazeneca': 'radancy',
 };
 
 // Custom company token → fetcher routing
@@ -835,7 +838,7 @@ const CUSTOM_TOKEN_ROUTES: Array<{ pattern: RegExp; fetcher: string }> = [
     { pattern: /vorboss\.com/i, fetcher: 'vorboss' },
     { pattern: /jobs\.gxo\.com|gxo\.com/i, fetcher: 'gxo' },
     { pattern: /royalmailgroup\.com|royal.?mail/i, fetcher: 'royalmail' },
-    { pattern: /astrazeneca\.com|astrazeneca/i, fetcher: 'astrazeneca' },
+    { pattern: /astrazeneca\.com|astrazeneca/i, fetcher: 'radancy' },
     { pattern: /careers\.lilly\.com/i, fetcher: 'phenom' },
     { pattern: /jobs\.takeda\.com|takedajobs\.com/i, fetcher: 'takeda' },
     { pattern: /novonordisk|careers\.novonordisk\.com/i, fetcher: 'successfactors' },
@@ -3070,9 +3073,12 @@ export async function fetchWorkday(token: string, company?: CompanyRow, existing
 
                     const limitDetails = pLimit(2);
                     const enrichedPosts = await Promise.all(currentPosts.map((j: any) => limitDetails(async () => {
-                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
                         let job_type_val = j.timeType || j.bulletFields;
-                        let description = undefined;
+                        const tempJob = { title: j.title, location: j.locationsText || j.bulletFields?.[0], url: `${publicBase}${j.externalPath}` };
+                        if (!shouldFetchJD(tempJob as Job, company, existingJobsMap)) {
+                            return { ...j, resolvedJobType: job_type_val, description: undefined };
+                        }
+                        let description: string | undefined = undefined;
                         try {
                             const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
                             const dRes = await fetchWithTimeout(detUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -3131,8 +3137,12 @@ export async function fetchWorkday(token: string, company?: CompanyRow, existing
                         irTotal = Math.min(irData.total || irTotal, 200); // cap at 200 safety limit
                         const limitDetails = pLimit(10);
                         const enrichedIrPosts = await Promise.all(irPosts.map((j: any) => limitDetails(async () => {
-                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
                             let job_type_val = j.timeType || j.bulletFields;
+                            const tempJob = { title: j.title, location: j.locationsText || j.bulletFields?.[0], url: `${publicBase}${j.externalPath}` };
+                            if (!shouldFetchJD(tempJob as Job, company, existingJobsMap)) {
+                                return { ...j, resolvedJobType: job_type_val, description: undefined };
+                            }
+                            let description: string | undefined = undefined;
                             if (!job_type_val || !parseJobType(job_type_val)) {
                                 try {
                                     const detUrl = apiUrl.replace(/\/jobs$/, '') + j.externalPath;
@@ -4305,6 +4315,57 @@ async function fetchLinkedin(token: string, company?: CompanyRow, existingJobsMa
         if (context) await context.close().catch(() => { });
     }
 
+    return allJobs;
+}
+
+// ─── Radancy Fetcher ───────────────────────────────────────────────────────────
+async function fetchRadancy(token: string): Promise<Job[]> {
+    const allJobs: Job[] = [];
+    try {
+        let currentPage = 1;
+        while (true) {
+            // Using the token as the base domain, e.g. https://careers.astrazeneca.com
+            const baseUrl = token.replace(/\/$/, '');
+            const searchUrl = `${baseUrl}/search-jobs/results?ActiveFacetID=0&CurrentPage=${currentPage}&RecordsPerPage=100&Distance=50&RadiusUnitType=0&Keywords=&Location=&ShowRadius=False&IsPagination=False&FacetType=0&SearchResultsModuleName=Search+Results&SearchFiltersModuleName=Search+Filters&SortCriteria=0&SortDirection=0&SearchType=1&LocationType=1`;
+            
+            const res = await fetchWithTimeout(searchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!res.ok) break;
+            
+            const data = await res.json();
+            if (!data || !data.results) break;
+            
+            const $ = cheerio.load(data.results);
+            const listItems = $('ul > li, section#search-results-list ul li');
+            
+            if (listItems.length === 0) break;
+            
+            listItems.each((_, el) => {
+                const a = $(el).find('a');
+                if (!a.length) return;
+                
+                const title = a.find('h2').text().trim();
+                const location = a.find('.job-location').text().trim();
+                const href = a.attr('href') || '';
+                
+                if (title && isValidJobTitle(title)) {
+                    allJobs.push({
+                        title,
+                        location,
+                        url: href.startsWith('http') ? href : `${baseUrl}${href}`,
+                        description: undefined,
+                        atsProvider: 'radancy'
+                    });
+                }
+            });
+            
+            // Radancy usually doesn't return total page counts directly in results HTML,
+            // but if there are fewer than RecordsPerPage (100) jobs, we've hit the end.
+            if (listItems.length < 100) break;
+            currentPage++;
+        }
+    } catch (e) {
+        console.error(`Radancy scraper error for ${token}:`, e);
+    }
     return allJobs;
 }
 
@@ -6707,8 +6768,22 @@ export async function fetchGem(token: string, company?: CompanyRow, existingJobs
 
         const sectionLimit = pLimit(5);
         const jobs = await Promise.all(postings.map((j: any) => sectionLimit(async () => {
-                    if (!shouldFetchJD(j, company, existingJobsMap)) return;
             const extId = j.extId || j.id;
+            const location = Array.isArray(j.locations) && j.locations.length > 0 ? (j.locations[0].city || j.locations[0].name || '') : '';
+            const url = `https://jobs.gem.com/${token}/${extId}`;
+            const tempJob = { title: j.title || '', location, url };
+            
+            if (!shouldFetchJD(tempJob as Job, company, existingJobsMap)) {
+                return {
+                    title: tempJob.title,
+                    url: tempJob.url,
+                    location: tempJob.location,
+                    department: j.job?.department?.name || '',
+                    description: undefined,
+                    atsProvider: 'gem',
+                };
+            }
+
             const sections = extId ? await fetchGemJobSections(token, String(extId)) : null;
 
             const empType = String(j.job?.employmentType || '').replace(/_/g, ' ').trim();
@@ -7142,6 +7217,7 @@ export const FETCHERS: Record<string, (token: string, company?: CompanyRow, exis
     jpmc: fetchJPMorgan,
     publicis: fetchPublicis,
     linkedin: fetchLinkedin,
+    radancy: fetchRadancy,
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
